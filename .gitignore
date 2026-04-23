@@ -22,6 +22,10 @@ frontend/dist/
 .env
 .env.*
 
+# IDE
+.idea/
+*.iml
+
 # OS
 .DS_Store
 Thumbs.db
