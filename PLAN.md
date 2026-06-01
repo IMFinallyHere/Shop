@@ -140,6 +140,24 @@ Key facts: `django-tenants` 3.10.x supports Django 6.0 but **requires PostgreSQL
   `billing` TENANT_APP. Customer management will use a **shared/public** customer
   table (per README) — note this crosses the isolation boundary by design.
 
+## Phase 6 — Per-unit stock items + barcodes  ✅
+- [x] Stock is now tracked **per physical unit**: new `StockItem` model (one row per
+      unit) with an auto-generated unique `code` (no manual entry), `status`
+      (in_stock/sold/removed), and a `batch` UUID grouping an add operation. Removed
+      `Product.stock_quantity` field + `StockMovement`; product stock is now an annotated
+      count of in-stock units.
+- [x] API: `POST /products/<id>/add-stock/ {quantity}` creates N units in one batch and
+      returns them; `StockItemViewSet` (`/stock-items/`, filters product/status/batch,
+      search by code, `remove` action). `status=all` returns every status.
+- [x] Frontend: **Stock** page (every unit, Code128 preview, per-unit Download, Remove,
+      "Print this page"); Products "Add Stock" → opens a **print** view of the new
+      batch's labels (Code128 + QR + name/price). Both barcodes rendered **client-side**
+      (`jsbarcode` + `qrcode`); download composes a single PNG per unit.
+- [x] `inventory/tests.py` updated (add-stock unique codes, count reflects units,
+      remove drops count, cross-shop isolation). Suite green: 8 tests.
+- Hierarchy: Category → Product (e.g. Bra) → many StockItems, each with its own barcode.
+- `sold` status exists but is set only by the future billing/POS flow.
+
 ## Demo data seeded in the remote DB (for exploring)
 - Platform owner (public/`localhost`): `admin@shop.test` / `admin123` — now a
   public-schema superuser; log in on `localhost` → shop picker → **Platform Admin**
@@ -174,6 +192,10 @@ Key facts: `django-tenants` 3.10.x supports Django 6.0 but **requires PostgreSQL
   login, isolation, multi-shop membership, signup provisioning, and platform admin.
   All four phases of the multi-tenancy conversion are now done & validated. Work still
   uncommitted on `feat/multi-tenancy`.
+
+- **2026-06-01** Phase 6: stock redesigned to per-unit `StockItem`s with auto-generated
+  Code128 + QR barcodes; new Stock page, per-unit download, batch print view. Suite
+  still 8 green tests. Committed on `feat/multi-tenancy`.
 
 ## Bootstrap (run once `.env` DB_* is filled)
 ```bash

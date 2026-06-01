@@ -127,7 +127,7 @@ ALLOWED_HOSTS=localhost,127.0.0.1
 - [x] Product / category management
 - [x] Seller management
 - [ ] Customer management
-- [ ] Barcode & QR code generation per product
+- [x] Barcode + QR generation **per stock unit** (auto-generated; print & download)
 - [ ] Barcode scanner integration (webcam / USB scanner)
 - [ ] Point-of-sale billing interface
 - [ ] Bill PDF generation and print
