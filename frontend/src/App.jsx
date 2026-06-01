@@ -2,11 +2,15 @@ import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import DashboardLayout from './components/layout/DashboardLayout'
 import LoginPage from './pages/LoginPage'
+import RegisterPage from './pages/RegisterPage'
+import ShopPickerPage from './pages/ShopPickerPage'
+import PlatformAdminPage from './pages/PlatformAdminPage'
 import DashboardPage from './pages/DashboardPage'
 import UsersPage from './pages/UsersPage'
 import GroupsPage from './pages/GroupsPage'
 import PermissionsPage from './pages/PermissionsPage'
 import Spinner from './components/common/Spinner'
+import { homePath } from './utils/domain'
 
 function ProtectedRoute() {
   const { isAuthenticated, isLoading } = useAuth()
@@ -18,15 +22,20 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
       <Route element={<ProtectedRoute />}>
+        {/* Main-domain pages (no shop context) */}
+        <Route path="/shops" element={<ShopPickerPage />} />
+        <Route path="/admin" element={<PlatformAdminPage />} />
+        {/* Shop-subdomain pages */}
         <Route element={<DashboardLayout />}>
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/users" element={<UsersPage />} />
           <Route path="/groups" element={<GroupsPage />} />
           <Route path="/permissions" element={<PermissionsPage />} />
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Route>
+        <Route path="/" element={<Navigate to={homePath()} replace />} />
+        <Route path="*" element={<Navigate to={homePath()} replace />} />
       </Route>
     </Routes>
   )

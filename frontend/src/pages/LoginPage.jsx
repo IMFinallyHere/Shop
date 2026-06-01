@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { homePath } from '../utils/domain'
 
 export default function LoginPage() {
   const { login } = useAuth()
   const navigate = useNavigate()
-  const [form, setForm] = useState({ username: '', password: '' })
+  const [form, setForm] = useState({ email: '', password: '' })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -14,10 +15,10 @@ export default function LoginPage() {
     setError('')
     setLoading(true)
     try {
-      await login(form.username, form.password)
-      navigate('/dashboard')
+      await login(form.email, form.password)
+      navigate(homePath())
     } catch (err) {
-      setError(err.response?.data?.detail || 'Invalid username or password.')
+      setError(err.response?.data?.detail || 'Invalid email or password.')
     } finally {
       setLoading(false)
     }
@@ -37,11 +38,11 @@ export default function LoginPage() {
             </div>
           )}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
             <input
-              type="text"
-              value={form.username}
-              onChange={e => setForm({ ...form, username: e.target.value })}
+              type="email"
+              value={form.email}
+              onChange={e => setForm({ ...form, email: e.target.value })}
               required
               autoFocus
               className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
@@ -65,6 +66,12 @@ export default function LoginPage() {
             {loading ? 'Signing in…' : 'Sign In'}
           </button>
         </form>
+        <p className="text-center text-sm text-gray-500 mt-6">
+          New here?{' '}
+          <Link to="/register" className="text-indigo-600 font-medium hover:underline">
+            Create a shop
+          </Link>
+        </p>
       </div>
     </div>
   )

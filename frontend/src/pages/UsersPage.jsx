@@ -12,7 +12,7 @@ import SearchInput from '../components/common/SearchInput'
 import Spinner from '../components/common/Spinner'
 import ErrorAlert from '../components/common/ErrorAlert'
 
-const EMPTY_USER = { username: '', email: '', first_name: '', last_name: '', password: '', is_staff: false, is_active: true }
+const EMPTY_USER = { email: '', first_name: '', last_name: '', password: '', is_staff: false }
 
 export default function UsersPage() {
   const [users, setUsers] = useState([])
@@ -54,14 +54,14 @@ export default function UsersPage() {
   }
 
   const openCreate = () => { setFormData({ ...EMPTY_USER }); setFieldErrors({}); setModal('create') }
-  const openEdit = (u) => { setSelected(u); setFormData({ username: u.username, email: u.email, first_name: u.first_name, last_name: u.last_name, is_staff: u.is_staff, is_active: u.is_active }); setFieldErrors({}); setModal('edit') }
+  const openEdit = (u) => { setSelected(u); setFormData({ email: u.email, first_name: u.first_name, last_name: u.last_name, is_staff: u.is_staff }); setFieldErrors({}); setModal('edit') }
   const openDelete = (u) => { setSelected(u); setModal('delete') }
   const openPassword = (u) => { setSelected(u); setPwData({ old_password: '', new_password: '' }); setFieldErrors({}); setModal('password') }
   const openGroups = (u) => { setSelected(u); setSelectedGroupIds(u.groups); setModal('groups') }
   const openPermissions = (u) => { setSelected(u); setModal('permissions') }
   const closeModal = () => { setModal(null); setSelected(null); setError(''); setFieldErrors({}) }
 
-  const parseFieldErrors = (responseData, knownFields = ['username', 'email', 'first_name', 'last_name', 'password', 'is_staff', 'is_active']) => {
+  const parseFieldErrors = (responseData, knownFields = ['email', 'first_name', 'last_name', 'password', 'is_staff']) => {
     const fields = {}
     let general = ''
     Object.entries(responseData || {}).forEach(([key, val]) => {
@@ -148,22 +148,21 @@ export default function UsersPage() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                {['Username', 'Email', 'Name', 'Staff', 'Active', 'Groups', 'Actions'].map(h => (
+                {['Email', 'Name', 'Staff', 'Active', 'Groups', 'Actions'].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {users.length === 0 && (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">No users found</td></tr>
+                <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">No users found</td></tr>
               )}
               {users.map(u => (
                 <tr key={u.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 font-medium text-gray-800">
-                    {u.username}
-                    {u.is_superuser && <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">super</span>}
+                    {u.email}
+                    {u.is_superuser && <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">owner</span>}
                   </td>
-                  <td className="px-4 py-3 text-gray-600">{u.email || '—'}</td>
                   <td className="px-4 py-3 text-gray-600">{[u.first_name, u.last_name].filter(Boolean).join(' ') || '—'}</td>
                   <td className="px-4 py-3">
                     <span className={`text-xs px-2 py-0.5 rounded-full ${u.is_staff ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
@@ -227,11 +226,11 @@ export default function UsersPage() {
         onConfirm={handleDelete}
         loading={saving}
         title="Delete User"
-        message={`Are you sure you want to delete "${selected?.username}"? This cannot be undone.`}
+        message={`Are you sure you want to delete "${selected?.email}"? This cannot be undone.`}
       />
 
       {/* Change Password Modal */}
-      <Modal isOpen={modal === 'password'} onClose={closeModal} title={`Change Password — ${selected?.username}`} size="sm">
+      <Modal isOpen={modal === 'password'} onClose={closeModal} title={`Change Password — ${selected?.email}`} size="sm">
         <ErrorAlert message={error} />
         <ChangePasswordForm data={pwData} onChange={setPwData} errors={fieldErrors} />
         <div className="flex justify-end gap-3 mt-6">
@@ -241,7 +240,7 @@ export default function UsersPage() {
       </Modal>
 
       {/* Assign Groups Modal */}
-      <Modal isOpen={modal === 'groups'} onClose={closeModal} title={`Assign Groups — ${selected?.username}`} size="md">
+      <Modal isOpen={modal === 'groups'} onClose={closeModal} title={`Assign Groups — ${selected?.email}`} size="md">
         <ErrorAlert message={error} />
         <div className="space-y-2 mb-4 max-h-64 overflow-y-auto">
           {allGroups.map(g => (
@@ -264,7 +263,7 @@ export default function UsersPage() {
       </Modal>
 
       {/* Assign Permissions Modal */}
-      <Modal isOpen={modal === 'permissions'} onClose={closeModal} title={`Assign Permissions — ${selected?.username}`} size="xl">
+      <Modal isOpen={modal === 'permissions'} onClose={closeModal} title={`Assign Permissions — ${selected?.email}`} size="xl">
         <AssignPermissionsForm
           allPermissions={allPermissions}
           currentIds={selected?.user_permissions ?? []}
