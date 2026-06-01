@@ -98,6 +98,21 @@ class StockItemViewSet(viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(batch=params["batch"])
         return qs
 
+    @action(detail=False, methods=["get"], url_path="lookup")
+    def lookup(self, request):
+        """Resolve a scanned barcode to an in-stock unit (for POS)."""
+        code = request.query_params.get("code", "").strip()
+        if not code:
+            return Response({"detail": "code required."}, status=status.HTTP_400_BAD_REQUEST)
+        item = (
+            StockItem.objects.select_related("product", "product__category")
+            .filter(code=code, status=StockItem.IN_STOCK)
+            .first()
+        )
+        if not item:
+            return Response({"detail": "No in-stock unit with that code."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(StockItemSerializer(item).data)
+
     @action(detail=True, methods=["post"], url_path="remove")
     def remove(self, request, pk=None):
         item = self.get_object()

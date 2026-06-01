@@ -22,6 +22,7 @@ SHARED_APPS = [
     "tenant_users.tenants",
     "tenants",            # Tenant + Domain models (public schema)
     "accounts",           # global User profile (public schema)
+    "customers",          # global shared Customer table (public schema)
     "django.contrib.contenttypes",
     "django.contrib.auth",
     "rest_framework",
@@ -35,7 +36,7 @@ TENANT_APPS = [
     "django.contrib.auth",
     "tenant_users.permissions",
     "inventory",
-    # Future per-shop data: "billing", ...
+    "billing",
 ]
 
 INSTALLED_APPS = list(SHARED_APPS) + [
