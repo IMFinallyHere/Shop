@@ -133,3 +133,7 @@ ALLOWED_HOSTS=localhost,127.0.0.1
 - [ ] Sales dashboard with charts
 - [ ] Low stock notifications
 - [ ] PostgreSQL support for production
+
+
+# flow
+- For this app to work for every company.

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { getUsers, createUser, updateUser, deleteUser, changePassword, assignGroups, assignUserPermissions } from '../api/users'
 import { getGroups } from '../api/groups'
 import { getPermissions } from '../api/permissions'
+import ActionMenu from '../components/common/ActionMenu'
 import Modal from '../components/common/Modal'
 import ConfirmDialog from '../components/common/ConfirmDialog'
 import UserForm from '../components/forms/UserForm'
@@ -55,13 +56,12 @@ export default function UsersPage() {
   const openCreate = () => { setFormData({ ...EMPTY_USER }); setFieldErrors({}); setModal('create') }
   const openEdit = (u) => { setSelected(u); setFormData({ username: u.username, email: u.email, first_name: u.first_name, last_name: u.last_name, is_staff: u.is_staff, is_active: u.is_active }); setFieldErrors({}); setModal('edit') }
   const openDelete = (u) => { setSelected(u); setModal('delete') }
-  const openPassword = (u) => { setSelected(u); setPwData({ old_password: '', new_password: '' }); setModal('password') }
+  const openPassword = (u) => { setSelected(u); setPwData({ old_password: '', new_password: '' }); setFieldErrors({}); setModal('password') }
   const openGroups = (u) => { setSelected(u); setSelectedGroupIds(u.groups); setModal('groups') }
   const openPermissions = (u) => { setSelected(u); setModal('permissions') }
   const closeModal = () => { setModal(null); setSelected(null); setError(''); setFieldErrors({}) }
 
-  const parseFieldErrors = (responseData) => {
-    const knownFields = ['username', 'email', 'first_name', 'last_name', 'password', 'is_staff', 'is_active']
+  const parseFieldErrors = (responseData, knownFields = ['username', 'email', 'first_name', 'last_name', 'password', 'is_staff', 'is_active']) => {
     const fields = {}
     let general = ''
     Object.entries(responseData || {}).forEach(([key, val]) => {
@@ -102,9 +102,13 @@ export default function UsersPage() {
   }
 
   const handlePassword = async () => {
-    setSaving(true); setError('')
+    setSaving(true); setError(''); setFieldErrors({})
     try { await changePassword(selected.id, pwData); closeModal() }
-    catch (e) { setError(e.response?.data?.old_password || e.response?.data?.detail || 'Failed to change password.') }
+    catch (e) {
+      const { fields, general } = parseFieldErrors(e.response?.data, ['old_password', 'new_password'])
+      setFieldErrors(fields)
+      setError(general || (Object.keys(fields).length === 0 ? 'Failed to change password.' : ''))
+    }
     finally { setSaving(false) }
   }
 
@@ -173,17 +177,13 @@ export default function UsersPage() {
                   </td>
                   <td className="px-4 py-3 text-gray-600">{u.group_names?.join(', ') || '—'}</td>
                   <td className="px-4 py-3">
-                    <div className="flex gap-1 flex-wrap">
-                      {[
-                        { label: 'Edit', fn: () => openEdit(u), color: 'text-indigo-600 hover:text-indigo-800' },
-                        { label: 'Pwd', fn: () => openPassword(u), color: 'text-gray-500 hover:text-gray-700' },
-                        { label: 'Groups', fn: () => openGroups(u), color: 'text-emerald-600 hover:text-emerald-800' },
-                        { label: 'Perms', fn: () => openPermissions(u), color: 'text-amber-600 hover:text-amber-800' },
-                        { label: 'Delete', fn: () => openDelete(u), color: 'text-red-500 hover:text-red-700' },
-                      ].map(({ label, fn, color }) => (
-                        <button key={label} onClick={fn} className={`text-xs font-medium ${color}`}>{label}</button>
-                      ))}
-                    </div>
+                    <ActionMenu actions={[
+                      { label: 'Edit', icon: '✏️', onClick: () => openEdit(u) },
+                      { label: 'Change Password', icon: '🔑', onClick: () => openPassword(u) },
+                      { label: 'Assign Groups', icon: '🏷️', onClick: () => openGroups(u) },
+                      { label: 'Assign Permissions', icon: '🔐', onClick: () => openPermissions(u) },
+                      { label: 'Delete', icon: '🗑️', onClick: () => openDelete(u), variant: 'danger' },
+                    ]} />
                   </td>
                 </tr>
               ))}
@@ -233,7 +233,7 @@ export default function UsersPage() {
       {/* Change Password Modal */}
       <Modal isOpen={modal === 'password'} onClose={closeModal} title={`Change Password — ${selected?.username}`} size="sm">
         <ErrorAlert message={error} />
-        <ChangePasswordForm data={pwData} onChange={setPwData} />
+        <ChangePasswordForm data={pwData} onChange={setPwData} errors={fieldErrors} />
         <div className="flex justify-end gap-3 mt-6">
           <button onClick={closeModal} className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm">Cancel</button>
           <button onClick={handlePassword} disabled={saving} className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 text-sm">{saving ? 'Saving…' : 'Update'}</button>

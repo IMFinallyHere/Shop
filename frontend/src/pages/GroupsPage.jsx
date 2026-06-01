@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getGroups, getGroup, createGroup, updateGroup, deleteGroup, assignGroupPermissions } from '../api/groups'
 import { getPermissions } from '../api/permissions'
+import ActionMenu from '../components/common/ActionMenu'
 import Modal from '../components/common/Modal'
 import ConfirmDialog from '../components/common/ConfirmDialog'
 import GroupForm from '../components/forms/GroupForm'
@@ -13,6 +14,7 @@ export default function GroupsPage() {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [fieldErrors, setFieldErrors] = useState({})
   const [modal, setModal] = useState(null)
   const [selected, setSelected] = useState(null)
   const [formData, setFormData] = useState({ name: '' })
@@ -32,8 +34,8 @@ export default function GroupsPage() {
       .finally(() => setLoading(false))
   }
 
-  const openCreate = () => { setFormData({ name: '' }); setModal('create') }
-  const openEdit = (g) => { setSelected(g); setFormData({ name: g.name }); setModal('edit') }
+  const openCreate = () => { setFormData({ name: '' }); setFieldErrors({}); setModal('create') }
+  const openEdit = (g) => { setSelected(g); setFormData({ name: g.name }); setFieldErrors({}); setModal('edit') }
   const openDelete = (g) => { setSelected(g); setModal('delete') }
   const openPermissions = async (g) => {
     setSelected(g)
@@ -41,19 +43,27 @@ export default function GroupsPage() {
     setSelectedDetail(data)
     setModal('permissions')
   }
-  const closeModal = () => { setModal(null); setSelected(null); setSelectedDetail(null); setError('') }
+  const closeModal = () => { setModal(null); setSelected(null); setSelectedDetail(null); setError(''); setFieldErrors({}) }
 
   const handleCreate = async () => {
-    setSaving(true); setError('')
+    setSaving(true); setError(''); setFieldErrors({})
     try { await createGroup(formData); fetchGroups(); closeModal() }
-    catch (e) { setError(e.response?.data?.name?.[0] || 'Failed to create group.') }
+    catch (e) {
+      const name = e.response?.data?.name?.[0]
+      if (name) setFieldErrors({ name })
+      else setError('Failed to create group.')
+    }
     finally { setSaving(false) }
   }
 
   const handleEdit = async () => {
-    setSaving(true); setError('')
+    setSaving(true); setError(''); setFieldErrors({})
     try { await updateGroup(selected.id, formData); fetchGroups(); closeModal() }
-    catch (e) { setError(e.response?.data?.name?.[0] || 'Failed to update group.') }
+    catch (e) {
+      const name = e.response?.data?.name?.[0]
+      if (name) setFieldErrors({ name })
+      else setError('Failed to update group.')
+    }
     finally { setSaving(false) }
   }
 
@@ -101,11 +111,11 @@ export default function GroupsPage() {
                   <td className="px-4 py-3 font-medium text-gray-800">{g.name}</td>
                   <td className="px-4 py-3 text-gray-600">{g.permissions?.length ?? 0} permission{g.permissions?.length !== 1 ? 's' : ''}</td>
                   <td className="px-4 py-3">
-                    <div className="flex gap-2">
-                      <button onClick={() => openEdit(g)} className="text-xs font-medium text-indigo-600 hover:text-indigo-800">Edit</button>
-                      <button onClick={() => openPermissions(g)} className="text-xs font-medium text-amber-600 hover:text-amber-800">Perms</button>
-                      <button onClick={() => openDelete(g)} className="text-xs font-medium text-red-500 hover:text-red-700">Delete</button>
-                    </div>
+                    <ActionMenu actions={[
+                      { label: 'Edit', icon: '✏️', onClick: () => openEdit(g) },
+                      { label: 'Assign Permissions', icon: '🔐', onClick: () => openPermissions(g) },
+                      { label: 'Delete', icon: '🗑️', onClick: () => openDelete(g), variant: 'danger' },
+                    ]} />
                   </td>
                 </tr>
               ))}
@@ -116,7 +126,7 @@ export default function GroupsPage() {
 
       <Modal isOpen={modal === 'create'} onClose={closeModal} title="Create Group" size="sm">
         <ErrorAlert message={error} />
-        <GroupForm data={formData} onChange={setFormData} />
+        <GroupForm data={formData} onChange={setFormData} errors={fieldErrors} />
         <div className="flex justify-end gap-3 mt-6">
           <button onClick={closeModal} className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm">Cancel</button>
           <button onClick={handleCreate} disabled={saving} className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 text-sm">{saving ? 'Creating…' : 'Create'}</button>
@@ -125,7 +135,7 @@ export default function GroupsPage() {
 
       <Modal isOpen={modal === 'edit'} onClose={closeModal} title="Edit Group" size="sm">
         <ErrorAlert message={error} />
-        <GroupForm data={formData} onChange={setFormData} />
+        <GroupForm data={formData} onChange={setFormData} errors={fieldErrors} />
         <div className="flex justify-end gap-3 mt-6">
           <button onClick={closeModal} className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm">Cancel</button>
           <button onClick={handleEdit} disabled={saving} className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 text-sm">{saving ? 'Saving…' : 'Save'}</button>
