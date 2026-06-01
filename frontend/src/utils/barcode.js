@@ -14,30 +14,43 @@ export function drawQR(canvas, code, size = 96) {
   return QRCode.toCanvas(canvas, code, { width: size, margin: 1 })
 }
 
-// Compose one printable PNG label (name, price, Code128, QR) and download it.
-export async function downloadLabel({ code, product_name, price }) {
-  const bc = document.createElement('canvas')
-  drawCode128(bc, code, { width: 1.8, height: 60 })
-  const qr = document.createElement('canvas')
-  await drawQR(qr, code, 150)
-
-  const W = 380, H = 210, pad = 14
-  const canvas = document.createElement('canvas')
-  canvas.width = W; canvas.height = H
-  const ctx = canvas.getContext('2d')
-  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H)
-  ctx.fillStyle = '#111827'
-  ctx.font = 'bold 17px sans-serif'
-  ctx.fillText((product_name ?? '').slice(0, 26), pad, pad + 14)
-  if (price != null && price !== '') {
-    ctx.font = '14px sans-serif'; ctx.fillStyle = '#374151'
-    ctx.fillText(`Rs. ${price}`, pad, pad + 36)
-  }
-  ctx.drawImage(bc, pad, 64, 210, bc.height)
-  ctx.drawImage(qr, W - 150 - pad, 48, 150, 150)
-
+function triggerDownload(canvas, filename) {
   const a = document.createElement('a')
   a.href = canvas.toDataURL('image/png')
-  a.download = `barcode-${code}.png`
+  a.download = filename
   a.click()
+}
+
+// Compose a white card with the product name/price as a header above `inner`.
+function labelCard(inner, { product_name, price }) {
+  const pad = 14
+  const W = Math.max(inner.width + pad * 2, 240)
+  const headerH = price != null && price !== '' ? 54 : 36
+  const H = inner.height + headerH + pad
+  const c = document.createElement('canvas')
+  c.width = W; c.height = H
+  const ctx = c.getContext('2d')
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H)
+  ctx.fillStyle = '#111827'; ctx.font = 'bold 15px sans-serif'
+  ctx.fillText((product_name ?? '').slice(0, 28), pad, pad + 12)
+  if (price != null && price !== '') {
+    ctx.font = '13px sans-serif'; ctx.fillStyle = '#374151'
+    ctx.fillText(`Rs. ${price}`, pad, pad + 32)
+  }
+  ctx.drawImage(inner, (W - inner.width) / 2, headerH)
+  return c
+}
+
+// Download just the Code128 barcode (with name/price header) as a PNG.
+export function downloadCode128({ code, product_name, price }) {
+  const bc = document.createElement('canvas')
+  drawCode128(bc, code, { width: 1.9, height: 70 })
+  triggerDownload(labelCard(bc, { product_name, price }), `barcode-${code}.png`)
+}
+
+// Download just the QR code (with name/price header) as a PNG.
+export async function downloadQR({ code, product_name, price }) {
+  const qr = document.createElement('canvas')
+  await drawQR(qr, code, 220)
+  triggerDownload(labelCard(qr, { product_name, price }), `qr-${code}.png`)
 }

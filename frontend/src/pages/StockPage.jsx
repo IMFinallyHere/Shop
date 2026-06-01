@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react'
 import { getStockItems, removeStockItem } from '../api/inventory'
 import BarcodeLabel from '../components/inventory/BarcodeLabel'
 import PrintBarcodes from '../components/inventory/PrintBarcodes'
+import ActionMenu from '../components/common/ActionMenu'
 import ConfirmDialog from '../components/common/ConfirmDialog'
 import SearchInput from '../components/common/SearchInput'
 import Spinner from '../components/common/Spinner'
 import ErrorAlert from '../components/common/ErrorAlert'
-import { downloadLabel } from '../utils/barcode'
+import { downloadCode128, downloadQR } from '../utils/barcode'
 
 const STATUSES = [
   { value: 'in_stock', label: 'In stock' },
@@ -86,12 +87,13 @@ export default function StockPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex gap-3">
-                      <button onClick={() => downloadLabel(it)} className="text-xs font-medium text-indigo-600 hover:text-indigo-800">Download</button>
-                      {it.status === 'in_stock' && (
-                        <button onClick={() => setToRemove(it)} className="text-xs font-medium text-red-500 hover:text-red-700">Remove</button>
-                      )}
-                    </div>
+                    <ActionMenu actions={[
+                      { label: 'Download barcode', icon: '📊', onClick: () => downloadCode128(it) },
+                      { label: 'Download QR', icon: '🔳', onClick: () => downloadQR(it) },
+                      ...(it.status === 'in_stock'
+                        ? [{ label: 'Remove', icon: '🗑️', onClick: () => setToRemove(it), variant: 'danger' }]
+                        : []),
+                    ]} />
                   </td>
                 </tr>
               ))}
