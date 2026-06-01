@@ -177,6 +177,19 @@ Key facts: `django-tenants` 3.10.x supports Django 6.0 but **requires PostgreSQL
 - Note: dev `SECRET_KEY` is short (warning in tests) — set a 32+ byte key for prod.
 - Next: Bill PDF export, sales dashboard, low-stock notifications.
 
+## Phase 8 — Per-shop settings (payment methods + default tax)  ✅
+- [x] New `shopsettings` app (TENANT_APPS): `ShopSettings` singleton (`default_tax_rate`)
+      + `PaymentMethod` (per shop, auto-seeded Cash/UPI/Card). Endpoints
+      `/api/shop-settings/` (GET/PUT) and `/api/payment-methods/` (CRUD, `?active=1`).
+- [x] POS: tax is read-only (from settings, applied server-side — checkout ignores any
+      client tax); payment dropdown comes from the shop's enabled methods; invalid
+      method → 400. New **Settings** page to edit both. `Bill.payment_mode` stores the
+      method name.
+- [x] Tests: per-shop tax isolation, payment seeding/CRUD, tax-from-settings,
+      invalid-method rejection. Full suite = **16 tests** (accounts+inventory+billing+
+      shopsettings), ~8 min (each class re-provisions tenants; use `--noinput` to avoid
+      the leftover-`test_shop` prompt).
+
 ## Demo data seeded in the remote DB (for exploring)
 - Platform owner (public/`localhost`): `admin@shop.test` / `admin123` — now a
   public-schema superuser; log in on `localhost` → shop picker → **Platform Admin**
@@ -219,6 +232,10 @@ Key facts: `django-tenants` 3.10.x supports Django 6.0 but **requires PostgreSQL
 - **2026-06-01** Phase 7: POS billing. New `customers` (shared) + `billing` (tenant)
   apps; scan→bill→pay→sold flow with discount/tax, shared customer table, printable
   receipt, sales history. Suite = 12 green tests. Committed on `feat/multi-tenancy`.
+
+- **2026-06-01** Phase 8: per-shop `shopsettings` (payment methods + default tax). POS
+  applies the shop's tax read-only and lists its payment methods. Suite = 16 green tests.
+  Committed on `feat/multi-tenancy`.
 
 ## Bootstrap (run once `.env` DB_* is filled)
 ```bash
