@@ -1,6 +1,14 @@
 from rest_framework import serializers
 
-from .models import Category, Product, Seller, StockMovement
+from .models import Category, Product, Seller, StockItem
+
+
+def _in_stock_count(product):
+    """Use the viewset's annotation when present, else count directly."""
+    value = getattr(product, "stock_quantity", None)
+    if value is None:
+        return product.stock_items.filter(status=StockItem.IN_STOCK).count()
+    return value
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -22,7 +30,9 @@ class SellerSerializer(serializers.ModelSerializer):
 class ProductSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source="category.name", read_only=True)
     seller_name = serializers.CharField(source="seller.name", read_only=True)
-    is_low_stock = serializers.BooleanField(read_only=True)
+    # Count of in-stock units (from the viewset annotation, or counted on the fly).
+    stock_quantity = serializers.SerializerMethodField()
+    is_low_stock = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
@@ -32,21 +42,26 @@ class ProductSerializer(serializers.ModelSerializer):
             "stock_quantity", "low_stock_threshold", "is_low_stock", "is_active",
             "created_at", "updated_at",
         ]
-        # Stock is changed only via the adjust-stock action, never edited directly.
-        read_only_fields = ["stock_quantity"]
+
+    def get_stock_quantity(self, obj):
+        return _in_stock_count(obj)
+
+    def get_is_low_stock(self, obj):
+        return _in_stock_count(obj) <= obj.low_stock_threshold
 
 
-class StockMovementSerializer(serializers.ModelSerializer):
+class StockItemSerializer(serializers.ModelSerializer):
+    product_name = serializers.CharField(source="product.name", read_only=True)
+    category_name = serializers.CharField(source="product.category.name", read_only=True)
+    price = serializers.DecimalField(source="product.price", max_digits=10, decimal_places=2, read_only=True)
+
     class Meta:
-        model = StockMovement
-        fields = ["id", "kind", "quantity", "resulting_stock", "reason", "created_at"]
+        model = StockItem
+        fields = [
+            "id", "code", "product", "product_name", "category_name", "price",
+            "status", "batch", "created_at",
+        ]
 
 
-class StockAdjustSerializer(serializers.Serializer):
-    quantity = serializers.IntegerField()
-    reason = serializers.CharField(required=False, allow_blank=True, default="")
-
-    def validate_quantity(self, value):
-        if value == 0:
-            raise serializers.ValidationError("Quantity cannot be zero.")
-        return value
+class AddStockSerializer(serializers.Serializer):
+    quantity = serializers.IntegerField(min_value=1, max_value=1000)

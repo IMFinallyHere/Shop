@@ -1,19 +1,23 @@
+import uuid
+
 from django.db import transaction
-from django.db.models import F
+from django.db.models import Count, F, Q
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.response import Response
 
 from accounts.permissions import IsSuperuserOrStaff
-from .models import Category, Product, Seller, StockMovement
+from .models import Category, Product, Seller, StockItem
 from .serializers import (
+    AddStockSerializer,
     CategorySerializer,
     ProductSerializer,
     SellerSerializer,
-    StockAdjustSerializer,
-    StockMovementSerializer,
+    StockItemSerializer,
 )
+
+IN_STOCK_COUNT = Count("stock_items", filter=Q(stock_items__status=StockItem.IN_STOCK))
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -44,40 +48,59 @@ class ProductViewSet(viewsets.ModelViewSet):
     ordering_fields = ["name", "price", "stock_quantity", "created_at"]
 
     def get_queryset(self):
-        qs = Product.objects.select_related("category", "seller")
+        qs = Product.objects.select_related("category", "seller").annotate(
+            stock_quantity=IN_STOCK_COUNT
+        )
         if self.request.query_params.get("low_stock") in ("1", "true"):
             qs = qs.filter(stock_quantity__lte=F("low_stock_threshold"))
         if self.request.query_params.get("category"):
             qs = qs.filter(category_id=self.request.query_params["category"])
         return qs
 
-    @action(detail=True, methods=["post"], url_path="adjust-stock")
-    def adjust_stock(self, request, pk=None):
+    @action(detail=True, methods=["post"], url_path="add-stock")
+    def add_stock(self, request, pk=None):
         product = self.get_object()
-        serializer = StockAdjustSerializer(data=request.data)
+        serializer = AddStockSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        delta = serializer.validated_data["quantity"]
+        quantity = serializer.validated_data["quantity"]
+        batch = uuid.uuid4()
         with transaction.atomic():
-            product = Product.objects.select_for_update().get(pk=product.pk)
-            new_stock = product.stock_quantity + delta
-            if new_stock < 0:
-                return Response(
-                    {"quantity": "Not enough stock for this reduction."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            product.stock_quantity = new_stock
-            product.save(update_fields=["stock_quantity", "updated_at"])
-            StockMovement.objects.create(
-                product=product,
-                kind=StockMovement.IN if delta > 0 else StockMovement.OUT,
-                quantity=delta,
-                resulting_stock=new_stock,
-                reason=serializer.validated_data.get("reason", ""),
-            )
-        return Response(ProductSerializer(product).data)
+            items = [StockItem(product=product, batch=batch) for _ in range(quantity)]
+            for item in items:
+                item.save()  # save() generates a unique code per item
+        return Response(
+            {
+                "batch": str(batch),
+                "count": len(items),
+                "items": StockItemSerializer(items, many=True).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
-    @action(detail=True, methods=["get"], url_path="movements")
-    def movements(self, request, pk=None):
-        product = self.get_object()
-        movements = product.movements.all()[:100]
-        return Response(StockMovementSerializer(movements, many=True).data)
+
+class StockItemViewSet(viewsets.ReadOnlyModelViewSet):
+    """The Stock section: every physical unit, one row each."""
+
+    permission_classes = [IsSuperuserOrStaff]
+    serializer_class = StockItemSerializer
+    filter_backends = [SearchFilter]
+    search_fields = ["code", "product__name"]
+
+    def get_queryset(self):
+        qs = StockItem.objects.select_related("product", "product__category")
+        params = self.request.query_params
+        status_param = params.get("status", StockItem.IN_STOCK)
+        if status_param and status_param != "all":
+            qs = qs.filter(status=status_param)
+        if params.get("product"):
+            qs = qs.filter(product_id=params["product"])
+        if params.get("batch"):
+            qs = qs.filter(batch=params["batch"])
+        return qs
+
+    @action(detail=True, methods=["post"], url_path="remove")
+    def remove(self, request, pk=None):
+        item = self.get_object()
+        item.status = StockItem.REMOVED
+        item.save(update_fields=["status"])
+        return Response(StockItemSerializer(item).data)

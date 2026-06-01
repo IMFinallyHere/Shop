@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import models
 
 
@@ -34,10 +36,10 @@ class Seller(models.Model):
 
 
 class Product(models.Model):
-    """A cloth product in a shop's inventory."""
+    """A cloth product. Physical units live in :class:`StockItem`."""
 
     name = models.CharField(max_length=150)
-    sku = models.CharField(max_length=64, blank=True, help_text="Barcode / QR value")
+    sku = models.CharField(max_length=64, blank=True, help_text="Optional manufacturer code")
     category = models.ForeignKey(
         Category, null=True, blank=True, on_delete=models.SET_NULL, related_name="products"
     )
@@ -49,7 +51,6 @@ class Product(models.Model):
     size = models.CharField(max_length=30, blank=True)
     cost_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    stock_quantity = models.IntegerField(default=0)
     low_stock_threshold = models.PositiveIntegerField(default=5)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -57,38 +58,44 @@ class Product(models.Model):
 
     class Meta:
         ordering = ["name"]
-        constraints = [
-            # SKUs are unique within a shop, but blank SKUs are allowed.
-            models.UniqueConstraint(
-                fields=["sku"], condition=~models.Q(sku=""), name="unique_sku_per_shop"
-            )
-        ]
 
     def __str__(self):
         return self.name
 
-    @property
-    def is_low_stock(self):
-        return self.stock_quantity <= self.low_stock_threshold
+
+def generate_stock_code():
+    """A short, unique barcode value (encoded by both the Code128 and QR labels)."""
+    return uuid.uuid4().hex[:12].upper()
 
 
-class StockMovement(models.Model):
-    """An audit record of a change to a product's stock level."""
+class StockItem(models.Model):
+    """A single physical unit of a product, with its own barcode."""
 
-    IN = "in"
-    OUT = "out"
-    ADJUST = "adjust"
-    KIND_CHOICES = [(IN, "Stock In"), (OUT, "Stock Out"), (ADJUST, "Adjustment")]
+    IN_STOCK = "in_stock"
+    SOLD = "sold"
+    REMOVED = "removed"
+    STATUS_CHOICES = [(IN_STOCK, "In stock"), (SOLD, "Sold"), (REMOVED, "Removed")]
 
-    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="movements")
-    kind = models.CharField(max_length=10, choices=KIND_CHOICES)
-    quantity = models.IntegerField(help_text="Signed delta applied to stock")
-    resulting_stock = models.IntegerField()
-    reason = models.CharField(max_length=255, blank=True)
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="stock_items")
+    code = models.CharField(max_length=32, unique=True, editable=False)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=IN_STOCK)
+    batch = models.UUIDField(db_index=True, help_text="Groups units added together")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["-created_at"]
 
+    def save(self, *args, **kwargs):
+        if not self.code:
+            # Retry on the rare unique collision.
+            for _ in range(5):
+                candidate = generate_stock_code()
+                if not StockItem.objects.filter(code=candidate).exists():
+                    self.code = candidate
+                    break
+            else:
+                self.code = generate_stock_code()
+        super().save(*args, **kwargs)
+
     def __str__(self):
-        return f"{self.product.name}: {self.quantity:+d}"
+        return self.code
