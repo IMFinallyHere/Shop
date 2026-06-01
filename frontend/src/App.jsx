@@ -10,6 +10,9 @@ import ProductsPage from './pages/ProductsPage'
 import StockPage from './pages/StockPage'
 import CategoriesPage from './pages/CategoriesPage'
 import SellersPage from './pages/SellersPage'
+import POSPage from './pages/POSPage'
+import SalesPage from './pages/SalesPage'
+import CustomersPage from './pages/CustomersPage'
 import UsersPage from './pages/UsersPage'
 import GroupsPage from './pages/GroupsPage'
 import PermissionsPage from './pages/PermissionsPage'
@@ -38,6 +41,9 @@ function AppRoutes() {
           <Route path="/stock" element={<StockPage />} />
           <Route path="/categories" element={<CategoriesPage />} />
           <Route path="/sellers" element={<SellersPage />} />
+          <Route path="/pos" element={<POSPage />} />
+          <Route path="/sales" element={<SalesPage />} />
+          <Route path="/customers" element={<CustomersPage />} />
           <Route path="/users" element={<UsersPage />} />
           <Route path="/groups" element={<GroupsPage />} />
           <Route path="/permissions" element={<PermissionsPage />} />

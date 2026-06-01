@@ -10,6 +10,7 @@ export const addStock = (id, quantity) => api.post(`/products/${id}/add-stock/`,
 // Stock items (individual units)
 export const getStockItems = (params) => api.get('/stock-items/', { params })
 export const removeStockItem = (id) => api.post(`/stock-items/${id}/remove/`)
+export const lookupStockItem = (code) => api.get('/stock-items/lookup/', { params: { code } })
 
 // Categories
 export const getCategories = (params) => api.get('/categories/', { params })
