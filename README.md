@@ -124,14 +124,14 @@ ALLOWED_HOSTS=localhost,127.0.0.1
 
 - [x] User management with RBAC
 - [x] JWT authentication with token refresh and blacklist
-- [ ] Product / category management
-- [ ] Seller management
+- [x] Product / category management
+- [x] Seller management
 - [ ] Customer management
 - [ ] Barcode & QR code generation per product
 - [ ] Barcode scanner integration (webcam / USB scanner)
 - [ ] Point-of-sale billing interface
 - [ ] Bill PDF generation and print
-- [ ] Stock in/out tracking and history
+- [x] Stock in/out tracking and history (StockMovement audit log + adjust action)
 - [ ] Sales dashboard with charts
 - [ ] Low stock notifications
 - [x] PostgreSQL support (now required — schema-per-tenant)

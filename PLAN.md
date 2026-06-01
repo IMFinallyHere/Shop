@@ -122,6 +122,24 @@ Key facts: `django-tenants` 3.10.x supports Django 6.0 but **requires PostgreSQL
 - [x] Multi-shop user sees correct roles per shop
 - [x] Email login returns JWT + user payload
 
+## Phase 5 — Inventory app  ✅ (first cut)
+- [x] New `inventory` app in `TENANT_APPS` (per-shop isolation automatic). Models:
+      `Category`, `Seller` (suppliers), `Product` (cloth attrs, cost/price, stock,
+      low-stock threshold, optional SKU unique-per-shop), `StockMovement` (audit log).
+- [x] DRF API: `/api/categories/`, `/api/sellers/`, `/api/products/` (search, ordering,
+      `?low_stock=1`, `?category=`), product actions `adjust-stock` (atomic, blocks
+      negative stock, records a movement) and `movements`. Gated by `IsSuperuserOrStaff`.
+      Note: Django auto-creates per-model permissions in each schema, so finer-grained
+      access can be granted via the existing per-shop Groups UI later.
+- [x] Migration applied to all tenant schemas via `migrate_schemas --tenant`.
+- [x] Frontend: `ProductsPage` (CRUD + stock adjust + low-stock filter + search),
+      `CategoriesPage`, `SellersPage`, sidebar links, `api/inventory.js`, `ProductForm`.
+- [x] `inventory/tests.py`: product CRUD + stock movements + cross-shop isolation.
+      Full suite now 8 tests (`python manage.py test accounts inventory`).
+- Next for inventory: barcode/QR generation + scan, then billing (POS) in a new
+  `billing` TENANT_APP. Customer management will use a **shared/public** customer
+  table (per README) — note this crosses the isolation boundary by design.
+
 ## Demo data seeded in the remote DB (for exploring)
 - Platform owner (public/`localhost`): `admin@shop.test` / `admin123` — now a
   public-schema superuser; log in on `localhost` → shop picker → **Platform Admin**
