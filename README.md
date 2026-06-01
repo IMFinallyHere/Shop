@@ -125,6 +125,8 @@ ALLOWED_HOSTS=localhost,127.0.0.1
 - [x] User management with RBAC
 - [x] JWT authentication with token refresh and blacklist
 - [ ] Product / category management
+- [ ] Seller management
+- [ ] Customer management
 - [ ] Barcode & QR code generation per product
 - [ ] Barcode scanner integration (webcam / USB scanner)
 - [ ] Point-of-sale billing interface
@@ -132,8 +134,22 @@ ALLOWED_HOSTS=localhost,127.0.0.1
 - [ ] Stock in/out tracking and history
 - [ ] Sales dashboard with charts
 - [ ] Low stock notifications
-- [ ] PostgreSQL support for production
+- [x] PostgreSQL support (now required — schema-per-tenant)
+- [~] Multi-tenancy: each shop isolated in its own PostgreSQL schema
+      (`django-tenants` + `django-tenant-users`), self-serve signup, subdomain routing
 
+## Multi-tenancy
 
-# flow
-- For this app to work for every company.
+Every shop is an isolated tenant in its own PostgreSQL schema. A single user
+account (identified by **email**) can belong to multiple shops with per-shop
+permissions. Shops are resolved by subdomain (`<slug>.localhost` in dev). See
+`PLAN.md` for the build status and bootstrap commands.
+
+## Customer Management
+When we sell a stock we take in customer details, and we will have a global customer table shares across all the tenant.
+Tenant will be able to see only those customers who have ever purchased anything from them. 
+Having a unified table can help in search while some other tenant is filling the details. 
+
+## Seller Management
+Each tenant can add details of their sellers and while adding new inventory they can select the seller. 
+Seller here means from where that tenant have purchased the items. 
