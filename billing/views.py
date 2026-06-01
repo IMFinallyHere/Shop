@@ -8,6 +8,7 @@ from rest_framework.response import Response
 
 from accounts.permissions import IsSuperuserOrStaff
 from inventory.models import StockItem
+from shopsettings.models import PaymentMethod, ShopSettings, ensure_payment_methods
 from .models import Bill, BillItem
 from .serializers import BillSerializer, CheckoutSerializer
 
@@ -48,6 +49,19 @@ class BillViewSet(viewsets.ModelViewSet):
         data = serializer.validated_data
         codes = list(dict.fromkeys(data["codes"]))  # de-dupe, keep order
 
+        # Payment method must be one the shop has enabled.
+        ensure_payment_methods()
+        active_methods = set(
+            PaymentMethod.objects.filter(is_active=True).values_list("name", flat=True)
+        )
+        if data["payment_mode"] not in active_methods:
+            return Response(
+                {"payment_mode": "Not an enabled payment method for this shop."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # Tax rate comes from the shop's settings, not the request.
+        tax_rate = Decimal(ShopSettings.load().default_tax_rate)
+
         with transaction.atomic():
             units = list(
                 StockItem.objects.select_for_update()
@@ -72,7 +86,6 @@ class BillViewSet(viewsets.ModelViewSet):
             else:
                 discount_amount = Decimal("0.00")
             taxable = subtotal - discount_amount
-            tax_rate = Decimal(data["tax_rate"])
             tax_amount = money(taxable * tax_rate / 100)
             total = money(taxable + tax_amount)
 

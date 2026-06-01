@@ -37,6 +37,7 @@ TENANT_APPS = [
     "tenant_users.permissions",
     "inventory",
     "billing",
+    "shopsettings",
 ]
 
 INSTALLED_APPS = list(SHARED_APPS) + [

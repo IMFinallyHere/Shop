@@ -7,8 +7,6 @@ from inventory.models import StockItem
 class Bill(models.Model):
     """A point-of-sale bill, scoped to one shop (its schema)."""
 
-    CASH, UPI, CARD = "cash", "upi", "card"
-    PAYMENT_CHOICES = [(CASH, "Cash"), (UPI, "UPI"), (CARD, "Card")]
     NONE, FLAT, PERCENT = "none", "flat", "percent"
     DISCOUNT_CHOICES = [(NONE, "None"), (FLAT, "Flat"), (PERCENT, "Percent")]
 
@@ -24,7 +22,8 @@ class Bill(models.Model):
     tax_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     tax_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    payment_mode = models.CharField(max_length=10, choices=PAYMENT_CHOICES, default=CASH)
+    # Stores the chosen payment method name (configured per shop in shopsettings).
+    payment_mode = models.CharField(max_length=40, default="Cash")
 
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL

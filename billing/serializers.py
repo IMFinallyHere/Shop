@@ -46,7 +46,5 @@ class CheckoutSerializer(serializers.Serializer):
         choices=[c[0] for c in Bill.DISCOUNT_CHOICES], default=Bill.NONE
     )
     discount_value = serializers.DecimalField(max_digits=10, decimal_places=2, default=0)
-    tax_rate = serializers.DecimalField(max_digits=5, decimal_places=2, default=0)
-    payment_mode = serializers.ChoiceField(
-        choices=[c[0] for c in Bill.PAYMENT_CHOICES], default=Bill.CASH
-    )
+    # Tax is NOT taken from the client — the shop's default rate is applied server-side.
+    payment_mode = serializers.CharField()
