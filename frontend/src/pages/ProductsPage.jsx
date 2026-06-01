@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import {
-  getProducts, createProduct, updateProduct, deleteProduct, adjustStock,
+  getProducts, createProduct, updateProduct, deleteProduct, addStock,
   getCategories, getSellers,
 } from '../api/inventory'
 import ActionMenu from '../components/common/ActionMenu'
 import Modal from '../components/common/Modal'
 import ConfirmDialog from '../components/common/ConfirmDialog'
 import ProductForm from '../components/forms/ProductForm'
+import PrintBarcodes from '../components/inventory/PrintBarcodes'
 import SearchInput from '../components/common/SearchInput'
 import Spinner from '../components/common/Spinner'
 import ErrorAlert from '../components/common/ErrorAlert'
@@ -29,7 +30,8 @@ export default function ProductsPage() {
   const [formData, setFormData] = useState(EMPTY)
   const [categories, setCategories] = useState([])
   const [sellers, setSellers] = useState([])
-  const [adjust, setAdjust] = useState({ quantity: '', reason: '' })
+  const [addQty, setAddQty] = useState('')
+  const [printItems, setPrintItems] = useState(null)
 
   const PAGE_SIZE = 20
 
@@ -64,7 +66,7 @@ export default function ProductsPage() {
     setFieldErrors({}); setModal('edit')
   }
   const openDelete = (p) => { setSelected(p); setModal('delete') }
-  const openAdjust = (p) => { setSelected(p); setAdjust({ quantity: '', reason: '' }); setError(''); setModal('adjust') }
+  const openAddStock = (p) => { setSelected(p); setAddQty(''); setError(''); setModal('addstock') }
   const closeModal = () => { setModal(null); setSelected(null); setError(''); setFieldErrors({}) }
 
   const parseErrors = (resp) => {
@@ -96,13 +98,16 @@ export default function ProductsPage() {
     finally { setSaving(false) }
   }
 
-  const handleAdjust = async () => {
+  const handleAddStock = async () => {
     setSaving(true); setError('')
     try {
-      await adjustStock(selected.id, { quantity: parseInt(adjust.quantity, 10), reason: adjust.reason })
+      const { data } = await addStock(selected.id, parseInt(addQty, 10))
       fetchProducts(); closeModal()
-    } catch (e) { setError(e.response?.data?.quantity || e.response?.data?.detail || 'Failed to adjust stock.') }
-    finally { setSaving(false) }
+      setPrintItems(data.items)  // open the print view for the new batch
+    } catch (e) {
+      const q = e.response?.data?.quantity
+      setError((Array.isArray(q) ? q[0] : q) || e.response?.data?.detail || 'Failed to add stock.')
+    } finally { setSaving(false) }
   }
 
   const totalPages = Math.ceil(count / PAGE_SIZE)
@@ -153,7 +158,7 @@ export default function ProductsPage() {
                   </td>
                   <td className="px-4 py-3">
                     <ActionMenu actions={[
-                      { label: 'Adjust Stock', icon: '📦', onClick: () => openAdjust(p) },
+                      { label: 'Add Stock', icon: '📦', onClick: () => openAddStock(p) },
                       { label: 'Edit', icon: '✏️', onClick: () => openEdit(p) },
                       { label: 'Delete', icon: '🗑️', onClick: () => openDelete(p), variant: 'danger' },
                     ]} />
@@ -191,23 +196,25 @@ export default function ProductsPage() {
         </div>
       </Modal>
 
-      <Modal isOpen={modal === 'adjust'} onClose={closeModal} title={`Adjust Stock — ${selected?.name}`} size="sm">
+      <Modal isOpen={modal === 'addstock'} onClose={closeModal} title={`Add Stock — ${selected?.name}`} size="sm">
         <ErrorAlert message={error} />
-        <p className="text-sm text-gray-500 mb-3">Current stock: <span className="font-medium text-gray-800">{selected?.stock_quantity}</span>. Use a negative number to reduce.</p>
-        <div className="space-y-3">
-          <input type="number" autoFocus value={adjust.quantity} onChange={e => setAdjust({ ...adjust, quantity: e.target.value })} placeholder="e.g. 10 or -3"
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-          <input type="text" value={adjust.reason} onChange={e => setAdjust({ ...adjust, reason: e.target.value })} placeholder="Reason (optional)"
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-        </div>
+        <p className="text-sm text-gray-500 mb-3">
+          Current units in stock: <span className="font-medium text-gray-800">{selected?.stock_quantity}</span>.
+          Each unit added gets its own barcode; you can print them next.
+        </p>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Quantity to add</label>
+        <input type="number" min="1" autoFocus value={addQty} onChange={e => setAddQty(e.target.value)} placeholder="e.g. 5"
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
         <div className="flex justify-end gap-3 mt-6">
           <button onClick={closeModal} className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm">Cancel</button>
-          <button onClick={handleAdjust} disabled={saving || !adjust.quantity} className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 text-sm">{saving ? 'Saving…' : 'Apply'}</button>
+          <button onClick={handleAddStock} disabled={saving || !addQty || Number(addQty) < 1} className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 text-sm">{saving ? 'Adding…' : 'Add & print'}</button>
         </div>
       </Modal>
 
       <ConfirmDialog isOpen={modal === 'delete'} onClose={closeModal} onConfirm={handleDelete} loading={saving}
-        title="Delete Product" message={`Delete "${selected?.name}"? This cannot be undone.`} />
+        title="Delete Product" message={`Delete "${selected?.name}"? This removes the product and all its stock units.`} />
+
+      <PrintBarcodes items={printItems} title={`New stock — ${printItems?.[0]?.product_name ?? ''}`} onClose={() => setPrintItems(null)} />
     </div>
   )
 }

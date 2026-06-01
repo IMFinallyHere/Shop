@@ -5,8 +5,11 @@ export const getProducts = (params) => api.get('/products/', { params })
 export const createProduct = (data) => api.post('/products/', data)
 export const updateProduct = (id, data) => api.patch(`/products/${id}/`, data)
 export const deleteProduct = (id) => api.delete(`/products/${id}/`)
-export const adjustStock = (id, data) => api.post(`/products/${id}/adjust-stock/`, data)
-export const getMovements = (id) => api.get(`/products/${id}/movements/`)
+export const addStock = (id, quantity) => api.post(`/products/${id}/add-stock/`, { quantity })
+
+// Stock items (individual units)
+export const getStockItems = (params) => api.get('/stock-items/', { params })
+export const removeStockItem = (id) => api.post(`/stock-items/${id}/remove/`)
 
 // Categories
 export const getCategories = (params) => api.get('/categories/', { params })
