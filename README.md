@@ -126,11 +126,11 @@ ALLOWED_HOSTS=localhost,127.0.0.1
 - [x] JWT authentication with token refresh and blacklist
 - [x] Product / category management
 - [x] Seller management
-- [ ] Customer management
+- [x] Customer management (shared global table; each shop sees only its own buyers)
 - [x] Barcode + QR generation **per stock unit** (auto-generated; print & download)
 - [ ] Barcode scanner integration (webcam / USB scanner)
-- [ ] Point-of-sale billing interface
-- [ ] Bill PDF generation and print
+- [x] Point-of-sale billing interface (scan units → bill → payment → mark sold)
+- [~] Bill print (browser print done; dedicated PDF export pending)
 - [x] Stock in/out tracking and history (StockMovement audit log + adjust action)
 - [ ] Sales dashboard with charts
 - [ ] Low stock notifications

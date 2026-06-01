@@ -158,6 +158,25 @@ Key facts: `django-tenants` 3.10.x supports Django 6.0 but **requires PostgreSQL
 - Hierarchy: Category → Product (e.g. Bra) → many StockItems, each with its own barcode.
 - `sold` status exists but is set only by the future billing/POS flow.
 
+## Phase 7 — Point-of-Sale billing  ✅
+- [x] New `customers` app (**SHARED_APPS**/public): global `Customer` (unique phone).
+      `/api/customers/lookup/?phone=` searches the global table (cross-shop autofill);
+      `/api/customers/` lists only this shop's buyers (resolved via its bills).
+- [x] New `billing` app (**TENANT_APPS**): `Bill` + `BillItem`. Checkout `POST /api/bills/`
+      validates scanned codes are in-stock units, marks them `sold`, snapshots
+      product/price, computes subtotal − discount (flat/%) + tax, stores a soft
+      `customer_id` + name/phone snapshot, `created_by=user`. `INV-{id:05d}` numbering.
+      Sales history via list/retrieve. Inventory got a `stock-items/lookup/?code=` action.
+- [x] Frontend: **Billing (POS)** page (autofocus barcode input → Enter adds unit;
+      cart; customer phone with lookup-autofill; discount/tax/payment; live total;
+      checkout → printable **receipt**); **Sales** history (view/reprint); **Customers**
+      page. Sidebar links + routes.
+- [x] Validated live (totals 400 −40 +18 = 378; units sold; stock dropped; cross-shop
+      customer autofill but per-shop scoping) and by tests. Suite = **12 tests**
+      (`python manage.py test accounts inventory billing`).
+- Note: dev `SECRET_KEY` is short (warning in tests) — set a 32+ byte key for prod.
+- Next: Bill PDF export, sales dashboard, low-stock notifications.
+
 ## Demo data seeded in the remote DB (for exploring)
 - Platform owner (public/`localhost`): `admin@shop.test` / `admin123` — now a
   public-schema superuser; log in on `localhost` → shop picker → **Platform Admin**
@@ -196,6 +215,10 @@ Key facts: `django-tenants` 3.10.x supports Django 6.0 but **requires PostgreSQL
 - **2026-06-01** Phase 6: stock redesigned to per-unit `StockItem`s with auto-generated
   Code128 + QR barcodes; new Stock page, per-unit download, batch print view. Suite
   still 8 green tests. Committed on `feat/multi-tenancy`.
+
+- **2026-06-01** Phase 7: POS billing. New `customers` (shared) + `billing` (tenant)
+  apps; scan→bill→pay→sold flow with discount/tax, shared customer table, printable
+  receipt, sales history. Suite = 12 green tests. Committed on `feat/multi-tenancy`.
 
 ## Bootstrap (run once `.env` DB_* is filled)
 ```bash
