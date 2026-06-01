@@ -34,7 +34,8 @@ TENANT_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.auth",
     "tenant_users.permissions",
-    # Future per-shop data lives here: "inventory", "billing", ...
+    "inventory",
+    # Future per-shop data: "billing", ...
 ]
 
 INSTALLED_APPS = list(SHARED_APPS) + [
