@@ -6,6 +6,9 @@ import RegisterPage from './pages/RegisterPage'
 import ShopPickerPage from './pages/ShopPickerPage'
 import PlatformAdminPage from './pages/PlatformAdminPage'
 import DashboardPage from './pages/DashboardPage'
+import ProductsPage from './pages/ProductsPage'
+import CategoriesPage from './pages/CategoriesPage'
+import SellersPage from './pages/SellersPage'
 import UsersPage from './pages/UsersPage'
 import GroupsPage from './pages/GroupsPage'
 import PermissionsPage from './pages/PermissionsPage'
@@ -30,6 +33,9 @@ function AppRoutes() {
         {/* Shop-subdomain pages */}
         <Route element={<DashboardLayout />}>
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/products" element={<ProductsPage />} />
+          <Route path="/categories" element={<CategoriesPage />} />
+          <Route path="/sellers" element={<SellersPage />} />
           <Route path="/users" element={<UsersPage />} />
           <Route path="/groups" element={<GroupsPage />} />
           <Route path="/permissions" element={<PermissionsPage />} />
