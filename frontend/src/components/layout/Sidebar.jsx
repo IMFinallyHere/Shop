@@ -9,6 +9,7 @@ const links = [
   { to: '/pos', label: 'Billing (POS)', icon: '🧾' },
   { to: '/sales', label: 'Sales', icon: '💰' },
   { to: '/customers', label: 'Customers', icon: '🙋' },
+  { to: '/settings', label: 'Settings', icon: '⚙️' },
   { to: '/users', label: 'Users', icon: '👥' },
   { to: '/groups', label: 'Groups', icon: '🏷️' },
   { to: '/permissions', label: 'Permissions', icon: '🔐' },

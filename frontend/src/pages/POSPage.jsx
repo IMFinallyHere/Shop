@@ -1,7 +1,8 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { lookupStockItem } from '../api/inventory'
 import { lookupCustomers } from '../api/customers'
 import { checkout } from '../api/billing'
+import { getShopSettings, getPaymentMethods } from '../api/shopsettings'
 import BillReceipt from '../components/billing/BillReceipt'
 import ErrorAlert from '../components/common/ErrorAlert'
 
@@ -13,12 +14,22 @@ export default function POSPage() {
   const [customer, setCustomer] = useState({ name: '', phone: '' })
   const [discountType, setDiscountType] = useState('none')
   const [discountValue, setDiscountValue] = useState('')
-  const [taxRate, setTaxRate] = useState('')
-  const [paymentMode, setPaymentMode] = useState('cash')
+  const [taxRate, setTaxRate] = useState(0)            // from shop settings (read-only here)
+  const [paymentMethods, setPaymentMethods] = useState([])
+  const [paymentMode, setPaymentMode] = useState('')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [receipt, setReceipt] = useState(null)
   const scanRef = useRef(null)
+
+  useEffect(() => {
+    getShopSettings().then(r => setTaxRate(Number(r.data.default_tax_rate))).catch(() => {})
+    getPaymentMethods({ active: 1 }).then(r => {
+      const list = r.data.results ?? r.data
+      setPaymentMethods(list)
+      if (list.length) setPaymentMode(list[0].name)
+    }).catch(() => {})
+  }, [])
 
   const totals = useMemo(() => {
     const subtotal = cart.reduce((s, l) => s + Number(l.unit_price), 0)
@@ -69,12 +80,11 @@ export default function POSPage() {
         customer: { name: customer.name, phone: customer.phone },
         discount_type: discountType,
         discount_value: discountValue || 0,
-        tax_rate: taxRate || 0,
         payment_mode: paymentMode,
       })
       setReceipt(data)
       setCart([]); setCustomer({ name: '', phone: '' })
-      setDiscountType('none'); setDiscountValue(''); setTaxRate('')
+      setDiscountType('none'); setDiscountValue('')
     } catch (e) {
       setError(e.response?.data?.codes || e.response?.data?.detail || 'Checkout failed.')
     } finally { setSaving(false) }
@@ -137,20 +147,13 @@ export default function POSPage() {
             </div>
           </div>
 
-          <div className="flex gap-2">
-            <div className="flex-1">
-              <div className="text-sm font-semibold text-gray-700 mb-1">Tax %</div>
-              <input type="number" min="0" value={taxRate} onChange={e => setTaxRate(e.target.value)} placeholder="0"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-            </div>
-            <div className="flex-1">
-              <div className="text-sm font-semibold text-gray-700 mb-1">Payment</div>
-              <select value={paymentMode} onChange={e => setPaymentMode(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
-                <option value="cash">Cash</option>
-                <option value="upi">UPI</option>
-                <option value="card">Card</option>
-              </select>
-            </div>
+          <div>
+            <div className="text-sm font-semibold text-gray-700 mb-1">Payment</div>
+            <select value={paymentMode} onChange={e => setPaymentMode(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+              {paymentMethods.length === 0 && <option value="">No methods configured</option>}
+              {paymentMethods.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
+            </select>
+            <p className="mt-2 text-xs text-gray-400">Tax {taxRate}% (set in Settings) is applied automatically.</p>
           </div>
 
           <div className="border-t border-gray-200 pt-3 space-y-1 text-sm">
@@ -160,7 +163,7 @@ export default function POSPage() {
             <div className="flex justify-between font-bold text-base pt-1"><span>Total</span><span>{money(totals.total)}</span></div>
           </div>
 
-          <button onClick={handleCheckout} disabled={saving || cart.length === 0}
+          <button onClick={handleCheckout} disabled={saving || cart.length === 0 || !paymentMode}
             className="w-full bg-indigo-600 text-white rounded-lg py-3 text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">
             {saving ? 'Processing…' : `Checkout · ${money(totals.total)}`}
           </button>
