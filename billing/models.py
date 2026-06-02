@@ -11,7 +11,7 @@ class Bill(models.Model):
     DISCOUNT_CHOICES = [(NONE, "None"), (FLAT, "Flat"), (PERCENT, "Percent")]
 
     # Soft reference to the shared/public Customer (no cross-schema FK) + snapshot.
-    customer_id = models.IntegerField(null=True, blank=True)
+    customer_id = models.IntegerField(null=True, blank=True, db_index=True)
     customer_name = models.CharField(max_length=120, blank=True)
     customer_phone = models.CharField(max_length=20, blank=True)
 
@@ -32,6 +32,7 @@ class Bill(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        indexes = [models.Index(fields=["-created_at"])]
 
     @property
     def number(self):

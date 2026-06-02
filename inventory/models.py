@@ -30,6 +30,7 @@ class Seller(models.Model):
 
     class Meta:
         ordering = ["name"]
+        indexes = [models.Index(fields=["name"])]
 
     def __str__(self):
         return self.name
@@ -58,6 +59,7 @@ class Product(models.Model):
 
     class Meta:
         ordering = ["name"]
+        indexes = [models.Index(fields=["name"])]
 
     def __str__(self):
         return self.name
@@ -84,6 +86,12 @@ class StockItem(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        indexes = [
+            # Serves the IN_STOCK_COUNT annotation and product/status filtering;
+            # the leftmost-prefix also covers product-only lookups.
+            models.Index(fields=["product", "status"]),
+            models.Index(fields=["-created_at"]),
+        ]
 
     def save(self, *args, **kwargs):
         if not self.code:

@@ -237,6 +237,14 @@ Key facts: `django-tenants` 3.10.x supports Django 6.0 but **requires PostgreSQL
   applies the shop's tax read-only and lists its payment methods. Suite = 16 green tests.
   Committed on `feat/multi-tenancy`.
 
+- **2026-06-02** DB indexing pass matched to the views' query/order patterns:
+  `StockItem(product, status)` (serves the `IN_STOCK_COUNT` annotation + stock filters)
+  and `(-created_at)`; `Bill(-created_at)` + `db_index` on the soft `customer_id`
+  (customers aggregation); ordering indexes on `Product.name`, `Seller.name`,
+  `Customer.name`. Skipped FKs / `unique=True` / `batch` (already indexed) and
+  `icontains` searches (no B-tree benefit). Migrations `billing/0003`,
+  `customers/0002`, `inventory/0003`, applied across public + tenant schemas.
+
 ## Bootstrap (run once `.env` DB_* is filled)
 ```bash
 source .venv/bin/activate
