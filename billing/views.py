@@ -289,6 +289,12 @@ class DashboardView(APIView):
              "payment_mode": b.payment_mode, "created_at": b.created_at}
             for b in Bill.objects.all()[:5]
         ]
+        recent_returns = [
+            {"id": r.id, "number": r.number, "bill_number": r.bill.number, "customer_name": r.customer_name,
+             "amount": str(r.amount), "mode": r.mode, "payment_mode": r.payment_mode,
+             "items": r.n_items, "created_at": r.created_at}
+            for r in Return.objects.select_related("bill").annotate(n_items=Count("items"))[:5]
+        ]
 
         return Response({
             "today": {
@@ -299,4 +305,5 @@ class DashboardView(APIView):
             "low_stock": low_stock,
             "low_stock_count": low.count(),
             "recent_bills": recent,
+            "recent_returns": recent_returns,
         })

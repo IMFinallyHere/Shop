@@ -93,29 +93,55 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      <Card className="mt-6">
-        <CardHeader title="Recent bills" action={<Button as={Link} to="/sales" variant="ghost" size="xs">All sales <ArrowRight size={14} /></Button>} />
-        {data && data.recent_bills.length === 0 ? (
-          <EmptyState icon={Receipt} title="No bills yet" description="Bills you create at the counter will show up here."
-            action={<Button as={Link} to="/pos" variant="primary" icon={ScanBarcode}>Create first bill</Button>} />
-        ) : (
-          <ul className="divide-y divide-zinc-100">
-            {(data?.recent_bills ?? Array.from({ length: 3 }, () => null)).map((b, i) => (
-              <li key={b?.id ?? i} className="flex items-center gap-4 px-5 py-3">
-                {b ? (<>
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-500"><Receipt size={16} /></div>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium text-zinc-800">{b.customer_name || 'Walk-in'}</div>
-                    <div className="text-xs text-zinc-500">{b.number} · {formatDateTime(b.created_at)}</div>
-                  </div>
-                  <Badge className="hidden sm:inline-flex">{b.payment_mode}</Badge>
-                  <div className="w-24 text-right text-sm font-semibold tabular-nums text-zinc-900">{money(b.total)}</div>
-                </>) : <div className="h-9 w-full animate-pulse rounded bg-zinc-50" />}
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
+      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-5">
+        <Card className="lg:col-span-3">
+          <CardHeader title="Recent bills" action={<Button as={Link} to="/sales" variant="ghost" size="xs">All sales <ArrowRight size={14} /></Button>} />
+          {data && data.recent_bills.length === 0 ? (
+            <EmptyState icon={Receipt} title="No bills yet" description="Bills you create at the counter will show up here."
+              action={<Button as={Link} to="/pos" variant="primary" icon={ScanBarcode}>Create first bill</Button>} />
+          ) : (
+            <ul className="divide-y divide-zinc-100">
+              {(data?.recent_bills ?? Array.from({ length: 3 }, () => null)).map((b, i) => (
+                <li key={b?.id ?? i} className="flex items-center gap-4 px-5 py-3">
+                  {b ? (<>
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-500"><Receipt size={16} /></div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-zinc-800">{b.customer_name || 'Walk-in'}</div>
+                      <div className="text-xs text-zinc-500">{b.number} · {formatDateTime(b.created_at)}</div>
+                    </div>
+                    <Badge className="hidden sm:inline-flex">{b.payment_mode}</Badge>
+                    <div className="w-24 text-right text-sm font-semibold tabular-nums text-zinc-900">{money(b.total)}</div>
+                  </>) : <div className="h-9 w-full animate-pulse rounded bg-zinc-50" />}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+        <Card className="lg:col-span-2">
+          <CardHeader title="Recent returns" action={<Button as={Link} to="/returns" variant="ghost" size="xs">All returns <ArrowRight size={14} /></Button>} />
+          {data && data.recent_returns.length === 0 ? (
+            <EmptyState icon={Undo2} title="No returns yet" description="Refunds and store-credit returns will show up here." />
+          ) : (
+            <ul className="divide-y divide-zinc-100">
+              {(data?.recent_returns ?? Array.from({ length: 3 }, () => null)).map((r, i) => (
+                <li key={r?.id ?? i} className="flex items-center gap-3 px-5 py-3">
+                  {r ? (<>
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-600"><Undo2 size={16} /></div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-zinc-800">{r.customer_name || 'Walk-in'}</div>
+                      <div className="truncate text-xs text-zinc-500">{r.number} · from {r.bill_number} · {formatDateTime(r.created_at)}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-semibold tabular-nums text-zinc-900">{money(r.amount)}</div>
+                      <div className="text-xs text-zinc-500">{r.mode === 'credit' ? 'Store credit' : r.payment_mode}</div>
+                    </div>
+                  </>) : <div className="h-9 w-full animate-pulse rounded bg-zinc-50" />}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </div>
 
       {data?.low_stock_count > 0 && (
         <p className="mt-4 flex items-center gap-1.5 text-xs text-zinc-500">

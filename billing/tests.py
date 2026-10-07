@@ -266,6 +266,7 @@ class DashboardTests(BillingTestCase):
         self.assertEqual(len(d["last_7_days"]), 7)
         self.assertEqual(Decimal(d["last_7_days"][-1]["total"]), Decimal("200.00"))
         self.assertEqual(len(d["recent_bills"]), 2)
+        self.assertEqual(d["recent_returns"], [])
         # 1 unit left, default threshold 5 → low.
         self.assertEqual(d["low_stock_count"], 1)
         self.assertEqual(d["low_stock"][0]["stock"], 1)
