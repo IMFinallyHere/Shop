@@ -12,8 +12,7 @@ const niceMax = (v) => {
   return [1, 2, 2.5, 5, 10].map(m => m * p).find(m => m >= v)
 }
 
-// Single-series column chart of the last 7 days' sales. It fills its parent's height
-// (min 200px), so it lines up with whatever sits beside it. Today's column is labeled;
+// Single-series column chart of the last 7 days' sales (200px tall). Today's column is labeled;
 // every column has a hover tooltip; an sr-only table carries the numbers.
 export default function SalesChart({ days }) {
   const [hover, setHover] = useState(null)
@@ -21,7 +20,7 @@ export default function SalesChart({ days }) {
   const pct = (d) => (Number(d.total) / max) * 100
 
   return (
-    <div className="flex min-h-[200px] flex-1 flex-col">
+    <div className="flex h-[200px] flex-col">
       <div className="flex flex-1">
         {/* y-axis: 0 and max, recessive */}
         <div className="relative w-14 shrink-0 text-right text-[11px] tabular-nums text-zinc-400">
