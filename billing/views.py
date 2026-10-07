@@ -1,7 +1,10 @@
+from datetime import timedelta
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Prefetch
+from django.db.models import Count, F, Prefetch, Q, Sum
+from django.db.models.functions import TruncDate
+from django.utils import timezone
 from django_tenants.utils import get_public_schema_name, schema_context
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -10,7 +13,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsSuperuserOrStaff
-from inventory.models import StockItem
+from inventory.models import ProductVariant, StockItem
 from shopsettings.models import PaymentMethod, ShopSettings, ensure_payment_methods
 from .models import (
     Bill, BillItem, CreditEntry, Return, ReturnItem, credit_balance, money, refund_shares,
@@ -240,3 +243,60 @@ class StoreCreditView(APIView):
         phone = request.query_params.get("phone", "").strip()
         customer_id = find_customer_id(phone) if phone else None
         return Response({"customer_id": customer_id, "balance": str(credit_balance(customer_id))})
+
+
+class DashboardView(APIView):
+    """``GET /dashboard/`` → today's figures, a 7-day sales series, low stock and recent bills."""
+
+    permission_classes = [IsSuperuserOrStaff]
+
+    def get(self, request):
+        today = timezone.localdate()
+        start = today - timedelta(days=6)
+
+        todays_bills = Bill.objects.filter(created_at__date=today)
+        agg = todays_bills.aggregate(total=Sum("total"), count=Count("id"))
+        sales, count = agg["total"] or Decimal("0"), agg["count"]
+        items_sold = BillItem.objects.filter(bill__created_at__date=today).count()
+        refunds = Return.objects.filter(created_at__date=today).aggregate(s=Sum("amount"))["s"] or Decimal("0")
+
+        per_day = {
+            row["day"]: row
+            for row in Bill.objects.filter(created_at__date__gte=start)
+            .annotate(day=TruncDate("created_at"))
+            .values("day").annotate(total=Sum("total"), count=Count("id"))
+        }
+        last_7_days = []
+        for i in range(7):
+            d = start + timedelta(days=i)
+            row = per_day.get(d, {})
+            last_7_days.append({"date": d.isoformat(), "total": str(row.get("total") or Decimal("0")),
+                                "count": row.get("count", 0)})
+
+        low = (
+            ProductVariant.objects.select_related("product", "color", "size")
+            .annotate(n=Count("stock_items", filter=Q(stock_items__status=StockItem.IN_STOCK)))
+            .filter(n__lte=F("low_stock_threshold"))
+        )
+        low_stock = [
+            {"variant_id": v.id, "product_id": v.product_id, "product_name": v.product.name, "label": v.label,
+             "color_hex": (v.color.hex or None) if v.color else None, "stock": v.n, "threshold": v.low_stock_threshold}
+            for v in low.order_by("n", "product__name")[:8]
+        ]
+
+        recent = [
+            {"id": b.id, "number": b.number, "customer_name": b.customer_name, "total": str(b.total),
+             "payment_mode": b.payment_mode, "created_at": b.created_at}
+            for b in Bill.objects.all()[:5]
+        ]
+
+        return Response({
+            "today": {
+                "sales": str(sales), "bills": count, "items_sold": items_sold,
+                "avg_bill": str(money(sales / count) if count else Decimal("0")), "refunds": str(refunds),
+            },
+            "last_7_days": last_7_days,
+            "low_stock": low_stock,
+            "low_stock_count": low.count(),
+            "recent_bills": recent,
+        })

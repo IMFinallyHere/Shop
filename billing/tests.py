@@ -246,3 +246,30 @@ class BillingTestCase(TestCase):
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(Decimal(resp.data["credit_used"]), Decimal("150.00"))
         self.assertEqual(bal(a, "acme.localhost"), Decimal("50.00"))
+
+
+class DashboardTests(BillingTestCase):
+    def test_dashboard_summarises_today_and_is_shop_scoped(self):
+        c = self.client_for("acme.localhost", "acme@test.com")
+        _, codes = self._product_with_units("acme.localhost", c, 3, price="100")
+        for code in codes[:2]:
+            r = c.post("/api/bills/", {"codes": [code], "customer": CUST, "payment_mode": "Cash"},
+                       format="json", HTTP_HOST="acme.localhost")
+            self.assertEqual(r.status_code, 201, r.data)
+
+        d = c.get("/api/dashboard/", HTTP_HOST="acme.localhost").data
+        self.assertEqual(d["today"]["bills"], 2)
+        self.assertEqual(Decimal(d["today"]["sales"]), Decimal("200.00"))
+        self.assertEqual(Decimal(d["today"]["avg_bill"]), Decimal("100.00"))
+        self.assertEqual(d["today"]["items_sold"], 2)
+        self.assertEqual(len(d["last_7_days"]), 7)
+        self.assertEqual(Decimal(d["last_7_days"][-1]["total"]), Decimal("200.00"))
+        self.assertEqual(len(d["recent_bills"]), 2)
+        # 1 unit left, default threshold 5 → low.
+        self.assertEqual(d["low_stock_count"], 1)
+        self.assertEqual(d["low_stock"][0]["stock"], 1)
+
+        b = self.client_for("bella.localhost", "bella@test.com")
+        other = b.get("/api/dashboard/", HTTP_HOST="bella.localhost").data
+        self.assertEqual(other["today"]["bills"], 0)
+        self.assertEqual(other["recent_bills"], [])

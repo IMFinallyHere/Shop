@@ -91,6 +91,8 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 USE_TZ = True
+# Shops are in India; "today" on the dashboard and date grouping use local time.
+TIME_ZONE = "Asia/Kolkata"
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
