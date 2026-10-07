@@ -1,6 +1,12 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { CheckCircle2, Loader2 } from 'lucide-react'
 import { signup } from '../api/auth'
+import AuthLayout from '../components/layout/AuthLayout'
+import ErrorAlert from '../components/common/ErrorAlert'
+import Button from '../components/ui/Button'
+import { Field, Input } from '../components/ui/Field'
+import PasswordInput from '../components/ui/PasswordInput'
 
 export default function RegisterPage() {
   const [form, setForm] = useState({
@@ -22,7 +28,7 @@ export default function RegisterPage() {
       // Redirect to the new shop's subdomain login after a short pause.
       const port = window.location.port ? `:${window.location.port}` : ''
       const url = `${window.location.protocol}//${data.domain}${port}/login`
-      setTimeout(() => { window.location.href = url }, 1800)
+      setTimeout(() => { window.location.assign(url) }, 1800)
     } catch (err) {
       const data = err.response?.data || {}
       const fields = {}
@@ -39,68 +45,40 @@ export default function RegisterPage() {
     }
   }
 
-  const field = (name, label, type = 'text', required = false) => (
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">
-        {label}{required && <span className="text-red-500 ml-1">*</span>}
-      </label>
-      <input
-        type={type}
-        value={form[name]}
-        onChange={update(name)}
-        required={required}
-        className={`w-full border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 ${fieldErrors[name] ? 'border-red-400' : 'border-gray-300'}`}
-      />
-      {fieldErrors[name] && <p className="mt-1 text-xs text-red-600">{fieldErrors[name]}</p>}
-    </div>
+  const field = (name, label, { type = 'text', required = false, ...rest } = {}) => (
+    <Field label={label} required={required} error={fieldErrors[name]}>
+      {id => type === 'password'
+        ? <PasswordInput id={id} value={form[name]} onChange={update(name)} required={required} invalid={!!fieldErrors[name]} {...rest} />
+        : <Input id={id} type={type} value={form[name]} onChange={update(name)} required={required} invalid={!!fieldErrors[name]} {...rest} />}
+    </Field>
   )
 
   return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-lg w-full max-w-sm p-8">
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-gray-800">Create your shop</h1>
-          <p className="text-sm text-gray-500 mt-1">Set up your shop and owner account</p>
+    <AuthLayout title="Create your shop" subtitle="Set up your shop and owner account in a minute"
+      footer={<>Already have a shop? <Link to="/login" className="font-medium text-brand-600 hover:underline">Sign in</Link></>}>
+      {done ? (
+        <div className="flex flex-col items-center py-4 text-center">
+          <CheckCircle2 size={40} className="mb-3 text-emerald-500" />
+          <p className="font-medium text-zinc-900">“{done.shop}” is ready</p>
+          <p className="mt-1 flex items-center gap-1.5 text-sm text-zinc-500">
+            <Loader2 size={14} className="animate-spin" /> Taking you to {done.domain}…
+          </p>
         </div>
-
-        {done ? (
-          <div className="text-center space-y-2">
-            <div className="bg-green-50 border border-green-200 text-green-700 text-sm rounded-lg px-4 py-3">
-              Shop “{done.shop}” created! Taking you to{' '}
-              <span className="font-medium">{done.domain}</span>…
-            </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <ErrorAlert message={error} />
+          {field('shop_name', 'Shop name', { required: true, autoFocus: true, placeholder: 'e.g. Asha Boutique' })}
+          <div className="grid grid-cols-2 gap-3">
+            {field('first_name', 'First name', { autoComplete: 'given-name' })}
+            {field('last_name', 'Last name', { autoComplete: 'family-name' })}
           </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">
-                {error}
-              </div>
-            )}
-            {field('shop_name', 'Shop name', 'text', true)}
-            {field('email', 'Email', 'email', true)}
-            {field('password', 'Password', 'password', true)}
-            <div className="grid grid-cols-2 gap-3">
-              {field('first_name', 'First name')}
-              {field('last_name', 'Last name')}
-            </div>
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-indigo-600 text-white rounded-lg py-2.5 text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors mt-2"
-            >
-              {loading ? 'Creating…' : 'Create shop'}
-            </button>
-          </form>
-        )}
-
-        <p className="text-center text-sm text-gray-500 mt-6">
-          Already have a shop?{' '}
-          <Link to="/login" className="text-indigo-600 font-medium hover:underline">
-            Sign in
-          </Link>
-        </p>
-      </div>
-    </div>
+          {field('email', 'Email', { type: 'email', required: true, autoComplete: 'email' })}
+          {field('password', 'Password', { type: 'password', required: true, autoComplete: 'new-password' })}
+          <Button type="submit" variant="primary" size="lg" className="w-full" loading={loading}>
+            {loading ? 'Creating…' : 'Create shop'}
+          </Button>
+        </form>
+      )}
+    </AuthLayout>
   )
 }

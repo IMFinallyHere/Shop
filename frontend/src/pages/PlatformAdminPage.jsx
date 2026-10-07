@@ -1,9 +1,16 @@
 import { useEffect, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
+import { LogOut, Store, Users } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { getAdminTenants, getTenantUsers } from '../api/shops'
 import Spinner from '../components/common/Spinner'
 import Modal from '../components/common/Modal'
+import Logo from '../components/ui/Logo'
+import PageHeader from '../components/ui/PageHeader'
+import Button from '../components/ui/Button'
+import Badge from '../components/ui/Badge'
+import { Table, Td, Tr } from '../components/ui/Table'
+import { formatDate } from '../utils/format'
 
 export default function PlatformAdminPage() {
   const { user, logout } = useAuth()
@@ -31,64 +38,53 @@ export default function PlatformAdminPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 p-6">
-      <div className="max-w-5xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-800">Platform Admin</h1>
-            <p className="text-sm text-gray-500">All shops on this platform · {user?.email}</p>
-          </div>
-          <div className="flex gap-3">
-            <button onClick={() => navigate('/shops')} className="text-sm text-gray-600 hover:text-gray-800">My shops</button>
-            <button onClick={logout} className="text-sm text-gray-500 hover:text-gray-700">Sign out</button>
+    <div className="min-h-screen bg-zinc-50">
+      <header className="border-b border-zinc-200 bg-white">
+        <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 sm:px-6">
+          <Logo size={28} />
+          <span className="font-semibold text-zinc-900">Platform admin</span>
+          <div className="ml-auto flex items-center gap-2">
+            <Button variant="ghost" size="sm" icon={Store} onClick={() => navigate('/shops')}>My shops</Button>
+            <Button variant="ghost" size="sm" icon={LogOut} onClick={logout}>Sign out</Button>
           </div>
         </div>
+      </header>
 
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          {loading ? <Spinner /> : (
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  {['Shop', 'Domain', 'Owner', 'Members', 'Created', ''].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {tenants.length === 0 && (
-                  <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">No shops yet</td></tr>
-                )}
-                {tenants.map(t => (
-                  <tr key={t.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium text-gray-800">{t.name}</td>
-                    <td className="px-4 py-3 text-gray-500">{t.domain}</td>
-                    <td className="px-4 py-3 text-gray-600">{t.owner_email}</td>
-                    <td className="px-4 py-3 text-gray-600">{t.member_count}</td>
-                    <td className="px-4 py-3 text-gray-400">{t.created ? new Date(t.created).toLocaleDateString() : '—'}</td>
-                    <td className="px-4 py-3">
-                      <button onClick={() => openDetail(t.slug)} className="text-xs font-medium text-indigo-600 hover:text-indigo-800">View users</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+        <PageHeader title="All shops" subtitle={`${tenants.length} shop${tenants.length !== 1 ? 's' : ''} on this platform · signed in as ${user?.email}`} />
+        <Table
+          columns={[{ label: 'Shop' }, { label: 'Owner' }, { label: 'Members' }, { label: 'Created' }, { label: '', className: 'w-px' }]}
+          loading={loading} isEmpty={tenants.length === 0}
+          empty={{ icon: Store, title: 'No shops yet' }}
+        >
+          {tenants.map(t => (
+            <Tr key={t.id}>
+              <Td>
+                <div className="font-medium text-zinc-900">{t.name}</div>
+                <div className="text-xs text-zinc-500">{t.domain}</div>
+              </Td>
+              <Td>{t.owner_email}</Td>
+              <Td><Badge>{t.member_count}</Badge></Td>
+              <Td className="text-zinc-500">{formatDate(t.created)}</Td>
+              <Td><Button variant="ghost" size="xs" icon={Users} onClick={() => openDetail(t.slug)}>Members</Button></Td>
+            </Tr>
+          ))}
+        </Table>
       </div>
 
-      <Modal isOpen={!!detail} onClose={() => setDetail(null)} title={`Members — ${detail?.tenant || ''}`} size="md">
+      <Modal isOpen={!!detail} onClose={() => setDetail(null)} title="Members" description={detail?.tenant}>
         {detailLoading ? <Spinner /> : (
-          <div className="space-y-1">
-            {(detail?.users ?? []).length === 0 && <p className="text-sm text-gray-400">No members.</p>}
+          <div className="divide-y divide-zinc-100">
+            {(detail?.users ?? []).length === 0 && <p className="py-4 text-center text-sm text-zinc-400">No members.</p>}
             {(detail?.users ?? []).map(u => (
-              <div key={u.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
-                <div>
-                  <div className="text-sm text-gray-800">{u.email}</div>
-                  <div className="text-xs text-gray-400">{u.group_names?.join(', ') || 'no roles'}</div>
+              <div key={u.id} className="flex items-center justify-between gap-3 py-2.5">
+                <div className="min-w-0">
+                  <div className="truncate text-sm text-zinc-900">{u.email}</div>
+                  <div className="text-xs text-zinc-500">{u.group_names?.join(', ') || 'No groups'}</div>
                 </div>
                 <div className="flex gap-1">
-                  {u.is_superuser && <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">owner</span>}
-                  {u.is_staff && <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">staff</span>}
+                  {u.is_superuser && <Badge tone="brand">Owner</Badge>}
+                  {u.is_staff && <Badge>Staff</Badge>}
                 </div>
               </div>
             ))}
