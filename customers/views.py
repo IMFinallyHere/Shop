@@ -1,4 +1,5 @@
-from django.db.models import Count, Sum
+from django.db.models import Count, Max, Min, Sum
+from rest_framework import status
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -39,6 +40,49 @@ class CustomerViewSet(viewsets.ViewSet):
             data.append(row)
         data.sort(key=lambda r: r["name"].lower())
         return Response(data)
+
+    def retrieve(self, request, pk=None):
+        """One customer as THIS shop knows them: profile, totals, bills, returns, credit."""
+        from billing.models import Bill, CreditEntry, Return, credit_balance
+
+        try:
+            cid = int(pk)
+        except (TypeError, ValueError):
+            cid = None
+        bills = Bill.objects.filter(customer_id=cid)
+        customer = Customer.objects.filter(pk=cid).first() if cid else None
+        if not customer or not bills.exists():
+            return Response({"detail": "Customer not found in this shop."}, status=status.HTTP_404_NOT_FOUND)
+
+        agg = bills.aggregate(n=Count("id"), spent=Sum("total"), first=Min("created_at"), last=Max("created_at"))
+        returns = Return.objects.filter(customer_id=cid).select_related("bill").annotate(n_items=Count("items"))
+        ledger = CreditEntry.objects.filter(customer_id=cid).select_related("ret", "bill")[:50]
+        return Response({
+            **CustomerSerializer(customer).data,
+            "stats": {
+                "bills": agg["n"], "spent": str(agg["spent"] or 0),
+                "refunded": str(returns.aggregate(s=Sum("amount"))["s"] or 0),
+                "credit_balance": str(credit_balance(cid)),
+                "first_visit": agg["first"], "last_visit": agg["last"],
+            },
+            "bills": [
+                {"id": b.id, "number": b.number, "items": b.n_items, "total": str(b.total),
+                 "payment_mode": b.payment_mode, "returned": b.n_returns > 0, "created_at": b.created_at}
+                for b in bills.annotate(n_items=Count("items", distinct=True), n_returns=Count("returns", distinct=True))
+                .order_by("-created_at")[:50]
+            ],
+            "returns": [
+                {"id": r.id, "number": r.number, "bill_number": r.bill.number, "items": r.n_items,
+                 "amount": str(r.amount), "mode": r.mode, "payment_mode": r.payment_mode,
+                 "reason": r.reason, "created_at": r.created_at}
+                for r in returns.order_by("-created_at")[:50]
+            ],
+            "credit": [
+                {"id": e.id, "amount": str(e.amount), "created_at": e.created_at,
+                 "ref": e.ret.number if e.ret else e.bill.number if e.bill else None}
+                for e in ledger
+            ],
+        })
 
     @action(detail=False, methods=["get"])
     def lookup(self, request):

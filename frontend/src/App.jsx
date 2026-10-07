@@ -19,6 +19,9 @@ import SettingsPage from './pages/SettingsPage'
 import UsersPage from './pages/UsersPage'
 import GroupsPage from './pages/GroupsPage'
 import PermissionsPage from './pages/PermissionsPage'
+import SearchPage from './pages/SearchPage'
+import StockUnitPage from './pages/StockUnitPage'
+import CustomerDetailPage from './pages/CustomerDetailPage'
 import Spinner from './components/common/Spinner'
 import { homePath } from './utils/domain'
 
@@ -42,12 +45,15 @@ function AppRoutes() {
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/products" element={<ProductsPage />} />
           <Route path="/stock" element={<StockPage />} />
+          <Route path="/stock/:code" element={<StockUnitPage />} />
           <Route path="/categories" element={<CategoriesPage />} />
           <Route path="/sellers" element={<SellersPage />} />
           <Route path="/pos" element={<POSPage />} />
           <Route path="/sales" element={<SalesPage />} />
           <Route path="/returns" element={<ReturnsPage />} />
           <Route path="/customers" element={<CustomersPage />} />
+          <Route path="/customers/:id" element={<CustomerDetailPage />} />
+          <Route path="/search" element={<SearchPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/users" element={<UsersPage />} />
           <Route path="/groups" element={<GroupsPage />} />

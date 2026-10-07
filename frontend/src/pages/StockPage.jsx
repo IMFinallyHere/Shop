@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Boxes, Download, Printer, Trash2 } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { Boxes, Download, History, Printer, Trash2 } from 'lucide-react'
 import { getStockItems, removeStockItem } from '../api/inventory'
 import useQuery, { asList } from '../hooks/useQuery'
 import BarcodeLabel from '../components/inventory/BarcodeLabel'
@@ -41,6 +42,7 @@ export default function StockPage() {
   const [removing, setRemoving] = useState(false)
   const [printItems, setPrintItems] = useState(null)
   const toast = useToast()
+  const navigate = useNavigate()
   const { data, loading, error: loadError, reload } = useQuery(() => getStockItems({ page, search, status }), `${page}|${search}|${status}`)
   const { rows: items, count } = asList(data)
 
@@ -71,7 +73,7 @@ export default function StockPage() {
         {items.map(it => (
           <Tr key={it.id}>
             <Td>
-              <div className="font-medium text-zinc-900">{it.product_name}</div>
+              <Link to={`/stock/${it.code}`} className="font-medium text-zinc-900 hover:text-brand-700 hover:underline">{it.product_name}</Link>
               <div className="text-xs text-zinc-500">{variantLabel(it) || 'Default'}</div>
             </Td>
             <Td className="font-mono text-xs">{it.code}</Td>
@@ -81,6 +83,7 @@ export default function StockPage() {
             <Td><Badge tone={STATUS_BADGE[it.status]?.tone} dot>{STATUS_BADGE[it.status]?.label ?? it.status}</Badge></Td>
             <Td className="text-right">
               <ActionMenu actions={[
+                { label: 'View history', icon: History, onClick: () => navigate(`/stock/${it.code}`) },
                 { label: 'Print label', icon: Printer, onClick: () => setPrintItems([it]) },
                 { label: 'Download barcode', icon: Download, onClick: () => downloadCode128(it) },
                 ...(it.status === 'in_stock'

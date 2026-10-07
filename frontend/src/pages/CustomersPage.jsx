@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Users } from 'lucide-react'
 import { getCustomers } from '../api/customers'
 import useQuery, { asList } from '../hooks/useQuery'
@@ -11,6 +12,7 @@ import { initials, money } from '../utils/format'
 
 export default function CustomersPage() {
   const [search, setSearch] = useState('')
+  const navigate = useNavigate()
   const { data, loading, error } = useQuery(() => getCustomers({ search }), search)
   const customers = asList(data).rows
 
@@ -26,7 +28,7 @@ export default function CustomersPage() {
         empty={{ icon: Users, title: search ? 'No matching customers' : 'No customers yet', description: search ? 'Try a different name or number.' : 'Customers are saved automatically when you create a bill.' }}
       >
         {customers.map(c => (
-          <Tr key={c.id}>
+          <Tr key={c.id} className="cursor-pointer" onClick={() => navigate(`/customers/${c.id}`)}>
             <Td>
               <div className="flex items-center gap-3">
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-xs font-semibold text-zinc-600">{initials(c.name)}</span>

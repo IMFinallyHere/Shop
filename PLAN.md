@@ -280,6 +280,20 @@ Goal: modern, simple, functional, intuitive. Clean light look, one accent (indig
 - [x] Verified in the browser (dashboard, POS scan, products/add stock, stock, sales,
       settings, phone width). Lint: only 2 pre-existing errors left in `AuthContext.jsx`.
 
+## Phase 13 — Global search + stock-unit history  ✅
+- [x] `GET /api/search/?q=` (`billing/search.py`): units, bills, returns, customers, products,
+      sellers (≤5 each), shop-scoped; `exact` for a full barcode, `INV-…`, `RET-…` or 10-digit phone.
+- [x] `GET /api/units/<code>/history/`: product, variant (+ in stock), batch (cost/price/margin),
+      seller, buyers (+ credit balance) and a timeline: added → sold → returned → resold → removed
+      (removal has no stored timestamp).
+- [x] `GET /api/customers/<id>/`: profile, totals, bills, returns, credit ledger (404 outside the shop).
+      Products accept `?seller=`. Dashboard API adds `recent_returns`.
+- [x] Frontend: top-bar search (`/` or ⌘K, keyboard nav, scanner-friendly Enter → exact jump,
+      mobile full-width), `/search?q=`, `/stock/:code` unit page, `/customers/:id`, seller chip on
+      Products, Stock/Customers rows link through. Dashboard shows recent returns beside bills.
+- [x] Tests: search exact jumps, shop isolation, sold→returned→resold timeline, customer detail.
+      Billing tests split so the shared base class no longer re-runs its tests in subclasses.
+
 ## Local development database (Docker)  ✅
 - `docker-compose.yml` runs `postgres:17-alpine` (`shop-db-1`, volume `shop_pgdata`,
   port 5432); it reads `DB_NAME/DB_USER/DB_PASSWORD` from `.env`, which now points at

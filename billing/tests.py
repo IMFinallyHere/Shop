@@ -20,6 +20,7 @@ CUST = {"name": "Walk-in", "phone": "9000000000"}
 
 
 class BillingTestCase(TestCase):
+    """Two shops (acme, bella) + helpers; holds no tests itself so subclasses don't re-run them."""
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -62,6 +63,22 @@ class BillingTestCase(TestCase):
         line = {"color": opt("colors", "Black"), "size": opt("sizes", "XL"), "quantity": qty, "cost_price": "50", "price": price}
         items = client.post(f"/api/products/{pid}/add-stock/", {"lines": [line]}, format="json", HTTP_HOST=host).data["items"]
         return pid, [i["code"] for i in items]
+
+    def _sell(self, host, client, qty, phone="9000000000", **extra):
+        _, codes = self._product_with_units(host, client, qty)
+        body = {"codes": codes, "payment_mode": "Cash", "customer": {"name": "Ret", "phone": phone}, **extra}
+        resp = client.post("/api/bills/", body, format="json", HTTP_HOST=host)
+        self.assertEqual(resp.status_code, 201, resp.data)
+        return resp.data, codes
+
+    def _return(self, host, client, bill_id, item_ids, mode="refund", payment_mode="Cash"):
+        return client.post("/api/returns/", {"bill": bill_id, "items": item_ids, "mode": mode,
+                                             "payment_mode": payment_mode},
+                           format="json", HTTP_HOST=host)
+
+
+class BillingTests(BillingTestCase):
+    """Checkout, returns and store credit."""
 
     def test_checkout_totals_marks_sold_and_drops_stock(self):
         self.set_tax("acme", 5)
@@ -158,18 +175,6 @@ class BillingTestCase(TestCase):
 
     # --- Returns & store credit (named test_return*/test_store_credit* so they run after
     # the INV-00001 assertion above; Postgres sequences survive test rollbacks) ---
-
-    def _sell(self, host, client, qty, phone="9000000000", **extra):
-        _, codes = self._product_with_units(host, client, qty)
-        body = {"codes": codes, "payment_mode": "Cash", "customer": {"name": "Ret", "phone": phone}, **extra}
-        resp = client.post("/api/bills/", body, format="json", HTTP_HOST=host)
-        self.assertEqual(resp.status_code, 201, resp.data)
-        return resp.data, codes
-
-    def _return(self, host, client, bill_id, item_ids, mode="refund", payment_mode="Cash"):
-        return client.post("/api/returns/", {"bill": bill_id, "items": item_ids, "mode": mode,
-                                             "payment_mode": payment_mode},
-                           format="json", HTTP_HOST=host)
 
     def test_return_refund_is_pro_rata_and_restocks(self):
         self.set_tax("acme", 5)
@@ -290,3 +295,60 @@ class SeedDemoTests(BillingTestCase):
             self.assertGreater(len(days), 7)  # backdated across two weeks
         with self.assertRaises(CommandError):
             call_command("seed_demo", "bella", stdout=open("/dev/null", "w"))
+
+
+class SearchAndHistoryTests(BillingTestCase):
+    H = "acme.localhost"
+
+    def get(self, client, path, host=None):
+        return client.get(f"/api/{path}", HTTP_HOST=host or self.H)
+
+    def test_search_jumps_to_exact_matches(self):
+        c = self.client_for(self.H, "acme@test.com")
+        bill, codes = self._sell(self.H, c, 1, phone="9111111111")
+        unsold = self._product_with_units(self.H, c, 1)[1][0]
+        ret = self._return(self.H, c, bill["id"], [bill["items"][0]["id"]]).data
+
+        self.assertEqual(self.get(c, f"search/?q={unsold.lower()}").data["exact"], {"type": "unit", "code": unsold})
+        self.assertEqual(self.get(c, f"search/?q={bill['number']}").data["exact"], {"type": "bill", "id": bill["id"]})
+        self.assertEqual(self.get(c, f"search/?q={ret['number']}").data["exact"], {"type": "return", "id": ret["id"]})
+        d = self.get(c, "search/?q=9111111111").data
+        self.assertEqual(d["exact"]["type"], "customer")
+        self.assertEqual(len(d["bills"]), 1)
+        d = self.get(c, "search/?q=tee").data
+        self.assertIsNone(d["exact"])
+        self.assertTrue(d["products"])
+
+    def test_search_is_shop_scoped(self):
+        c = self.client_for(self.H, "acme@test.com")
+        bill, codes = self._sell(self.H, c, 1, phone="9222222222")
+        b = self.client_for("bella.localhost", "bella@test.com")
+        for q in (codes[0], bill["number"], "9222222222"):
+            d = self.get(b, f"search/?q={q}", host="bella.localhost").data
+            self.assertIsNone(d["exact"], q)
+            self.assertEqual(d["units"] + d["bills"] + d["customers"], [], q)
+        self.assertEqual(self.get(b, f"units/{codes[0]}/history/", host="bella.localhost").status_code, 404)
+        cid = self.get(c, "search/?q=9222222222").data["exact"]["id"]
+        self.assertEqual(self.get(b, f"customers/{cid}/", host="bella.localhost").status_code, 404)
+
+    def test_unit_history_sold_returned_resold(self):
+        c = self.client_for(self.H, "acme@test.com")
+        bill, codes = self._sell(self.H, c, 1, phone="9333333333")
+        self._return(self.H, c, bill["id"], [bill["items"][0]["id"]], mode="credit", payment_mode="")
+        resp = c.post("/api/bills/", {"codes": codes, "payment_mode": "UPI",
+                                      "customer": {"name": "Second", "phone": "9444444444"}},
+                      format="json", HTTP_HOST=self.H)
+        self.assertEqual(resp.status_code, 201, resp.data)
+
+        h = self.get(c, f"units/{codes[0]}/history/").data
+        self.assertEqual([e["type"] for e in h["timeline"]], ["added", "sold", "returned", "sold"])
+        self.assertEqual(h["timeline"][2]["mode"], "credit")
+        self.assertEqual(h["unit"]["status"], "sold")
+        self.assertEqual(h["batch"]["price"], "200.00")
+        self.assertEqual([x["phone"] for x in h["customers"]], ["9333333333", "9444444444"])
+        self.assertEqual(Decimal(h["customers"][0]["credit_balance"]), Decimal("200.00"))
+
+        cust = self.get(c, f"customers/{h['customers'][0]['id']}/").data
+        self.assertEqual(cust["stats"]["bills"], 1)
+        self.assertEqual(len(cust["returns"]), 1)
+        self.assertTrue(cust["bills"][0]["returned"])

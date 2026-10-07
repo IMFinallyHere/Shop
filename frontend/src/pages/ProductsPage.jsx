@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Layers, PackagePlus, Pencil, Plus, Shirt, Trash2 } from 'lucide-react'
+import { Layers, PackagePlus, Pencil, Plus, Shirt, Trash2, Truck, X } from 'lucide-react'
 import {
   getProducts, createProduct, updateProduct, deleteProduct, addStock,
   updateVariant, deleteVariant, getCategories, getSellers,
@@ -33,8 +33,9 @@ const PAGE_SIZE = 20
 export default function ProductsPage() {
   const [params, setParams] = useSearchParams()
   const lowOnly = params.get('low') === '1'
+  const sellerId = params.get('seller')
   const [page, setPage] = useState(1)
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(params.get('q') ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [fieldErrors, setFieldErrors] = useState({})
@@ -51,8 +52,8 @@ export default function ProductsPage() {
   const toast = useToast()
 
   const { data, loading, error: loadError, reload } = useQuery(
-    () => getProducts({ page, search, ...(lowOnly ? { low_stock: 1 } : {}) }),
-    `${page}|${search}|${lowOnly}`,
+    () => getProducts({ page, search, ...(lowOnly ? { low_stock: 1 } : {}), ...(sellerId ? { seller: sellerId } : {}) }),
+    `${page}|${search}|${lowOnly}|${sellerId}`,
   )
   const { rows: products, count } = asList(data)
   // Look the selected product up in the latest list so modals stay in sync after reloads.
@@ -64,7 +65,13 @@ export default function ProductsPage() {
     getSellers().then(r => setSellers(r.data.results ?? r.data))
   }, [])
 
-  const setLowOnly = (v) => { setParams(v ? { low: '1' } : {}); setPage(1) }
+  // Filters live in the URL (dashboard and search link here with ?low=1, ?q=, ?seller=).
+  const setParam = (key, value) => {
+    setParams(p => { const next = new URLSearchParams(p); value ? next.set(key, value) : next.delete(key); return next })
+    setPage(1)
+  }
+  const setLowOnly = (v) => setParam('low', v ? '1' : null)
+  const clearSeller = () => setParams(p => { const next = new URLSearchParams(p); next.delete('seller'); next.delete('seller_name'); return next })
   const select = (p) => { setSelectedId(p.id); setSnapshot(p) }
 
   const clean = (d) => {
@@ -168,6 +175,12 @@ export default function ProductsPage() {
       <Toolbar>
         <SearchInput value={search} onChange={v => { setSearch(v); setPage(1) }} placeholder="Search products…" />
         <SegmentedControl options={[{ value: false, label: 'All' }, { value: true, label: 'Low stock' }]} value={lowOnly} onChange={setLowOnly} />
+        {sellerId && (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-50 py-1 pl-3 pr-1.5 text-sm text-brand-700 ring-1 ring-inset ring-brand-200">
+            <Truck size={14} /> {params.get('seller_name') || 'Seller'}
+            <button onClick={clearSeller} className="rounded-full p-0.5 hover:bg-brand-100" aria-label="Clear seller filter"><X size={14} /></button>
+          </span>
+        )}
       </Toolbar>
 
       <ErrorAlert message={(!modal && error) || (loadError && 'Failed to load products.')} onDismiss={() => setError('')} />

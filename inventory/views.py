@@ -80,6 +80,8 @@ class ProductViewSet(viewsets.ModelViewSet):
             qs = qs.filter(Exists(low))
         if self.request.query_params.get("category"):
             qs = qs.filter(category_id=self.request.query_params["category"])
+        if self.request.query_params.get("seller"):
+            qs = qs.filter(seller_id=self.request.query_params["seller"])
         return qs
 
     @action(detail=True, methods=["post"], url_path="add-stock")
