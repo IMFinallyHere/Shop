@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react'
+import { Search } from 'lucide-react'
+import Button from '../ui/Button'
 
 export default function AssignPermissionsForm({ allPermissions, currentIds, onSave, onCancel, loading }) {
   const [selected, setSelected] = useState(new Set(currentIds))
@@ -33,34 +35,22 @@ export default function AssignPermissionsForm({ allPermissions, currentIds, onSa
 
   return (
     <div className="space-y-4">
-      <input
-        type="text"
-        value={search}
-        onChange={e => setSearch(e.target.value)}
-        placeholder="Filter permissions…"
-        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-      />
-      <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+      <div className="relative">
+        <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+        <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Filter permissions…" className="input pl-9" />
+      </div>
+      <div className="text-xs text-zinc-500">{selected.size} selected</div>
+      <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
         {Object.entries(grouped).map(([group, perms]) => (
-          <div key={group} className="border border-gray-200 rounded-lg p-3">
-            <div className="flex items-center gap-2 mb-2">
-              <input
-                type="checkbox"
-                checked={perms.every(p => selected.has(p.id))}
-                onChange={() => toggleAll(perms)}
-                className="w-4 h-4 text-indigo-600"
-              />
-              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{group}</span>
-            </div>
-            <div className="grid grid-cols-2 gap-1 pl-6">
+          <div key={group} className="rounded-lg border border-zinc-200 p-3">
+            <label className="mb-2 flex cursor-pointer items-center gap-2">
+              <input type="checkbox" checked={perms.every(p => selected.has(p.id))} onChange={() => toggleAll(perms)} className="h-4 w-4 accent-brand-600" />
+              <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">{group}</span>
+            </label>
+            <div className="grid grid-cols-1 gap-1 pl-6 sm:grid-cols-2">
               {perms.map(p => (
-                <label key={p.id} className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={selected.has(p.id)}
-                    onChange={() => toggle(p.id)}
-                    className="w-3.5 h-3.5 text-indigo-600"
-                  />
+                <label key={p.id} className="flex cursor-pointer items-center gap-2 text-xs text-zinc-700">
+                  <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggle(p.id)} className="h-3.5 w-3.5 accent-brand-600" />
                   {p.codename}
                 </label>
               ))}
@@ -68,20 +58,12 @@ export default function AssignPermissionsForm({ allPermissions, currentIds, onSa
           </div>
         ))}
         {Object.keys(grouped).length === 0 && (
-          <p className="text-sm text-gray-400 text-center py-4">No permissions match</p>
+          <p className="py-4 text-center text-sm text-zinc-400">No permissions match</p>
         )}
       </div>
-      <div className="flex justify-end gap-3 pt-2 border-t">
-        <button onClick={onCancel} className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm">
-          Cancel
-        </button>
-        <button
-          onClick={() => onSave([...selected])}
-          disabled={loading}
-          className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 text-sm"
-        >
-          {loading ? 'Saving…' : 'Save'}
-        </button>
+      <div className="flex justify-end gap-2 border-t border-zinc-100 pt-4">
+        <Button onClick={onCancel}>Cancel</Button>
+        <Button variant="primary" onClick={() => onSave([...selected])} loading={loading}>Save</Button>
       </div>
     </div>
   )

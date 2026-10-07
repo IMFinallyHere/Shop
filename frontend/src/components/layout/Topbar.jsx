@@ -1,35 +1,25 @@
-import { useAuth } from '../../contexts/AuthContext'
-import { useNavigate } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
+import { Menu, ScanBarcode } from 'lucide-react'
+import { findNavItem } from './nav'
+import Button from '../ui/Button'
+import UserMenu from './UserMenu'
 
-export default function Topbar() {
-  const { user, logout } = useAuth()
-  const navigate = useNavigate()
-
-  const handleLogout = async () => {
-    await logout()
-    navigate('/login')
-  }
+export default function Topbar({ onOpenMobile }) {
+  const { pathname } = useLocation()
+  const current = findNavItem(pathname)
 
   return (
-    <header className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
-      <div />
-      <div className="flex items-center gap-4">
-        <div className="text-sm text-gray-600">
-          <span className="font-medium text-gray-800">{user?.username}</span>
-          {user?.is_superuser && (
-            <span className="ml-2 text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">Superuser</span>
-          )}
-          {user?.is_staff && !user?.is_superuser && (
-            <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">Staff</span>
-          )}
-        </div>
-        <button
-          onClick={handleLogout}
-          className="text-sm text-gray-500 hover:text-gray-800 border border-gray-300 rounded-lg px-3 py-1.5 hover:border-gray-400 transition-colors"
-        >
-          Logout
-        </button>
-      </div>
+    <header className="flex h-14 shrink-0 items-center gap-3 border-b border-zinc-200 bg-white/80 px-4 backdrop-blur sm:px-6">
+      <button onClick={onOpenMobile} className="-ml-1 rounded-md p-1.5 text-zinc-500 hover:bg-zinc-100 lg:hidden" aria-label="Open menu">
+        <Menu size={20} />
+      </button>
+      <div className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-500">{current?.label}</div>
+      {pathname !== '/pos' && (
+        <Button as={Link} to="/pos" variant="primary" size="sm" icon={ScanBarcode}>
+          <span className="hidden sm:inline">New bill</span>
+        </Button>
+      )}
+      <UserMenu />
     </header>
   )
 }

@@ -2,16 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
-* {
-  box-sizing: border-box;
+@layer base {
+  *, ::before, ::after { box-sizing: border-box; }
+  html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+  body { @apply m-0 bg-zinc-50 text-zinc-900 font-sans; font-feature-settings: 'cv11', 'ss01'; }
+  #root { width: 100%; min-height: 100vh; }
+  :focus-visible { @apply outline-none ring-2 ring-brand-500/60 ring-offset-1; }
+  input[type='number']::-webkit-inner-spin-button { opacity: .4; }
 }
 
-body {
-  margin: 0;
-  font-family: system-ui, -apple-system, sans-serif;
-}
-
-#root {
-  width: 100%;
-  min-height: 100vh;
+@layer components {
+  .input {
+    @apply w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-card
+      placeholder:text-zinc-400 transition-colors
+      focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20
+      disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-zinc-500;
+  }
+  .input-error { @apply border-red-400 focus:border-red-500 focus:ring-red-500/20; }
 }

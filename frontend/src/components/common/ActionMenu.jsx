@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import clsx from 'clsx'
+import { MoreHorizontal } from 'lucide-react'
 
+// actions: [{ label, icon: LucideIcon, onClick, variant?: 'danger' }]
 export default function ActionMenu({ actions }) {
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState({ top: 0, left: 0 })
@@ -9,10 +12,7 @@ export default function ActionMenu({ actions }) {
 
   const openMenu = () => {
     const rect = triggerRef.current.getBoundingClientRect()
-    setPos({
-      top: rect.bottom + window.scrollY + 4,
-      left: rect.right + window.scrollX,
-    })
+    setPos({ top: rect.bottom + window.scrollY + 4, left: rect.right + window.scrollX })
     setOpen(true)
   }
 
@@ -23,58 +23,54 @@ export default function ActionMenu({ actions }) {
         setOpen(false)
     }
     const onKey = (e) => { if (e.key === 'Escape') setOpen(false) }
+    const onScroll = () => setOpen(false)
     document.addEventListener('mousedown', close)
     document.addEventListener('keydown', onKey)
-    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', onKey) }
+    window.addEventListener('scroll', onScroll, true)
+    return () => {
+      document.removeEventListener('mousedown', close)
+      document.removeEventListener('keydown', onKey)
+      window.removeEventListener('scroll', onScroll, true)
+    }
   }, [open])
 
   const defaults = actions.filter(a => a.variant !== 'danger')
   const dangers = actions.filter(a => a.variant === 'danger')
+
+  const item = ({ label, icon: Icon, onClick, variant }) => (
+    <button
+      key={label}
+      onClick={() => { onClick(); setOpen(false) }}
+      className={clsx(
+        'flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors',
+        variant === 'danger' ? 'text-red-600 hover:bg-red-50' : 'text-zinc-700 hover:bg-zinc-100',
+      )}
+    >
+      {Icon && <Icon size={15} className={variant === 'danger' ? '' : 'text-zinc-400'} />}
+      {label}
+    </button>
+  )
 
   return (
     <>
       <button
         ref={triggerRef}
         onClick={openMenu}
-        className="p-1.5 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
-        title="Actions"
+        className={clsx('rounded-md p-1.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700', open && 'bg-zinc-100 text-zinc-700')}
+        aria-label="Actions"
       >
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-          <circle cx="8" cy="3" r="1.5" />
-          <circle cx="8" cy="8" r="1.5" />
-          <circle cx="8" cy="13" r="1.5" />
-        </svg>
+        <MoreHorizontal size={16} />
       </button>
 
       {open && createPortal(
         <div
           ref={menuRef}
           style={{ position: 'absolute', top: pos.top, left: pos.left, transform: 'translateX(-100%)' }}
-          className="w-48 bg-white rounded-lg shadow-lg border border-gray-100 z-[9999] py-1"
+          className="z-[9999] w-48 animate-pop-in rounded-lg border border-zinc-200 bg-white p-1 shadow-pop"
         >
-          {defaults.map(({ label, icon, onClick }) => (
-            <button
-              key={label}
-              onClick={() => { onClick(); setOpen(false) }}
-              className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-            >
-              <span className="text-base leading-none">{icon}</span>
-              {label}
-            </button>
-          ))}
+          {defaults.map(item)}
           {dangers.length > 0 && (
-            <div className="border-t border-gray-100 mt-1 pt-1">
-              {dangers.map(({ label, icon, onClick }) => (
-                <button
-                  key={label}
-                  onClick={() => { onClick(); setOpen(false) }}
-                  className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
-                >
-                  <span className="text-base leading-none">{icon}</span>
-                  {label}
-                </button>
-              ))}
-            </div>
+            <div className={clsx(defaults.length > 0 && 'mt-1 border-t border-zinc-100 pt-1')}>{dangers.map(item)}</div>
           )}
         </div>,
         document.body

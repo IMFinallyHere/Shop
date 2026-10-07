@@ -63,7 +63,11 @@ class MeView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        return Response(MeSerializer(request.user).data)
+        data = MeSerializer(request.user).data
+        tenant = getattr(request, 'tenant', None)
+        # Name of the shop being viewed (null on the main domain).
+        data['shop_name'] = tenant.name if tenant and tenant.schema_name != get_public_schema_name() else None
+        return Response(data)
 
 
 def _shop_payload(tenant):

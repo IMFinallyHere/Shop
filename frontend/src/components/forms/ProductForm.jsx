@@ -1,49 +1,37 @@
+import { Field, Input, Select } from '../ui/Field'
+
 export default function ProductForm({ data, onChange, categories, sellers, errors = {} }) {
   const set = (k) => (e) => onChange({ ...data, [k]: e.target.value })
 
-  const field = (name, label, type = 'text', required = false) => (
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">
-        {label}{required && <span className="text-red-500 ml-1">*</span>}
-      </label>
-      <input
-        type={type}
-        value={data[name] ?? ''}
-        onChange={set(name)}
-        required={required}
-        step={type === 'number' ? '0.01' : undefined}
-        className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 ${errors[name] ? 'border-red-400' : 'border-gray-300'}`}
-      />
-      {errors[name] && <p className="mt-1 text-xs text-red-600">{errors[name]}</p>}
-    </div>
+  const field = (name, label, { required = false, placeholder, autoFocus } = {}) => (
+    <Field label={label} required={required} error={errors[name]}>
+      {id => <Input id={id} value={data[name] ?? ''} onChange={set(name)} required={required} invalid={!!errors[name]} placeholder={placeholder} autoFocus={autoFocus} />}
+    </Field>
   )
 
   const select = (name, label, options) => (
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-      <select
-        value={data[name] ?? ''}
-        onChange={set(name)}
-        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
-      >
-        <option value="">— none —</option>
-        {options.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-      </select>
-    </div>
+    <Field label={label} error={errors[name]}>
+      {id => (
+        <Select id={id} value={data[name] ?? ''} onChange={set(name)} invalid={!!errors[name]}>
+          <option value="">— None —</option>
+          {options.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+        </Select>
+      )}
+    </Field>
   )
 
   return (
     <div className="space-y-4">
-      {field('name', 'Product name', 'text', true)}
-      <div className="grid grid-cols-2 gap-3">
+      {field('name', 'Product name', { required: true, placeholder: 'e.g. Cotton kurti', autoFocus: true })}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {select('category', 'Category', categories)}
         {select('seller', 'Seller', sellers)}
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        {field('fabric_type', 'Fabric')}
-        {field('sku', 'SKU')}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {field('fabric_type', 'Fabric', { placeholder: 'e.g. Cotton' })}
+        {field('sku', 'SKU', { placeholder: 'Optional' })}
       </div>
-      <p className="text-xs text-gray-400">Colors, sizes, cost and price are set per batch when you add stock.</p>
+      <p className="text-xs text-zinc-500">Colors, sizes, cost and price are set per batch when you add stock.</p>
     </div>
   )
 }

@@ -1,7 +1,10 @@
+import clsx from 'clsx'
+import { Loader2 } from 'lucide-react'
+
 export default function Spinner({ className = '' }) {
   return (
-    <div className={`flex justify-center items-center py-12 ${className}`}>
-      <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
+    <div className={clsx('flex items-center justify-center py-12', className)}>
+      <Loader2 size={24} className="animate-spin text-zinc-400" />
     </div>
   )
 }

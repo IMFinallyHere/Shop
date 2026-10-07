@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { ToastProvider } from './components/ui/Toast'
 import DashboardLayout from './components/layout/DashboardLayout'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
@@ -23,7 +24,7 @@ import { homePath } from './utils/domain'
 
 function ProtectedRoute() {
   const { isAuthenticated, isLoading } = useAuth()
-  if (isLoading) return <Spinner />
+  if (isLoading) return <Spinner className="h-screen" />
   return isAuthenticated ? <Outlet /> : <Navigate to="/login" replace />
 }
 
@@ -62,9 +63,11 @@ function AppRoutes() {
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
+      <ToastProvider>
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
+      </ToastProvider>
     </AuthProvider>
   )
 }

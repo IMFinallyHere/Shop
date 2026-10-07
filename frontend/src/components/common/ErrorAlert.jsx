@@ -1,10 +1,13 @@
+import { AlertCircle, X } from 'lucide-react'
+
 export default function ErrorAlert({ message, onDismiss }) {
   if (!message) return null
   return (
-    <div className="flex items-start gap-3 bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 mb-4">
-      <span className="flex-1 text-sm">{message}</span>
+    <div className="mb-4 flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">
+      <AlertCircle size={16} className="mt-0.5 shrink-0" />
+      <span className="flex-1">{message}</span>
       {onDismiss && (
-        <button onClick={onDismiss} className="text-red-400 hover:text-red-600 leading-none">&times;</button>
+        <button onClick={onDismiss} className="text-red-400 hover:text-red-600" aria-label="Dismiss"><X size={16} /></button>
       )}
     </div>
   )
