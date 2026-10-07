@@ -259,6 +259,27 @@ Key facts: `django-tenants` 3.10.x supports Django 6.0 but **requires PostgreSQL
       checkout without customer rejected).
       Migration applied to the local Docker DB; live API smoke test on acme passed.
 
+## Phase 12 — UI revamp (branch `feat/ui-revamp`)  ✅
+Goal: modern, simple, functional, intuitive. Clean light look, one accent (indigo `brand`), Inter.
+- [x] Foundation: Inter font, `brand` color token + shared `.input` styles (`tailwind.config.js`,
+      `index.css`), `lucide-react` icons + `clsx`; Vite favicon/leftovers replaced by the app logo.
+- [x] Component kit `frontend/src/components/ui/`: Button, Field/Input/Select/Checkbox,
+      PasswordInput, Card, Badge/Swatch, Table/Tr/Td (skeleton + EmptyState), PageHeader/Toolbar,
+      Pagination, SegmentedControl, Tabs, Switch, StatCard, Toast (`useToast`), Logo.
+      `hooks/useQuery.js` for list loading; `utils/format.js` (money/dates/names).
+- [x] Shell: grouped sidebar (Sell / Inventory / Admin), collapsible to icons, mobile drawer,
+      shows the shop name; topbar with New bill + user menu (change password, log out).
+- [x] Dashboard: `GET /api/dashboard/` (today's sales/bills/avg/refunds, 7-day series,
+      low-stock variants, recent bills; tested) + new page with chart and quick actions.
+      `TIME_ZONE = "Asia/Kolkata"` so "today" is the shop's local day. `/auth/me/` adds `shop_name`.
+- [x] POS: big scan bar, inline scan errors, segmented discount/payment, returning-customer
+      chip, F2 = scan, Ctrl/⌘+Enter = charge, clear-bill confirm. Shared `PrintSheet` chrome
+      for receipts/labels (printed layout unchanged).
+- [x] Every page on one pattern (header → toolbar → table → pagination, forms in modals,
+      toasts); Settings split into tabs; sign-in/sign-up/shop picker on `AuthLayout`.
+- [x] Verified in the browser (dashboard, POS scan, products/add stock, stock, sales,
+      settings, phone width). Lint: only 2 pre-existing errors left in `AuthContext.jsx`.
+
 ## Local development database (Docker)  ✅
 - `docker-compose.yml` runs `postgres:17-alpine` (`shop-db-1`, volume `shop_pgdata`,
   port 5432); it reads `DB_NAME/DB_USER/DB_PASSWORD` from `.env`, which now points at

@@ -14,7 +14,8 @@ export default function Topbar({ onOpenMobile }) {
         <Menu size={20} />
       </button>
       <div className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-500">{current?.label}</div>
-      {pathname !== '/pos' && (
+      {/* Pages with their own New bill action don't need a second one. */}
+      {!['/pos', '/dashboard', '/sales'].includes(pathname) && (
         <Button as={Link} to="/pos" variant="primary" size="sm" icon={ScanBarcode}>
           <span className="hidden sm:inline">New bill</span>
         </Button>

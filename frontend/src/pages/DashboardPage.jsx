@@ -53,7 +53,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Sales today" icon={IndianRupee} loading={loading} value={moneyShort(t?.sales)} hint={t && `${t.items_sold} item${t.items_sold !== 1 ? 's' : ''} sold`} />
         <StatCard label="Bills today" icon={Receipt} loading={loading} value={t?.bills} />
-        <StatCard label="Average bill" icon={ShoppingBag} loading={loading} value={moneyShort(t?.avg_bill)} />
+        <StatCard label="Average bill" icon={ShoppingBag} loading={loading} value={t && money(t.avg_bill)} />
         <StatCard label="Refunds today" icon={Undo2} loading={loading} value={moneyShort(t?.refunds)} />
       </div>
 

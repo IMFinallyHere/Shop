@@ -7,7 +7,9 @@
   html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
   body { @apply m-0 bg-zinc-50 text-zinc-900 font-sans; font-feature-settings: 'cv11', 'ss01'; }
   #root { width: 100%; min-height: 100vh; }
-  :focus-visible { @apply outline-none ring-2 ring-brand-500/60 ring-offset-1; }
+  /* Keyboard focus ring for buttons/links; form fields style their own focus. */
+  :focus-visible:not(input, select, textarea) { @apply outline-none ring-2 ring-brand-500/60 ring-offset-1; }
+  input:focus-visible, select:focus-visible, textarea:focus-visible { outline: none; }
   input[type='number']::-webkit-inner-spin-button { opacity: .4; }
 }
 

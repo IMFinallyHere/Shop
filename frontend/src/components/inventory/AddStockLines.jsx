@@ -80,7 +80,8 @@ export default function AddStockLines({ lines, onChange, variants = [], colors =
       <div className="overflow-x-auto">
         <table className="w-full min-w-[560px] text-sm">
           <thead>
-            <tr>{['Color', 'Size', 'Qty', 'Cost ₹', 'Price ₹'].map(h => <th key={h} className="pb-1.5 pr-2 text-left text-xs font-medium text-zinc-500">{h}</th>)}<th className="w-8" /></tr>
+            <tr>{[['Color', 'w-[24%]'], ['Size', 'w-[18%]'], ['Qty', 'w-[14%]'], ['Cost ₹', ''], ['Price ₹', '']].map(([h, w]) =>
+              <th key={h} className={`pb-1.5 pr-2 text-left text-xs font-medium text-zinc-500 ${w}`}>{h}</th>)}<th className="w-10" /></tr>
           </thead>
           <tbody>
             {lines.map((l, i) => (

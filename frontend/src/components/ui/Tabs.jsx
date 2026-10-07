@@ -3,7 +3,7 @@ import clsx from 'clsx'
 // Underline tabs. tabs: [{ value, label }]
 export default function Tabs({ tabs, value, onChange, className }) {
   return (
-    <div className={clsx('mb-6 flex gap-6 overflow-x-auto border-b border-zinc-200', className)}>
+    <div className={clsx('mb-6 flex gap-6 overflow-x-auto overflow-y-hidden border-b border-zinc-200', className)}>
       {tabs.map(t => (
         <button
           key={t.value}

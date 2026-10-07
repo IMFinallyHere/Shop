@@ -168,7 +168,7 @@ export default function POSPage() {
             <input
               ref={scanRef} autoFocus value={scan}
               onChange={e => setScan(e.target.value)} onKeyDown={handleScan}
-              placeholder="Scan a barcode or type a code and press Enter"
+              placeholder="Scan or type a barcode, then Enter"
               className="h-14 flex-1 bg-transparent text-base text-zinc-900 placeholder:text-zinc-400 focus:outline-none"
               aria-label="Barcode"
             />

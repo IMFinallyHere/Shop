@@ -39,7 +39,9 @@ export function AuthProvider({ children }) {
     const { data } = await apiLogin(email, password)
     localStorage.setItem('access_token', data.access)
     localStorage.setItem('refresh_token', data.refresh)
-    setUser(data.user)
+    // /auth/me/ also carries the current shop's name; fall back to the login payload.
+    const me = await getMe().then(r => r.data).catch(() => null)
+    setUser(me ?? data.user)
   }
 
   const logout = async () => {
