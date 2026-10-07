@@ -10,6 +10,7 @@ import useReceipts from '../hooks/useReceipts'
 import BarcodeLabel from '../components/inventory/BarcodeLabel'
 import PrintBarcodes from '../components/inventory/PrintBarcodes'
 import Spinner from '../components/common/Spinner'
+import BackLink from '../components/ui/BackLink'
 import Button from '../components/ui/Button'
 import Badge, { Swatch } from '../components/ui/Badge'
 import { Card, CardHeader } from '../components/ui/Card'
@@ -56,7 +57,7 @@ export default function StockUnitPage() {
 
   return (
     <div>
-      <Link to="/stock" className="mb-4 inline-flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-800"><ArrowLeft size={14} /> Stock</Link>
+      <BackLink fallback="/stock" label="Stock" />
 
       <Card className="mb-6 flex flex-wrap items-center gap-5 p-5">
         <div className="min-w-0 flex-1">

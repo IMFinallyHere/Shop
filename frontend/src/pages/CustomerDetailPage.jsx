@@ -4,6 +4,7 @@ import { getCustomer } from '../api/customers'
 import useQuery from '../hooks/useQuery'
 import useReceipts from '../hooks/useReceipts'
 import Spinner from '../components/common/Spinner'
+import BackLink from '../components/ui/BackLink'
 import Button from '../components/ui/Button'
 import Badge from '../components/ui/Badge'
 import { Card, CardHeader } from '../components/ui/Card'
@@ -30,7 +31,7 @@ export default function CustomerDetailPage() {
 
   return (
     <div>
-      <Link to="/customers" className="mb-4 inline-flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-800"><ArrowLeft size={14} /> Customers</Link>
+      <BackLink fallback="/customers" label="Customers" />
 
       <div className="mb-6 flex flex-wrap items-center gap-4">
         <span className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-100 text-lg font-semibold text-brand-700">{initials(c.name)}</span>
