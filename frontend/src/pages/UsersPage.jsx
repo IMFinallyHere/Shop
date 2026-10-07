@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
+import { KeyRound, Pencil, Plus, ShieldCheck, Tags, Trash2, UserCog } from 'lucide-react'
 import { getUsers, createUser, updateUser, deleteUser, changePassword, assignGroups, assignUserPermissions } from '../api/users'
 import { getGroups } from '../api/groups'
 import { getPermissions } from '../api/permissions'
+import useQuery, { asList } from '../hooks/useQuery'
 import ActionMenu from '../components/common/ActionMenu'
 import Modal from '../components/common/Modal'
 import ConfirmDialog from '../components/common/ConfirmDialog'
@@ -9,17 +11,22 @@ import UserForm from '../components/forms/UserForm'
 import ChangePasswordForm from '../components/forms/ChangePasswordForm'
 import AssignPermissionsForm from '../components/forms/AssignPermissionsForm'
 import SearchInput from '../components/common/SearchInput'
-import Spinner from '../components/common/Spinner'
 import ErrorAlert from '../components/common/ErrorAlert'
+import PageHeader, { Toolbar } from '../components/ui/PageHeader'
+import Button from '../components/ui/Button'
+import Badge from '../components/ui/Badge'
+import { Checkbox } from '../components/ui/Field'
+import Pagination from '../components/ui/Pagination'
+import { Table, Td, Tr } from '../components/ui/Table'
+import { useToast } from '../components/ui/Toast'
+import { displayName, initials } from '../utils/format'
 
 const EMPTY_USER = { email: '', first_name: '', last_name: '', password: '', is_staff: false }
+const PAGE_SIZE = 20
 
 export default function UsersPage() {
-  const [users, setUsers] = useState([])
-  const [count, setCount] = useState(0)
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
-  const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [modal, setModal] = useState(null)
@@ -30,28 +37,15 @@ export default function UsersPage() {
   const [allGroups, setAllGroups] = useState([])
   const [allPermissions, setAllPermissions] = useState([])
   const [selectedGroupIds, setSelectedGroupIds] = useState([])
+  const toast = useToast()
 
-  const PAGE_SIZE = 20
+  const { data, loading, error: loadError, reload } = useQuery(() => getUsers({ page, search }), `${page}|${search}`)
+  const { rows: users, count } = asList(data)
 
   useEffect(() => {
     getGroups().then(r => setAllGroups(r.data.results ?? r.data))
     getPermissions().then(r => setAllPermissions(r.data))
   }, [])
-
-  useEffect(() => {
-    fetchUsers()
-  }, [page, search])
-
-  const fetchUsers = () => {
-    setLoading(true)
-    getUsers({ page, search })
-      .then(r => {
-        setUsers(r.data.results ?? r.data)
-        setCount(r.data.count ?? (r.data.results ?? r.data).length)
-      })
-      .catch(() => setError('Failed to load users.'))
-      .finally(() => setLoading(false))
-  }
 
   const openCreate = () => { setFormData({ ...EMPTY_USER }); setFieldErrors({}); setModal('create') }
   const openEdit = (u) => { setSelected(u); setFormData({ email: u.email, first_name: u.first_name, last_name: u.last_name, is_staff: u.is_staff }); setFieldErrors({}); setModal('edit') }
@@ -72,198 +66,129 @@ export default function UsersPage() {
     return { fields, general }
   }
 
-  const handleCreate = async () => {
+  // Run a form submit: on success reload + toast; on failure split field vs general errors.
+  const submit = async (fn, success, fallback, knownFields) => {
     setSaving(true); setError(''); setFieldErrors({})
-    try { await createUser(formData); fetchUsers(); closeModal() }
+    try { await fn(); reload(); closeModal(); toast(success) }
     catch (e) {
-      const { fields, general } = parseFieldErrors(e.response?.data)
+      const { fields, general } = parseFieldErrors(e.response?.data, knownFields)
       setFieldErrors(fields)
-      setError(general || (Object.keys(fields).length === 0 ? 'Failed to create user.' : ''))
+      setError(general || (Object.keys(fields).length === 0 ? fallback : ''))
     }
     finally { setSaving(false) }
   }
 
-  const handleEdit = async () => {
-    setSaving(true); setError(''); setFieldErrors({})
-    try { await updateUser(selected.id, formData); fetchUsers(); closeModal() }
-    catch (e) {
-      const { fields, general } = parseFieldErrors(e.response?.data)
-      setFieldErrors(fields)
-      setError(general || (Object.keys(fields).length === 0 ? 'Failed to update user.' : ''))
-    }
-    finally { setSaving(false) }
-  }
+  const handleCreate = () => submit(() => createUser(formData), 'User added', 'Failed to create user.')
+  const handleEdit = () => submit(() => updateUser(selected.id, formData), 'User updated', 'Failed to update user.')
+  const handlePassword = () => submit(() => changePassword(selected.id, pwData), 'Password changed', 'Failed to change password.', ['old_password', 'new_password'])
 
   const handleDelete = async () => {
     setSaving(true)
-    try { await deleteUser(selected.id); fetchUsers(); closeModal() }
+    try { await deleteUser(selected.id); reload(); closeModal(); toast('User removed') }
     catch (e) { setError(e.response?.data?.detail || 'Failed to delete user.') }
-    finally { setSaving(false) }
-  }
-
-  const handlePassword = async () => {
-    setSaving(true); setError(''); setFieldErrors({})
-    try { await changePassword(selected.id, pwData); closeModal() }
-    catch (e) {
-      const { fields, general } = parseFieldErrors(e.response?.data, ['old_password', 'new_password'])
-      setFieldErrors(fields)
-      setError(general || (Object.keys(fields).length === 0 ? 'Failed to change password.' : ''))
-    }
     finally { setSaving(false) }
   }
 
   const handleAssignGroups = async () => {
     setSaving(true)
-    try { await assignGroups(selected.id, selectedGroupIds); fetchUsers(); closeModal() }
+    try { await assignGroups(selected.id, selectedGroupIds); reload(); closeModal(); toast('Groups updated') }
     catch { setError('Failed to assign groups.') }
     finally { setSaving(false) }
   }
 
   const handleAssignPermissions = async (ids) => {
     setSaving(true)
-    try { await assignUserPermissions(selected.id, ids); fetchUsers(); closeModal() }
+    try { await assignUserPermissions(selected.id, ids); reload(); closeModal(); toast('Permissions updated') }
     catch { setError('Failed to assign permissions.') }
     finally { setSaving(false) }
   }
 
-  const totalPages = Math.ceil(count / PAGE_SIZE)
+  const footer = (onSave, label) => <>
+    <Button onClick={closeModal}>Cancel</Button>
+    <Button variant="primary" onClick={onSave} loading={saving}>{label}</Button>
+  </>
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Users</h1>
-        <button onClick={openCreate} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">
-          + New User
-        </button>
-      </div>
+      <PageHeader title="Users" subtitle="People who can sign in to this shop."
+        actions={<Button variant="primary" icon={Plus} onClick={openCreate}>Add user</Button>} />
+      <Toolbar><SearchInput value={search} onChange={v => { setSearch(v); setPage(1) }} placeholder="Search users…" /></Toolbar>
+      <ErrorAlert message={(!modal && error) || (loadError && 'Failed to load users.')} onDismiss={() => setError('')} />
 
-      <div className="mb-4">
-        <SearchInput value={search} onChange={v => { setSearch(v); setPage(1) }} placeholder="Search users…" />
-      </div>
+      <Table
+        columns={[{ label: 'User' }, { label: 'Role' }, { label: 'Status' }, { label: 'Groups' }, { label: '', className: 'w-12' }]}
+        loading={loading} isEmpty={users.length === 0}
+        empty={{ icon: UserCog, title: 'No users found', description: search ? 'Try a different search.' : 'Add staff so they can sign in and bill.' }}
+      >
+        {users.map(u => {
+          const name = displayName(u)
+          return (
+            <Tr key={u.id}>
+              <Td>
+                <div className="flex items-center gap-3">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-50 text-xs font-semibold text-brand-700">{initials(name)}</span>
+                  <div className="min-w-0">
+                    <div className="truncate font-medium text-zinc-900">{u.first_name || u.last_name ? name : u.email}</div>
+                    {(u.first_name || u.last_name) && <div className="truncate text-xs text-zinc-500">{u.email}</div>}
+                  </div>
+                </div>
+              </Td>
+              <Td>
+                {u.is_superuser ? <Badge tone="brand">Owner</Badge> : u.is_staff ? <Badge>Staff</Badge> : <span className="text-zinc-400">Member</span>}
+              </Td>
+              <Td><Badge tone={u.is_active ? 'success' : 'danger'} dot>{u.is_active ? 'Active' : 'Inactive'}</Badge></Td>
+              <Td>
+                {u.group_names?.length
+                  ? <div className="flex flex-wrap gap-1">{u.group_names.map(g => <Badge key={g}>{g}</Badge>)}</div>
+                  : <span className="text-zinc-400">—</span>}
+              </Td>
+              <Td className="text-right">
+                <ActionMenu actions={[
+                  { label: 'Edit', icon: Pencil, onClick: () => openEdit(u) },
+                  { label: 'Change password', icon: KeyRound, onClick: () => openPassword(u) },
+                  { label: 'Assign groups', icon: Tags, onClick: () => openGroups(u) },
+                  { label: 'Assign permissions', icon: ShieldCheck, onClick: () => openPermissions(u) },
+                  { label: 'Delete', icon: Trash2, onClick: () => openDelete(u), variant: 'danger' },
+                ]} />
+              </Td>
+            </Tr>
+          )
+        })}
+      </Table>
+      <Pagination page={page} pageSize={PAGE_SIZE} count={count} onChange={setPage} />
 
-      <ErrorAlert message={error} onDismiss={() => setError('')} />
-
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        {loading ? <Spinner /> : (
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                {['Email', 'Name', 'Staff', 'Active', 'Groups', 'Actions'].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {users.length === 0 && (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">No users found</td></tr>
-              )}
-              {users.map(u => (
-                <tr key={u.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-medium text-gray-800">
-                    {u.email}
-                    {u.is_superuser && <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">owner</span>}
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">{[u.first_name, u.last_name].filter(Boolean).join(' ') || '—'}</td>
-                  <td className="px-4 py-3">
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${u.is_staff ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
-                      {u.is_staff ? 'Yes' : 'No'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${u.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                      {u.is_active ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">{u.group_names?.join(', ') || '—'}</td>
-                  <td className="px-4 py-3">
-                    <ActionMenu actions={[
-                      { label: 'Edit', icon: '✏️', onClick: () => openEdit(u) },
-                      { label: 'Change Password', icon: '🔑', onClick: () => openPassword(u) },
-                      { label: 'Assign Groups', icon: '🏷️', onClick: () => openGroups(u) },
-                      { label: 'Assign Permissions', icon: '🔐', onClick: () => openPermissions(u) },
-                      { label: 'Delete', icon: '🗑️', onClick: () => openDelete(u), variant: 'danger' },
-                    ]} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      {totalPages > 1 && (
-        <div className="flex justify-center gap-2 mt-4">
-          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1 rounded border text-sm disabled:opacity-40">Prev</button>
-          <span className="px-3 py-1 text-sm text-gray-600">{page} / {totalPages}</span>
-          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="px-3 py-1 rounded border text-sm disabled:opacity-40">Next</button>
-        </div>
-      )}
-
-      {/* Create Modal */}
-      <Modal isOpen={modal === 'create'} onClose={closeModal} title="Create User" size="md">
+      <Modal isOpen={modal === 'create'} onClose={closeModal} title="Add user" footer={footer(handleCreate, 'Add user')}>
         <ErrorAlert message={error} />
         <UserForm data={formData} onChange={setFormData} isCreate errors={fieldErrors} />
-        <div className="flex justify-end gap-3 mt-6">
-          <button onClick={closeModal} className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm">Cancel</button>
-          <button onClick={handleCreate} disabled={saving} className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 text-sm">{saving ? 'Creating…' : 'Create'}</button>
-        </div>
       </Modal>
 
-      {/* Edit Modal */}
-      <Modal isOpen={modal === 'edit'} onClose={closeModal} title="Edit User" size="md">
+      <Modal isOpen={modal === 'edit'} onClose={closeModal} title="Edit user" footer={footer(handleEdit, 'Save changes')}>
         <ErrorAlert message={error} />
         <UserForm data={formData} onChange={setFormData} isCreate={false} errors={fieldErrors} />
-        <div className="flex justify-end gap-3 mt-6">
-          <button onClick={closeModal} className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm">Cancel</button>
-          <button onClick={handleEdit} disabled={saving} className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 text-sm">{saving ? 'Saving…' : 'Save'}</button>
-        </div>
       </Modal>
 
-      {/* Delete Modal */}
-      <ConfirmDialog
-        isOpen={modal === 'delete'}
-        onClose={closeModal}
-        onConfirm={handleDelete}
-        loading={saving}
-        title="Delete User"
-        message={`Are you sure you want to delete "${selected?.email}"? This cannot be undone.`}
-      />
+      <ConfirmDialog isOpen={modal === 'delete'} onClose={closeModal} onConfirm={handleDelete} loading={saving}
+        title="Delete user" message={`Are you sure you want to delete "${selected?.email}"? This cannot be undone.`} />
 
-      {/* Change Password Modal */}
-      <Modal isOpen={modal === 'password'} onClose={closeModal} title={`Change Password — ${selected?.email}`} size="sm">
+      <Modal isOpen={modal === 'password'} onClose={closeModal} title="Change password" description={selected?.email} size="sm" footer={footer(handlePassword, 'Update password')}>
         <ErrorAlert message={error} />
         <ChangePasswordForm data={pwData} onChange={setPwData} errors={fieldErrors} />
-        <div className="flex justify-end gap-3 mt-6">
-          <button onClick={closeModal} className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm">Cancel</button>
-          <button onClick={handlePassword} disabled={saving} className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 text-sm">{saving ? 'Saving…' : 'Update'}</button>
-        </div>
       </Modal>
 
-      {/* Assign Groups Modal */}
-      <Modal isOpen={modal === 'groups'} onClose={closeModal} title={`Assign Groups — ${selected?.email}`} size="md">
+      <Modal isOpen={modal === 'groups'} onClose={closeModal} title="Assign groups" description={selected?.email} footer={footer(handleAssignGroups, 'Save')}>
         <ErrorAlert message={error} />
-        <div className="space-y-2 mb-4 max-h-64 overflow-y-auto">
+        <div className="max-h-64 space-y-1 overflow-y-auto">
           {allGroups.map(g => (
-            <label key={g.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={selectedGroupIds.includes(g.id)}
-                onChange={e => setSelectedGroupIds(ids => e.target.checked ? [...ids, g.id] : ids.filter(i => i !== g.id))}
-                className="w-4 h-4 text-indigo-600"
-              />
-              <span className="text-sm text-gray-700">{g.name}</span>
-            </label>
+            <Checkbox key={g.id} label={g.name} className="rounded-lg p-2 hover:bg-zinc-50"
+              checked={selectedGroupIds.includes(g.id)}
+              onChange={e => setSelectedGroupIds(ids => e.target.checked ? [...ids, g.id] : ids.filter(i => i !== g.id))} />
           ))}
-          {allGroups.length === 0 && <p className="text-sm text-gray-400">No groups available</p>}
-        </div>
-        <div className="flex justify-end gap-3">
-          <button onClick={closeModal} className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm">Cancel</button>
-          <button onClick={handleAssignGroups} disabled={saving} className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 text-sm">{saving ? 'Saving…' : 'Save'}</button>
+          {allGroups.length === 0 && <p className="py-4 text-center text-sm text-zinc-400">No groups yet — create them on the Groups page.</p>}
         </div>
       </Modal>
 
-      {/* Assign Permissions Modal */}
-      <Modal isOpen={modal === 'permissions'} onClose={closeModal} title={`Assign Permissions — ${selected?.email}`} size="xl">
+      <Modal isOpen={modal === 'permissions'} onClose={closeModal} title="Assign permissions" description={selected?.email} size="xl">
+        <ErrorAlert message={error} />
         <AssignPermissionsForm
           allPermissions={allPermissions}
           currentIds={selected?.user_permissions ?? []}

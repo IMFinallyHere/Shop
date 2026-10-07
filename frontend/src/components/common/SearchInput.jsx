@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import clsx from 'clsx'
 import { Search, X } from 'lucide-react'
 
@@ -6,7 +6,9 @@ export default function SearchInput({ value, onChange, placeholder = 'Search…'
   const [local, setLocal] = useState(value)
   const timer = useRef(null)
 
-  useEffect(() => { setLocal(value) }, [value])
+  // Follow external resets of `value` (adjusting state during render, not in an effect).
+  const [prevValue, setPrevValue] = useState(value)
+  if (value !== prevValue) { setPrevValue(value); setLocal(value) }
 
   const handleChange = (e) => {
     setLocal(e.target.value)

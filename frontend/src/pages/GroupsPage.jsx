@@ -1,17 +1,23 @@
 import { useEffect, useState } from 'react'
+import { Pencil, Plus, ShieldCheck, Trash2 } from 'lucide-react'
 import { getGroups, getGroup, createGroup, updateGroup, deleteGroup, assignGroupPermissions } from '../api/groups'
 import { getPermissions } from '../api/permissions'
+import useQuery, { asList } from '../hooks/useQuery'
 import ActionMenu from '../components/common/ActionMenu'
 import Modal from '../components/common/Modal'
 import ConfirmDialog from '../components/common/ConfirmDialog'
 import GroupForm from '../components/forms/GroupForm'
 import AssignPermissionsForm from '../components/forms/AssignPermissionsForm'
-import Spinner from '../components/common/Spinner'
 import ErrorAlert from '../components/common/ErrorAlert'
+import PageHeader from '../components/ui/PageHeader'
+import Button from '../components/ui/Button'
+import Badge from '../components/ui/Badge'
+import { Table, Td, Tr } from '../components/ui/Table'
+import { useToast } from '../components/ui/Toast'
 
 export default function GroupsPage() {
-  const [groups, setGroups] = useState([])
-  const [loading, setLoading] = useState(false)
+  const { data, loading, error: loadError, reload } = useQuery(() => getGroups())
+  const groups = asList(data).rows
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [fieldErrors, setFieldErrors] = useState({})
@@ -20,138 +26,102 @@ export default function GroupsPage() {
   const [formData, setFormData] = useState({ name: '' })
   const [allPermissions, setAllPermissions] = useState([])
   const [selectedDetail, setSelectedDetail] = useState(null)
+  const toast = useToast()
 
-  useEffect(() => {
-    getPermissions().then(r => setAllPermissions(r.data))
-    fetchGroups()
-  }, [])
-
-  const fetchGroups = () => {
-    setLoading(true)
-    getGroups()
-      .then(r => setGroups(r.data.results ?? r.data))
-      .catch(() => setError('Failed to load groups.'))
-      .finally(() => setLoading(false))
-  }
+  useEffect(() => { getPermissions().then(r => setAllPermissions(r.data)) }, [])
 
   const openCreate = () => { setFormData({ name: '' }); setFieldErrors({}); setModal('create') }
   const openEdit = (g) => { setSelected(g); setFormData({ name: g.name }); setFieldErrors({}); setModal('edit') }
   const openDelete = (g) => { setSelected(g); setModal('delete') }
   const openPermissions = async (g) => {
     setSelected(g)
-    const { data } = await getGroup(g.id)
-    setSelectedDetail(data)
-    setModal('permissions')
+    try {
+      const { data } = await getGroup(g.id)
+      setSelectedDetail(data)
+      setModal('permissions')
+    } catch { setError('Failed to load group.') }
   }
   const closeModal = () => { setModal(null); setSelected(null); setSelectedDetail(null); setError(''); setFieldErrors({}) }
 
-  const handleCreate = async () => {
+  const save = async (fn, success, fallback) => {
     setSaving(true); setError(''); setFieldErrors({})
-    try { await createGroup(formData); fetchGroups(); closeModal() }
+    try { await fn(); reload(); closeModal(); toast(success) }
     catch (e) {
       const name = e.response?.data?.name?.[0]
       if (name) setFieldErrors({ name })
-      else setError('Failed to create group.')
+      else setError(fallback)
     }
     finally { setSaving(false) }
   }
 
-  const handleEdit = async () => {
-    setSaving(true); setError(''); setFieldErrors({})
-    try { await updateGroup(selected.id, formData); fetchGroups(); closeModal() }
-    catch (e) {
-      const name = e.response?.data?.name?.[0]
-      if (name) setFieldErrors({ name })
-      else setError('Failed to update group.')
-    }
-    finally { setSaving(false) }
-  }
+  const handleCreate = () => save(() => createGroup(formData), 'Group created', 'Failed to create group.')
+  const handleEdit = () => save(() => updateGroup(selected.id, formData), 'Group updated', 'Failed to update group.')
 
   const handleDelete = async () => {
     setSaving(true)
-    try { await deleteGroup(selected.id); fetchGroups(); closeModal() }
+    try { await deleteGroup(selected.id); reload(); closeModal(); toast('Group deleted') }
     catch { setError('Failed to delete group.') }
     finally { setSaving(false) }
   }
 
   const handleAssignPermissions = async (ids) => {
     setSaving(true)
-    try { await assignGroupPermissions(selected.id, ids); fetchGroups(); closeModal() }
+    try { await assignGroupPermissions(selected.id, ids); reload(); closeModal(); toast('Permissions updated') }
     catch { setError('Failed to assign permissions.') }
     finally { setSaving(false) }
   }
 
+  const footer = (onSave, label) => <>
+    <Button onClick={closeModal}>Cancel</Button>
+    <Button variant="primary" onClick={onSave} loading={saving}>{label}</Button>
+  </>
+
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Groups</h1>
-        <button onClick={openCreate} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">
-          + New Group
-        </button>
-      </div>
+      <PageHeader title="Groups" subtitle="Bundle permissions into roles like Cashier or Manager, then assign them to users."
+        actions={<Button variant="primary" icon={Plus} onClick={openCreate}>New group</Button>} />
+      <ErrorAlert message={(!modal && error) || (loadError && 'Failed to load groups.')} onDismiss={() => setError('')} />
 
-      <ErrorAlert message={error} onDismiss={() => setError('')} />
+      <Table
+        columns={[{ label: 'Name' }, { label: 'Permissions' }, { label: '', className: 'w-12' }]}
+        loading={loading} isEmpty={groups.length === 0}
+        empty={{ icon: ShieldCheck, title: 'No groups yet', description: 'Create a group to give several users the same permissions.',
+          action: <Button variant="primary" icon={Plus} onClick={openCreate}>New group</Button> }}
+      >
+        {groups.map(g => (
+          <Tr key={g.id}>
+            <Td className="font-medium text-zinc-900">{g.name}</Td>
+            <Td>
+              <button onClick={() => openPermissions(g)} className="hover:underline">
+                <Badge>{g.permissions?.length ?? 0} permission{g.permissions?.length !== 1 ? 's' : ''}</Badge>
+              </button>
+            </Td>
+            <Td className="text-right">
+              <ActionMenu actions={[
+                { label: 'Edit', icon: Pencil, onClick: () => openEdit(g) },
+                { label: 'Assign permissions', icon: ShieldCheck, onClick: () => openPermissions(g) },
+                { label: 'Delete', icon: Trash2, onClick: () => openDelete(g), variant: 'danger' },
+              ]} />
+            </Td>
+          </Tr>
+        ))}
+      </Table>
 
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        {loading ? <Spinner /> : (
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                {['Name', 'Permissions', 'Actions'].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {groups.length === 0 && (
-                <tr><td colSpan={3} className="px-4 py-8 text-center text-gray-400">No groups found</td></tr>
-              )}
-              {groups.map(g => (
-                <tr key={g.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-medium text-gray-800">{g.name}</td>
-                  <td className="px-4 py-3 text-gray-600">{g.permissions?.length ?? 0} permission{g.permissions?.length !== 1 ? 's' : ''}</td>
-                  <td className="px-4 py-3">
-                    <ActionMenu actions={[
-                      { label: 'Edit', icon: '✏️', onClick: () => openEdit(g) },
-                      { label: 'Assign Permissions', icon: '🔐', onClick: () => openPermissions(g) },
-                      { label: 'Delete', icon: '🗑️', onClick: () => openDelete(g), variant: 'danger' },
-                    ]} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      <Modal isOpen={modal === 'create'} onClose={closeModal} title="Create Group" size="sm">
+      <Modal isOpen={modal === 'create'} onClose={closeModal} title="New group" size="sm" footer={footer(handleCreate, 'Create')}>
         <ErrorAlert message={error} />
         <GroupForm data={formData} onChange={setFormData} errors={fieldErrors} />
-        <div className="flex justify-end gap-3 mt-6">
-          <button onClick={closeModal} className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm">Cancel</button>
-          <button onClick={handleCreate} disabled={saving} className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 text-sm">{saving ? 'Creating…' : 'Create'}</button>
-        </div>
       </Modal>
 
-      <Modal isOpen={modal === 'edit'} onClose={closeModal} title="Edit Group" size="sm">
+      <Modal isOpen={modal === 'edit'} onClose={closeModal} title="Edit group" size="sm" footer={footer(handleEdit, 'Save')}>
         <ErrorAlert message={error} />
         <GroupForm data={formData} onChange={setFormData} errors={fieldErrors} />
-        <div className="flex justify-end gap-3 mt-6">
-          <button onClick={closeModal} className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm">Cancel</button>
-          <button onClick={handleEdit} disabled={saving} className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 text-sm">{saving ? 'Saving…' : 'Save'}</button>
-        </div>
       </Modal>
 
-      <ConfirmDialog
-        isOpen={modal === 'delete'}
-        onClose={closeModal}
-        onConfirm={handleDelete}
-        loading={saving}
-        title="Delete Group"
-        message={`Delete group "${selected?.name}"?`}
-      />
+      <ConfirmDialog isOpen={modal === 'delete'} onClose={closeModal} onConfirm={handleDelete} loading={saving}
+        title="Delete group" message={`Delete group "${selected?.name}"?`} />
 
-      <Modal isOpen={modal === 'permissions'} onClose={closeModal} title={`Permissions — ${selected?.name}`} size="xl">
+      <Modal isOpen={modal === 'permissions'} onClose={closeModal} title="Group permissions" description={selected?.name} size="xl">
+        <ErrorAlert message={error} />
         <AssignPermissionsForm
           allPermissions={allPermissions}
           currentIds={(selectedDetail?.permissions ?? []).map(p => p.id)}
