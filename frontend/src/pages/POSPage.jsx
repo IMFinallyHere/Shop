@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
+import clsx from 'clsx'
+import { ScanBarcode, Trash2, X, UserRound, Wallet, ShoppingCart, BadgeCheck } from 'lucide-react'
 import { lookupStockItem } from '../api/inventory'
 import { variantLabel } from '../utils/variant'
 import { lookupCustomers } from '../api/customers'
@@ -6,13 +9,33 @@ import { checkout, getStoreCredit } from '../api/billing'
 import { getShopSettings, getPaymentMethods } from '../api/shopsettings'
 import BillReceipt from '../components/billing/BillReceipt'
 import ErrorAlert from '../components/common/ErrorAlert'
+import ConfirmDialog from '../components/common/ConfirmDialog'
+import Button from '../components/ui/Button'
+import { Card } from '../components/ui/Card'
+import { Field, Input } from '../components/ui/Field'
+import SegmentedControl from '../components/ui/SegmentedControl'
+import { useToast } from '../components/ui/Toast'
+import { money } from '../utils/format'
 
-const money = (v) => `₹${Number(v).toFixed(2)}`
+const DISCOUNTS = [
+  { value: 'none', label: 'None' },
+  { value: 'flat', label: '₹ Flat' },
+  { value: 'percent', label: '% Off' },
+]
+
+const isMac = typeof navigator !== 'undefined' && /Mac/.test(navigator.platform)
+
+function Kbd({ children }) {
+  return <kbd className="rounded border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 font-sans text-[11px] font-medium text-zinc-500">{children}</kbd>
+}
 
 export default function POSPage() {
   const [cart, setCart] = useState([])
   const [scan, setScan] = useState('')
+  const [scanError, setScanError] = useState('')
+  const [lastAdded, setLastAdded] = useState(null)
   const [customer, setCustomer] = useState({ name: '', phone: '' })
+  const [returning, setReturning] = useState(false)   // name was auto-filled from an existing customer
   const [discountType, setDiscountType] = useState('none')
   const [discountValue, setDiscountValue] = useState('')
   const [taxRate, setTaxRate] = useState(0)            // from shop settings (read-only here)
@@ -23,7 +46,10 @@ export default function POSPage() {
   const [receipt, setReceipt] = useState(null)
   const [creditBalance, setCreditBalance] = useState(0)   // this shop's store credit for the phone
   const [creditUse, setCreditUse] = useState('')
+  const [confirmClear, setConfirmClear] = useState(false)
   const scanRef = useRef(null)
+  const checkoutRef = useRef(null)
+  const toast = useToast()
 
   useEffect(() => {
     getShopSettings().then(r => setTaxRate(Number(r.data.default_tax_rate))).catch(() => {})
@@ -48,24 +74,36 @@ export default function POSPage() {
 
   const focusScan = () => setTimeout(() => scanRef.current?.focus(), 0)
 
+  // F2 → scan box, Ctrl/⌘+Enter → checkout (via ref so the listener sees fresh state).
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'F2') { e.preventDefault(); scanRef.current?.focus() }
+      else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); checkoutRef.current?.() }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
+
   const handleScan = async (e) => {
-    if (e.key !== 'Enter') return
+    if (e.key === 'Escape') { setScan(''); setScanError(''); return }
+    if (e.key !== 'Enter' || e.metaKey || e.ctrlKey) return
     e.preventDefault()
     const code = scan.trim()
     setScan('')
     if (!code) return
-    if (cart.some(l => l.code === code)) { setError(`Already added: ${code}`); return }
-    setError('')
+    if (cart.some(l => l.code === code)) { setScanError(`Already in this bill: ${code}`); return }
+    setScanError('')
     try {
       const { data } = await lookupStockItem(code)
-      setCart(c => [...c, { code: data.code, product_name: data.product_name, variant: variantLabel(data), unit_price: data.price }])
+      setCart(c => [{ code: data.code, product_name: data.product_name, variant: variantLabel(data), unit_price: data.price }, ...c])
+      setLastAdded(data.code)
     } catch (err) {
-      setError(err.response?.data?.detail || `Unknown code: ${code}`)
+      setScanError(err.response?.data?.detail || `No item in stock with code ${code}`)
     }
     focusScan()
   }
 
-  const removeLine = (code) => setCart(c => c.filter(l => l.code !== code))
+  const removeLine = (code) => { setCart(c => c.filter(l => l.code !== code)); focusScan() }
 
   const handlePhoneBlur = async () => {
     setCreditBalance(0); setCreditUse('')
@@ -75,15 +113,23 @@ export default function POSPage() {
     try {
       const { data } = await lookupCustomers(customer.phone)
       const match = data.find(c => c.phone === customer.phone) || data[0]
-      if (match) setCustomer(c => ({ ...c, name: match.name }))
+      if (match) { setCustomer(c => ({ ...c, name: match.name })); setReturning(true) }
     } catch { /* ignore */ }
   }
 
   const customerReady = customer.phone.length === 10 && customer.name.trim().length > 0
+  const canCheckout = !saving && cart.length > 0 && !!paymentMode && customerReady
+
+  const resetBill = () => {
+    setCart([]); setCustomer({ name: '', phone: '' }); setReturning(false)
+    setDiscountType('none'); setDiscountValue('')
+    setCreditBalance(0); setCreditUse(''); setScanError(''); setError('')
+  }
 
   const handleCheckout = async () => {
     if (cart.length === 0) return
     if (!customerReady) { setError('Customer name and a 10-digit phone are required.'); return }
+    if (!paymentMode) return
     setSaving(true); setError('')
     try {
       const { data } = await checkout({
@@ -95,126 +141,157 @@ export default function POSPage() {
         credit_used: totals.credit.toFixed(2),
       })
       setReceipt(data)
-      setCart([]); setCustomer({ name: '', phone: '' })
-      setDiscountType('none'); setDiscountValue('')
-      setCreditBalance(0); setCreditUse('')
+      resetBill()
+      toast(`Bill ${data.number} saved`)
     } catch (e) {
       const d = e.response?.data
       setError(d?.codes || d?.customer?.phone?.[0] || d?.customer?.name?.[0] || d?.customer?.[0] || d?.credit_used || d?.detail || 'Checkout failed.')
     } finally { setSaving(false) }
   }
+  useEffect(() => { checkoutRef.current = canCheckout ? handleCheckout : null })
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold text-gray-800 mb-6">Billing (POS)</h1>
-      <ErrorAlert message={error} onDismiss={() => setError('')} />
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Cart */}
-        <div className="lg:col-span-2 space-y-4">
-          <input
-            ref={scanRef} autoFocus value={scan}
-            onChange={e => setScan(e.target.value)} onKeyDown={handleScan}
-            placeholder="Scan or type a barcode, then Enter…"
-            className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-          />
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>{['Item', 'Code', 'Price', ''].map(h => <th key={h} className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase">{h}</th>)}</tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {cart.length === 0 && <tr><td colSpan={4} className="px-4 py-10 text-center text-gray-400">Scan items to start a bill</td></tr>}
-                {cart.map(l => (
-                  <tr key={l.code}>
-                    <td className="px-4 py-2 text-gray-800">
-                      {l.product_name}
-                      {l.variant && <div className="text-xs text-gray-400">{l.variant}</div>}
-                    </td>
-                    <td className="px-4 py-2 font-mono text-xs text-gray-500">{l.code}</td>
-                    <td className="px-4 py-2 text-gray-700">{money(l.unit_price)}</td>
-                    <td className="px-4 py-2 text-right"><button onClick={() => removeLine(l.code)} className="text-xs text-red-500 hover:text-red-700">Remove</button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_380px]">
+      {/* Left: scan + cart */}
+      <div className="min-w-0 space-y-4">
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-semibold tracking-tight text-zinc-900">New bill</h1>
+          {cart.length > 0 && (
+            <Button variant="ghost" size="sm" icon={Trash2} onClick={() => setConfirmClear(true)}>Clear</Button>
+          )}
         </div>
 
-        {/* Checkout panel */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4 h-fit">
-          <div>
-            <div className="text-sm font-semibold text-gray-700 mb-2">Customer <span className="text-red-500">*</span></div>
-            <input value={customer.phone} onBlur={handlePhoneBlur}
-              onChange={e => { setCustomer({ ...customer, phone: e.target.value.replace(/\D/g, '').slice(0, 10) }); setCreditBalance(0); setCreditUse('') }}
-              type="tel" inputMode="numeric" pattern="[0-9]{10}" maxLength={10} autoComplete="off"
-              required placeholder="Phone *" className="w-full mb-2 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-            <input value={customer.name} onChange={e => setCustomer({ ...customer, name: e.target.value })}
-              required placeholder="Name *" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+        <div>
+          <div className={clsx('flex items-center gap-3 rounded-xl border bg-white px-4 shadow-card transition-colors focus-within:ring-4',
+            scanError ? 'border-red-300 focus-within:ring-red-500/10' : 'border-zinc-300 focus-within:border-brand-500 focus-within:ring-brand-500/10')}>
+            <ScanBarcode size={22} className="shrink-0 text-zinc-400" />
+            <input
+              ref={scanRef} autoFocus value={scan}
+              onChange={e => setScan(e.target.value)} onKeyDown={handleScan}
+              placeholder="Scan a barcode or type a code and press Enter"
+              className="h-14 flex-1 bg-transparent text-base text-zinc-900 placeholder:text-zinc-400 focus:outline-none"
+              aria-label="Barcode"
+            />
+            <span className="hidden sm:inline"><Kbd>F2</Kbd></span>
           </div>
+          {scanError && <p className="mt-1.5 flex items-center gap-1.5 px-1 text-sm text-red-600"><X size={14} />{scanError}</p>}
+        </div>
 
-          {creditBalance > 0 && (
-            <div>
-              <div className="text-sm font-semibold text-gray-700 mb-2">Store credit <span className="font-normal text-gray-500">({money(creditBalance)} available)</span></div>
-              <div className="flex gap-2">
-                <input type="number" min="0" max={creditBalance} value={creditUse} onChange={e => setCreditUse(e.target.value)}
-                  placeholder="0" className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-                <button type="button" onClick={() => setCreditUse(String(Math.min(creditBalance, totals.total)))}
-                  className="px-3 py-2 rounded-lg border border-gray-300 text-xs text-gray-700 hover:bg-gray-50">Use max</button>
-              </div>
+        <Card className="overflow-hidden">
+          <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-3">
+            <span className="text-sm font-medium text-zinc-900">Items</span>
+            <span className="text-sm text-zinc-500">{cart.length} item{cart.length !== 1 ? 's' : ''}</span>
+          </div>
+          {cart.length === 0 ? (
+            <div className="flex flex-col items-center px-6 py-16 text-center">
+              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-brand-50 text-brand-500"><ShoppingCart size={22} /></div>
+              <p className="text-sm font-medium text-zinc-900">Scan items to start a bill</p>
+              <p className="mt-1 text-sm text-zinc-500">Each unit has its own barcode — scan it and it's added here.</p>
             </div>
+          ) : (
+            <ul className="divide-y divide-zinc-100">
+              {cart.map((l, i) => (
+                <li key={l.code} className={clsx('group flex items-center gap-4 px-5 py-3', l.code === lastAdded && 'animate-flash')}>
+                  <span className="w-5 text-right text-xs tabular-nums text-zinc-400">{cart.length - i}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium text-zinc-900">{l.product_name}</div>
+                    <div className="flex items-center gap-1.5 text-xs text-zinc-500">
+                      {l.variant && <span>{l.variant} ·</span>}
+                      <span className="font-mono">{l.code}</span>
+                    </div>
+                  </div>
+                  <div className="text-sm font-semibold tabular-nums text-zinc-900">{money(l.unit_price)}</div>
+                  <button onClick={() => removeLine(l.code)} className="rounded-md p-1.5 text-zinc-300 hover:bg-red-50 hover:text-red-600 group-hover:text-zinc-400" aria-label={`Remove ${l.product_name}`}>
+                    <X size={16} />
+                  </button>
+                </li>
+              ))}
+            </ul>
           )}
+        </Card>
+      </div>
 
-          <div>
-            <div className="text-sm font-semibold text-gray-700 mb-2">Discount</div>
-            <div className="flex gap-2">
-              <select value={discountType} onChange={e => setDiscountType(e.target.value)} className="border border-gray-300 rounded-lg px-2 py-2 text-sm bg-white">
-                <option value="none">None</option>
-                <option value="flat">₹ Flat</option>
-                <option value="percent">%</option>
-              </select>
-              <input type="number" min="0" value={discountValue} onChange={e => setDiscountValue(e.target.value)} disabled={discountType === 'none'}
-                placeholder="0" className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+      {/* Right: checkout panel */}
+      <div className="lg:sticky lg:top-0 lg:self-start">
+        <Card className="divide-y divide-zinc-100">
+          <div className="space-y-3 p-5">
+            <div className="flex items-center gap-2 text-sm font-medium text-zinc-900"><UserRound size={16} className="text-zinc-400" />Customer</div>
+            <Input value={customer.phone} onBlur={handlePhoneBlur}
+              onChange={e => { setCustomer({ ...customer, phone: e.target.value.replace(/\D/g, '').slice(0, 10) }); setCreditBalance(0); setCreditUse(''); setReturning(false) }}
+              type="tel" inputMode="numeric" pattern="[0-9]{10}" maxLength={10} autoComplete="off"
+              required placeholder="10-digit phone" aria-label="Customer phone" />
+            <div className="relative">
+              <Input value={customer.name} onChange={e => { setCustomer({ ...customer, name: e.target.value }); setReturning(false) }}
+                required placeholder="Name" aria-label="Customer name" className={returning ? 'pr-28' : ''} />
+              {returning && (
+                <span className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                  <BadgeCheck size={12} /> Returning
+                </span>
+              )}
             </div>
-          </div>
-
-          <div>
-            <div className="text-sm font-semibold text-gray-700 mb-1">Payment</div>
-            <select value={paymentMode} onChange={e => setPaymentMode(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
-              {paymentMethods.length === 0 && <option value="">No methods configured</option>}
-              {paymentMethods.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
-            </select>
-            <p className="mt-2 text-xs text-gray-400">Tax {taxRate}% (set in Settings) is applied automatically.</p>
-          </div>
-
-          <div className="border-t border-gray-200 pt-3 space-y-1 text-sm">
-            <Row label="Subtotal" value={money(totals.subtotal)} />
-            {totals.discount > 0 && <Row label="Discount" value={`− ${money(totals.discount)}`} />}
-            {totals.tax > 0 && <Row label="Tax" value={money(totals.tax)} />}
-            <div className="flex justify-between font-bold text-base pt-1"><span>Total</span><span>{money(totals.total)}</span></div>
-            {totals.credit > 0 && (
-              <>
-                <Row label="Store credit" value={`− ${money(totals.credit)}`} />
-                <div className="flex justify-between font-bold text-base"><span>To pay</span><span>{money(totals.toPay)}</span></div>
-              </>
+            {creditBalance > 0 && (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3">
+                <div className="mb-2 flex items-center gap-2 text-sm text-emerald-800">
+                  <Wallet size={15} /> <span><span className="font-semibold">{money(creditBalance)}</span> store credit available</span>
+                </div>
+                <div className="flex gap-2">
+                  <Input type="number" min="0" max={creditBalance} value={creditUse} onChange={e => setCreditUse(e.target.value)} placeholder="Amount to use" className="bg-white" />
+                  <Button size="md" onClick={() => setCreditUse(String(Math.min(creditBalance, totals.total)))}>Use max</Button>
+                </div>
+              </div>
             )}
           </div>
 
-          <button onClick={handleCheckout} disabled={saving || cart.length === 0 || !paymentMode || !customerReady}
-            className="w-full bg-indigo-600 text-white rounded-lg py-3 text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">
-            {saving ? 'Processing…' : `Checkout · ${money(totals.toPay)}`}
-          </button>
-          {cart.length > 0 && !customerReady && (
-            <p className="text-xs text-gray-400 text-center">Enter the customer's 10-digit phone and name to check out.</p>
-          )}
-        </div>
+          <div className="space-y-4 p-5">
+            <Field label="Discount">
+              <div className="flex gap-2">
+                <SegmentedControl options={DISCOUNTS} value={discountType} onChange={v => { setDiscountType(v); if (v === 'none') setDiscountValue('') }} />
+                {discountType !== 'none' && (
+                  <Input type="number" min="0" value={discountValue} onChange={e => setDiscountValue(e.target.value)} autoFocus
+                    placeholder={discountType === 'percent' ? '%' : '₹'} className="flex-1" aria-label="Discount value" />
+                )}
+              </div>
+            </Field>
+            <Field label="Payment">
+              {paymentMethods.length === 0
+                ? <p className="text-sm text-zinc-500">No payment methods set up. <Link to="/settings" className="font-medium text-brand-600 hover:underline">Add one in Settings</Link></p>
+                : <SegmentedControl stretch options={paymentMethods.map(m => ({ value: m.name, label: m.name }))} value={paymentMode} onChange={setPaymentMode} />}
+            </Field>
+          </div>
+
+          <div className="space-y-1.5 p-5 text-sm">
+            <Row label="Subtotal" value={money(totals.subtotal)} />
+            {totals.discount > 0 && <Row label="Discount" value={`− ${money(totals.discount)}`} />}
+            <Row label={`Tax (${taxRate}%)`} value={money(totals.tax)} />
+            {totals.credit > 0 && <Row label="Store credit" value={`− ${money(totals.credit)}`} />}
+            <div className="flex items-baseline justify-between pt-2">
+              <span className="font-medium text-zinc-900">{totals.credit > 0 ? 'To pay' : 'Total'}</span>
+              <span className="text-2xl font-semibold tracking-tight tabular-nums text-zinc-900">{money(totals.toPay)}</span>
+            </div>
+          </div>
+
+          <div className="p-5">
+            <ErrorAlert message={error} onDismiss={() => setError('')} />
+            <Button variant="primary" size="lg" className="w-full" onClick={handleCheckout} disabled={!canCheckout} loading={saving}>
+              {saving ? 'Processing…' : `Charge ${money(totals.toPay)}`}
+            </Button>
+            <p className="mt-2.5 text-center text-xs text-zinc-500">
+              {cart.length > 0 && !customerReady
+                ? "Enter the customer's phone and name to check out."
+                : <>Press <Kbd>{isMac ? '⌘' : 'Ctrl'}</Kbd> <Kbd>Enter</Kbd> to charge</>}
+            </p>
+          </div>
+        </Card>
       </div>
 
       <BillReceipt bill={receipt} onClose={() => { setReceipt(null); focusScan() }} />
+      <ConfirmDialog isOpen={confirmClear} onClose={() => setConfirmClear(false)} title="Clear this bill?"
+        message="All scanned items and customer details will be removed." confirmLabel="Clear bill"
+        onConfirm={() => { resetBill(); setConfirmClear(false); focusScan() }} />
     </div>
   )
 }
 
 function Row({ label, value }) {
-  return <div className="flex justify-between text-gray-600"><span>{label}</span><span>{value}</span></div>
+  return <div className="flex justify-between text-zinc-500"><span>{label}</span><span className="tabular-nums text-zinc-700">{value}</span></div>
 }

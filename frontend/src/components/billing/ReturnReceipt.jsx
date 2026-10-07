@@ -1,4 +1,5 @@
-import { createPortal } from 'react-dom'
+import PrintSheet from '../common/PrintSheet'
+import { money } from '../../utils/format'
 
 const PRINT_CSS = `
 @media print {
@@ -9,22 +10,11 @@ const PRINT_CSS = `
 }
 `
 
-const money = (v) => `₹${Number(v).toFixed(2)}`
-
 export default function ReturnReceipt({ ret, onClose }) {
   if (!ret) return null
-  return createPortal(
-    <div className="fixed inset-0 z-50 bg-white overflow-auto">
-      <style>{PRINT_CSS}</style>
-      <div className="no-print sticky top-0 bg-gray-50 border-b px-6 py-3 flex items-center justify-between">
-        <div className="font-semibold text-gray-800">Return {ret.number}</div>
-        <div className="flex gap-3">
-          <button onClick={() => window.print()} className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 text-sm">🖨 Print</button>
-          <button onClick={onClose} className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm">Close</button>
-        </div>
-      </div>
-
-      <div className="receipt-root mx-auto my-6 max-w-sm p-6 text-sm text-gray-800">
+  return (
+    <PrintSheet title={`Return ${ret.number}`} css={PRINT_CSS} onClose={onClose}>
+      <div className="receipt-root mx-auto my-8 max-w-sm rounded-xl bg-white p-6 text-sm text-gray-800 shadow-card print:my-0 print:shadow-none">
         <div className="text-center mb-4">
           <div className="text-lg font-bold">{ret.shop_name || 'Shop'}</div>
           <div className="text-gray-500">Credit Note</div>
@@ -60,7 +50,6 @@ export default function ReturnReceipt({ ret, onClose }) {
         {ret.reason && <div className="text-xs text-gray-500 mt-2">Reason: {ret.reason}</div>}
         <div className="text-center text-xs text-gray-400 mt-6">Thank you!</div>
       </div>
-    </div>,
-    document.body
+    </PrintSheet>
   )
 }
