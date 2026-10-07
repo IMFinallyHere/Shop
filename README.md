@@ -1,155 +1,138 @@
-# Shop — Cloth Shop Management System
+# Shop — Cloth Shop Management
 
-A full-stack inventory and billing management system for cloth shops. Track stock using barcode/QR codes, manage sales, generate bills, and control staff access with role-based permissions.
+A multi-shop inventory and billing system for clothing stores. Every physical piece gets its own barcode; scan it at the counter to bill, scan it again to take it back, and look up its full history any time.
+
+Each shop is an isolated tenant (its own PostgreSQL schema) on its own subdomain, e.g. `acme.localhost`.
 
 ---
 
 ## Features
 
-### Inventory Management
-- Add, edit, and delete cloth products (fabric type, color, size, price, stock quantity)
-- Barcode and QR code generation per product
-- Scan barcode/QR to instantly look up or add items to a bill
-- Low stock alerts and stock history tracking
+**Inventory**
+- Products with category, seller, fabric and colour/size **variants** (colours and sizes are managed per shop in Settings)
+- Stock is added in **batches** with their own cost and selling price; every unit gets a unique Code128 barcode, printable as labels or downloadable as PNG
+- Low-stock alerts per variant (adjustable threshold)
+- Categories and sellers (the suppliers you buy from)
 
-### Billing & Sales
-- Point-of-sale interface — scan or search items to build a bill
-- Apply discounts (flat or percentage) per item or on the total
-- Print-ready bill generation (PDF)
-- Sales history with filters by date, staff, and payment method
-- Payment modes: cash, UPI, card
+**Billing (POS)**
+- Scan units into a bill; customer name + 10-digit phone required (returning customers are recognised)
+- Bill-level discount (flat ₹ or %), shop-wide tax rate, per-shop payment methods (Cash / UPI / Card by default)
+- Printable receipts (browser print)
+- Keyboard-friendly: `F2` focuses the scanner box, `Ctrl/⌘ + Enter` charges
 
-### User & Access Control
-- JWT-based authentication (login with username + password)
-- Role-based access control using Django's built-in Groups & Permissions
-- Roles: Owner, Manager, Cashier
-- Fine-grained permission assignment per user or group
-- Audit trail — track who created/edited what
+**Returns & store credit**
+- Scan a sold unit or enter a bill number; refund is each item's share of the bill total (discount and tax included)
+- Settle as a refund or as **store credit**, which the customer can spend on a later bill
+- Returned units go back into stock with the same barcode; printable credit note
 
-### Dashboard
-- Daily, weekly, and monthly sales overview
-- Top-selling products
-- Low stock warnings
-- Revenue and transaction counts
+**Search & history**
+- Search box on every page (`/` or `Ctrl/⌘ + K`): barcodes, bill/return numbers, customers, products, sellers
+- Scanning a barcode opens that piece's full history: batch cost/price, seller, who bought it, returns and resales
+- Customer pages with their bills, returns and store-credit balance
+
+**Dashboard**
+- Today's sales, bills, average bill and refunds; 7-day sales chart; low stock; recent bills and returns
+
+**Shops & access**
+- Self-serve sign-up creates a shop and its owner account
+- One account (by **email**) can belong to several shops; a shop picker on the main domain
+- Per-shop users, groups and permissions (Django's RBAC); a platform-admin view of all shops
 
 ---
 
-## Tech Stack
+## Tech stack
 
 | Layer | Technology |
 |---|---|
-| Backend | Django 6, Django REST Framework |
-| Auth | JWT via `djangorestframework-simplejwt` |
-| Frontend | React 19, Vite, Tailwind CSS |
-| Routing | React Router v6 |
-| HTTP Client | Axios (with auto token refresh) |
-| Database | SQLite (dev) / PostgreSQL (prod) |
-| Barcode/QR | `python-barcode`, `qrcode` (backend generation) |
+| Backend | Django 6, Django REST Framework, `django-tenants` + `django-tenant-users` |
+| Auth | JWT (`djangorestframework-simplejwt`), login by email |
+| Database | PostgreSQL 15+ (17 in Docker), schema per shop |
+| Frontend | React 19, Vite, Tailwind CSS 3, React Router 7, Axios, lucide icons |
+| Barcodes | `jsbarcode` (generated in the browser) |
 
 ---
 
-## Project Structure
+## Getting started
+
+**Prerequisites:** Python 3.12+, Node 18+, Docker.
+
+```bash
+# 1. Config
+cp .env.example .env                 # then set SECRET_KEY (and DB_* if you like)
+
+# 2. Database
+docker compose up -d db
+
+# 3. Backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python manage.py migrate_schemas --shared
+python manage.py create_public_tenant --domain_url localhost --owner_email admin@shop.test
+python manage.py runserver
+
+# 4. Frontend (new terminal)
+cd frontend && npm install && npm run dev
+```
+
+**Create a shop:** open <http://localhost:5173/register> and sign up (e.g. shop name "Acme"). You're redirected to `http://acme.localhost:5173`. `*.localhost` resolves to your machine in modern browsers, so no hosts-file changes are needed.
+
+**Fill it with demo data** (optional): catalogue, ~170 units, two weeks of bills and a few returns.
+
+```bash
+python manage.py seed_demo acme
+```
+
+**Platform admin:** the public-tenant owner (`admin@shop.test`) signs in on `http://localhost:5173` to see every shop. `create_public_tenant` doesn't set a password; set one with:
+
+```bash
+python manage.py shell -c "from accounts.models import User; u = User.objects.get(email='admin@shop.test'); u.set_password('admin123'); u.save()"
+```
+
+**Tests:** `python manage.py test`
+
+---
+
+## Environment variables
+
+| Variable | Purpose |
+|---|---|
+| `SECRET_KEY` | Django secret key (required) |
+| `DEBUG` | `True` in development |
+| `ALLOWED_HOSTS` | Include `.localhost` so shop subdomains work |
+| `TENANT_USERS_DOMAIN` | Base domain for shops (default `localhost`) |
+| `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` | PostgreSQL connection; also used by `docker-compose.yml`. The user must be allowed to `CREATE SCHEMA`. |
+
+---
+
+## Project structure
 
 ```
 Shop/
-├── core/               # Django project config (settings, urls)
-├── accounts/           # Users, groups, JWT auth APIs
-├── inventory/          # Products, categories, stock (planned)
-├── billing/            # Bills, line items, payments (planned)
-├── frontend/           # React app
-│   └── src/
-│       ├── api/        # Axios API calls
-│       ├── contexts/   # Auth context
-│       ├── components/ # Shared UI components
-│       └── pages/      # Login, Dashboard, Users, Groups, Permissions, ...
-├── .env.example
-└── requirements.txt
+├── core/            # Django settings and root URLs
+├── tenants/         # Tenant (shop) + Domain models; `seed_demo` command
+├── accounts/        # Users (email login), JWT, signup, shop picker, per-shop RBAC
+├── inventory/       # Categories, sellers, products, variants, batches, stock units
+├── billing/         # Bills, returns, store credit, dashboard and search APIs
+├── customers/       # Global customer table (each shop sees only its own buyers)
+├── shopsettings/    # Per-shop tax rate, payment methods, sizes, colours
+├── frontend/src/
+│   ├── api/         # Axios API clients
+│   ├── components/  # ui/ kit, layout/, billing/, inventory/, search/, …
+│   ├── hooks/       # useQuery, useReceipts
+│   └── pages/       # One file per screen
+├── docker-compose.yml
+└── PLAN.md          # Detailed build log and design notes
 ```
+
+**Customers** live in one shared table so a phone number entered at one shop can auto-fill at another, but each shop only ever sees customers who have bought from it. **Sellers** are per shop: the suppliers that shop buys stock from.
 
 ---
 
-## Getting Started
+## Not built yet
 
-### Prerequisites
-- Python 3.12+
-- Node.js 18+
-
-### Backend Setup
-
-```bash
-# Create and activate virtual environment
-python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure environment
-cp .env.example .env
-# Edit .env and set SECRET_KEY, DEBUG, ALLOWED_HOSTS
-
-# Run migrations
-python manage.py migrate
-
-# Create a superuser (shop owner)
-python manage.py createsuperuser
-
-# Start server
-python manage.py runserver
-```
-
-### Frontend Setup
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Open `http://localhost:5173` in your browser.
-
----
-
-## Environment Variables
-
-```env
-SECRET_KEY=your-secret-key-here
-DEBUG=True
-ALLOWED_HOSTS=localhost,127.0.0.1
-```
-
----
-
-## Roadmap
-
-- [x] User management with RBAC
-- [x] JWT authentication with token refresh and blacklist
-- [x] Product / category management
-- [x] Seller management
-- [x] Customer management (shared global table; each shop sees only its own buyers)
-- [x] Barcode + QR generation **per stock unit** (auto-generated; print & download)
-- [ ] Barcode scanner integration (webcam / USB scanner)
-- [x] Point-of-sale billing interface (scan units → bill → payment → mark sold)
-- [~] Bill print (browser print done; dedicated PDF export pending)
-- [x] Stock in/out tracking and history (StockMovement audit log + adjust action)
-- [ ] Sales dashboard with charts
-- [ ] Low stock notifications
-- [x] PostgreSQL support (now required — schema-per-tenant)
-- [~] Multi-tenancy: each shop isolated in its own PostgreSQL schema
-      (`django-tenants` + `django-tenant-users`), self-serve signup, subdomain routing
-
-## Multi-tenancy
-
-Every shop is an isolated tenant in its own PostgreSQL schema. A single user
-account (identified by **email**) can belong to multiple shops with per-shop
-permissions. Shops are resolved by subdomain (`<slug>.localhost` in dev). See
-`PLAN.md` for the build status and bootstrap commands.
-
-## Customer Management
-When we sell a stock we take in customer details, and we will have a global customer table shares across all the tenant.
-Tenant will be able to see only those customers who have ever purchased anything from them. 
-Having a unified table can help in search while some other tenant is filling the details. 
-
-## Seller Management
-Each tenant can add details of their sellers and while adding new inventory they can select the seller. 
-Seller here means from where that tenant have purchased the items. 
+- PDF export of bills (printing works from the browser)
+- Per-item discounts (discounts apply to the whole bill)
+- Sales filters by date, staff or payment method
+- Weekly/monthly reports and top-selling products
+- An audit log of who changed what (bills and returns record who created them)
+- A timestamp for when a unit was removed from stock
