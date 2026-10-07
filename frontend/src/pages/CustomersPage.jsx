@@ -31,17 +31,18 @@ export default function CustomersPage() {
         {loading ? <Spinner /> : (
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>{['Name', 'Phone', 'Email', 'Purchases'].map(h =>
+              <tr>{['Name', 'Phone', 'Email', 'Purchases', 'Store credit'].map(h =>
                 <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>)}</tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {customers.length === 0 && <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-400">No customers yet</td></tr>}
+              {customers.length === 0 && <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">No customers yet</td></tr>}
               {customers.map(c => (
                 <tr key={c.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 font-medium text-gray-800">{c.name}</td>
                   <td className="px-4 py-3 text-gray-600">{c.phone}</td>
                   <td className="px-4 py-3 text-gray-600">{c.email || '—'}</td>
                   <td className="px-4 py-3 text-gray-600">{c.bill_count}</td>
+                  <td className="px-4 py-3 text-gray-600">{Number(c.credit_balance) > 0 ? `₹${Number(c.credit_balance).toFixed(2)}` : '—'}</td>
                 </tr>
               ))}
             </tbody>

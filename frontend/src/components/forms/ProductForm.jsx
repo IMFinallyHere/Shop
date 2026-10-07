@@ -39,17 +39,11 @@ export default function ProductForm({ data, onChange, categories, sellers, error
         {select('category', 'Category', categories)}
         {select('seller', 'Seller', sellers)}
       </div>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         {field('fabric_type', 'Fabric')}
-        {field('color', 'Color')}
-        {field('size', 'Size')}
+        {field('sku', 'SKU')}
       </div>
-      <div className="grid grid-cols-3 gap-3">
-        {field('cost_price', 'Cost ₹', 'number')}
-        {field('price', 'Price ₹', 'number')}
-        {field('low_stock_threshold', 'Low-stock at', 'number')}
-      </div>
-      {field('sku', 'SKU / Barcode')}
+      <p className="text-xs text-gray-400">Colors, sizes, cost and price are set per batch when you add stock.</p>
     </div>
   )
 }

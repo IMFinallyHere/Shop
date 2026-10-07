@@ -1,0 +1,23 @@
+# Local development database. Credentials come from .env (Compose loads it automatically):
+#   docker compose up -d db
+# Postgres >= 15 is required (variant uniqueness uses NULLS NOT DISTINCT); prod runs 17.
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - shop_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  shop_pgdata:

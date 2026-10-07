@@ -190,6 +190,86 @@ Key facts: `django-tenants` 3.10.x supports Django 6.0 but **requires PostgreSQL
       shopsettings), ~8 min (each class re-provisions tenants; use `--noinput` to avoid
       the leftover-`test_shop` prompt).
 
+## Phase 9 — Product variants + per-batch pricing  ✅
+- [x] Model: `Product` (name, category, **seller**, fabric, sku) → `ProductVariant`
+      (color + size, unique per product, `low_stock_threshold`) → `StockBatch` (UUID pk,
+      **cost_price + price**, quantity) → `StockItem` (unique barcode, FK `batch` +
+      denormalised `variant`). Price is per batch: restocking Black/XL at a new price keeps
+      older units at their old price; the scanned barcode decides the POS price.
+- [x] Migrations `inventory/0004_wipe_inventory` (deletes bills + inventory — test data,
+      by decision) and `0005_variants` (schema). Split because Postgres rejects ALTER TABLE
+      with pending FK trigger events in the same transaction.
+- [x] API: `POST /products/{id}/add-stock/` takes `{"lines": [{color,size,quantity,
+      cost_price,price}]}` — case-insensitive get-or-create of the variant, one batch per
+      line. Product payload has nested `variants` (stock, last cost/price), total
+      `stock_quantity`, `price_min/max` of in-stock units, `low_stock=1` = any variant low.
+      New `/api/variants/` (PATCH, DELETE blocked if units were sold). Stock items expose
+      color/size/price/cost. Checkout prices from `batch.price`; bill line name is
+      "Product — Color / Size".
+- [x] Frontend: Add Stock is a multi-line editor (chips restock an existing variant with
+      its last prices); Variants modal (threshold edit/delete); labels, Stock page and POS
+      cart show color/size; product list shows variant summary + price range.
+- [x] Tests: full suite = **17 tests** green (accounts+inventory+billing).
+- [x] Applied `migrate_schemas` to the remote DB on 2026-10-07 (wiped inventory + bills in
+      acme, bella-fabrics, pf, proxy-test-shop). API smoke test on acme: all endpoints 2xx.
+
+## Phase 10 — Sizes & colors managed in Settings  ✅
+- [x] `shopsettings.Size` / `Color` (name unique case-insensitive, `is_active`, `position`;
+      color has optional `hex` swatch). Sizes seed XS…XXXL + Free Size on first access;
+      colors start empty. `/api/sizes/`, `/api/colors/` (unpaginated, `?active=1`); new rows
+      append at the end; delete of one used by a variant → 400 "deactivate instead".
+- [x] `ProductVariant.color` / `.size` are now nullable PROTECT FKs to those lists
+      (unique `(product, color, size)` with `nulls_distinct=False`, needs PG ≥ 15 — remote
+      is 17). Renaming in Settings flows to every variant/label; bills keep their snapshot.
+      Migrations `inventory/0006–0008` convert existing text values into Size/Color rows
+      (data preserved), split in 3 for the same pending-trigger reason as Phase 9.
+- [x] API: add-stock lines and variant PATCH take color/size **ids**; outputs carry
+      `color_name` / `size_name` (+ `color_hex` on variants).
+- [x] Frontend: Settings has Sizes + Colors sections (add, inline rename, ▲▼ reorder,
+      active toggle, delete); Add Stock uses dropdowns of active options (plus any
+      deactivated ones existing variants still use).
+- [x] Tests: inventory+billing+shopsettings = **16 green**. Applied to the remote DB
+      (acme's "black/blue" + "xl/xxl" converted in place), then smoke-tested.
+
+## Phase 11 — Returns (refund / store credit)  ✅
+- [x] Models (`billing/0004_returns`): `Return` (`RET-{id:05d}`, mode `refund`/`credit`,
+      payout method, amount, reason, customer snapshot), `ReturnItem` (**OneToOne** to
+      `BillItem` → a sold line is returned once; a restocked unit resold on a new bill can be
+      returned again), `CreditEntry` per-shop ledger (+ credited, − spent; soft
+      `customer_id`), `Bill.credit_used`.
+- [x] Refund = each line's pro-rata share of `bill.total` (discount + tax included);
+      `refund_shares()` gives the rounding remainder to the last line so a full return
+      equals the bill total. Returned units always go back to `in_stock` (same barcode/price).
+      No time limit.
+- [x] API: `POST/GET /api/returns/` (refund needs an enabled payment method; credit needs a
+      customer on the bill), `GET /bills/by-code/?code=` (bill with an unreturned sale of that
+      unit), `GET /store-credit/?phone=`. Checkout takes `credit_used` (≤ balance and total,
+      needs a phone; ledger rows locked). Bill payload adds `returned`/`refund_amount` per
+      line, `returns`, `refunded_total`; customers list adds `credit_balance`.
+- [x] Frontend: **Returns** page (scan unit barcode or type `INV-…`; tick lines; refund via
+      method or store credit; printable **Credit Note**; past returns list); Sales "Return"
+      button + Returned/Partly returned badge; receipt strikes returned lines and shows
+      credit used; POS shows available store credit for the phone and applies it ("To pay");
+      Customers "Store credit" column.
+- [x] **Customer (name + exactly 10-digit phone) is mandatory at checkout** (API 400 + POS disables
+      Checkout), so every sale can be returned as store credit. The "needs a customer"
+      guard on credit returns remains only for older bills without one.
+- [x] Tests: billing = **13 green** (pro-rata refund + restock, rounding, double/foreign/
+      invalid returns, by-code lookup, credit earn/spend/overspend + per-shop isolation,
+      checkout without customer rejected).
+      Migration applied to the local Docker DB; live API smoke test on acme passed.
+
+## Local development database (Docker)  ✅
+- `docker-compose.yml` runs `postgres:17-alpine` (`shop-db-1`, volume `shop_pgdata`,
+  port 5432); it reads `DB_NAME/DB_USER/DB_PASSWORD` from `.env`, which now points at
+  `localhost`. The old remote values are kept commented in `.env`; **prod sets its own
+  `.env` on the server.**
+- Start: `docker compose up -d db`. Bootstrapped on 2026-10-07: `migrate_schemas
+  --shared`, public tenant `localhost` (`admin@shop.test` / `admin123`, platform
+  superuser) and shop **Acme Cloth** (`acme.localhost`, `owner@acme.test` / `owner123`).
+  Remote-only demo shops (bella-fabrics, pf, …) were not copied.
+
+
 ## Demo data seeded in the remote DB (for exploring)
 - Platform owner (public/`localhost`): `admin@shop.test` / `admin123` — now a
   public-schema superuser; log in on `localhost` → shop picker → **Platform Admin**
@@ -244,6 +324,10 @@ Key facts: `django-tenants` 3.10.x supports Django 6.0 but **requires PostgreSQL
   `Customer.name`. Skipped FKs / `unique=True` / `batch` (already indexed) and
   `icontains` searches (no B-tree benefit). Migrations `billing/0003`,
   `customers/0002`, `inventory/0003`, applied across public + tenant schemas.
+
+- **2026-10-07** Phase 11: returns with refund or store credit (per-shop ledger usable at
+  POS), scan-to-return, credit notes; customer now mandatory on every bill. Billing
+  suite = 13 green tests.
 
 ## Bootstrap (run once `.env` DB_* is filled)
 ```bash

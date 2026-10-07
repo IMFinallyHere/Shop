@@ -2,7 +2,10 @@ import { useEffect, useState } from 'react'
 import {
   getShopSettings, updateShopSettings,
   getPaymentMethods, createPaymentMethod, updatePaymentMethod, deletePaymentMethod,
+  getSizes, createSize, updateSize, deleteSize,
+  getColors, createColor, updateColor, deleteColor,
 } from '../api/shopsettings'
+import OptionList from '../components/settings/OptionList'
 import Spinner from '../components/common/Spinner'
 import ErrorAlert from '../components/common/ErrorAlert'
 
@@ -14,15 +17,18 @@ export default function SettingsPage() {
   const [savingTax, setSavingTax] = useState(false)
   const [methods, setMethods] = useState([])
   const [newMethod, setNewMethod] = useState('')
+  const [sizes, setSizes] = useState([])
+  const [colors, setColors] = useState([])
 
   useEffect(() => { load() }, [])
 
   const load = async () => {
     setLoading(true)
     try {
-      const [s, m] = await Promise.all([getShopSettings(), getPaymentMethods()])
+      const [s, m, sz, c] = await Promise.all([getShopSettings(), getPaymentMethods(), getSizes(), getColors()])
       setTaxRate(s.data.default_tax_rate); setSavedTax(s.data.default_tax_rate)
       setMethods(m.data.results ?? m.data)
+      setSizes(sz.data); setColors(c.data)
     } catch { setError('Failed to load settings.') }
     finally { setLoading(false) }
   }
@@ -47,6 +53,11 @@ export default function SettingsPage() {
   const toggleMethod = async (m) => { await updatePaymentMethod(m.id, { is_active: !m.is_active }); refreshMethods() }
   const removeMethod = async (m) => { await deletePaymentMethod(m.id); refreshMethods() }
 
+  const refreshSizes = () => getSizes().then(r => setSizes(r.data))
+  const refreshColors = () => getColors().then(r => setColors(r.data))
+  const sizeApi = { create: createSize, update: updateSize, remove: deleteSize }
+  const colorApi = { create: createColor, update: updateColor, remove: deleteColor }
+
   if (loading) return <Spinner />
 
   return (
@@ -66,6 +77,24 @@ export default function SettingsPage() {
           <button onClick={saveTax} disabled={savingTax || taxRate === savedTax}
             className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 text-sm">{savingTax ? 'Saving…' : 'Save'}</button>
         </div>
+      </section>
+
+      <section className="bg-white rounded-xl border border-gray-200 p-5 mb-6">
+        <h2 className="font-semibold text-gray-800 mb-1">Sizes</h2>
+        <p className="text-sm text-gray-500 mb-3">
+          Offered when adding stock, in this order. Renaming updates every product that uses it;
+          sizes in use can be deactivated but not deleted.
+        </p>
+        <OptionList items={sizes} api={sizeApi} onChange={refreshSizes} onError={setError} placeholder="Add a size (e.g. 4XL, 32)" />
+      </section>
+
+      <section className="bg-white rounded-xl border border-gray-200 p-5 mb-6">
+        <h2 className="font-semibold text-gray-800 mb-1">Colors</h2>
+        <p className="text-sm text-gray-500 mb-3">
+          Offered when adding stock. Renaming updates every product that uses it;
+          colors in use can be deactivated but not deleted.
+        </p>
+        <OptionList items={colors} api={colorApi} onChange={refreshColors} onError={setError} placeholder="Add a color (e.g. Maroon)" withHex />
       </section>
 
       <section className="bg-white rounded-xl border border-gray-200 p-5">

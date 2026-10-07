@@ -12,6 +12,7 @@ import CategoriesPage from './pages/CategoriesPage'
 import SellersPage from './pages/SellersPage'
 import POSPage from './pages/POSPage'
 import SalesPage from './pages/SalesPage'
+import ReturnsPage from './pages/ReturnsPage'
 import CustomersPage from './pages/CustomersPage'
 import SettingsPage from './pages/SettingsPage'
 import UsersPage from './pages/UsersPage'
@@ -44,6 +45,7 @@ function AppRoutes() {
           <Route path="/sellers" element={<SellersPage />} />
           <Route path="/pos" element={<POSPage />} />
           <Route path="/sales" element={<SalesPage />} />
+          <Route path="/returns" element={<ReturnsPage />} />
           <Route path="/customers" element={<CustomersPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/users" element={<UsersPage />} />

@@ -46,8 +46,12 @@ export default function BillReceipt({ bill, onClose }) {
           <tbody>
             {bill.items.map(it => (
               <tr key={it.id} className="border-b border-gray-100">
-                <td className="py-1">{it.product_name}<div className="text-[10px] text-gray-400 font-mono">{it.code}</div></td>
-                <td className="py-1 text-right">{money(it.unit_price)}</td>
+                <td className="py-1">
+                  <span className={it.returned ? 'line-through text-gray-400' : ''}>{it.product_name}</span>
+                  {it.returned && <span className="ml-1 text-[10px] text-red-500">returned</span>}
+                  <div className="text-[10px] text-gray-400 font-mono">{it.code}</div>
+                </td>
+                <td className={`py-1 text-right ${it.returned ? 'line-through text-gray-400' : ''}`}>{money(it.unit_price)}</td>
               </tr>
             ))}
           </tbody>
@@ -57,7 +61,18 @@ export default function BillReceipt({ bill, onClose }) {
           {Number(bill.discount_amount) > 0 && <Row label={`Discount${bill.discount_type === 'percent' ? ` (${bill.discount_value}%)` : ''}`} value={`− ${money(bill.discount_amount)}`} />}
           {Number(bill.tax_amount) > 0 && <Row label={`Tax (${bill.tax_rate}%)`} value={money(bill.tax_amount)} />}
           <div className="flex justify-between border-t border-gray-300 pt-1 font-bold text-base"><span>Total</span><span>{money(bill.total)}</span></div>
+          {Number(bill.credit_used) > 0 && (
+            <>
+              <Row label="Store credit" value={`− ${money(bill.credit_used)}`} />
+              <Row label="Paid" value={money(Number(bill.total) - Number(bill.credit_used))} />
+            </>
+          )}
           <div className="text-xs text-gray-500 pt-1">Paid via {bill.payment_mode?.toUpperCase()}</div>
+          {bill.returns?.map(r => (
+            <div key={r.id} className="text-xs text-red-500">
+              {r.number}: {money(r.amount)} {r.mode === 'credit' ? 'to store credit' : `refunded via ${r.payment_mode}`}
+            </div>
+          ))}
         </div>
         <div className="text-center text-xs text-gray-400 mt-6">Thank you!</div>
       </div>

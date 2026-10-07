@@ -25,7 +25,7 @@ export default function PrintBarcodes({ items, title = 'Barcodes', onClose }) {
       </div>
       <div className="print-root p-6 flex flex-wrap gap-4 content-start">
         {items.map(it => (
-          <BarcodeLabel key={it.id ?? it.code} full code={it.code} product_name={it.product_name} price={it.price} />
+          <BarcodeLabel key={it.id ?? it.code} full code={it.code} product_name={it.product_name} color_name={it.color_name} size_name={it.size_name} price={it.price} />
         ))}
       </div>
     </div>,

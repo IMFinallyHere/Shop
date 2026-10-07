@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { lookupStockItem } from '../api/inventory'
+import { variantLabel } from '../utils/variant'
 import { lookupCustomers } from '../api/customers'
-import { checkout } from '../api/billing'
+import { checkout, getStoreCredit } from '../api/billing'
 import { getShopSettings, getPaymentMethods } from '../api/shopsettings'
 import BillReceipt from '../components/billing/BillReceipt'
 import ErrorAlert from '../components/common/ErrorAlert'
@@ -20,6 +21,8 @@ export default function POSPage() {
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [receipt, setReceipt] = useState(null)
+  const [creditBalance, setCreditBalance] = useState(0)   // this shop's store credit for the phone
+  const [creditUse, setCreditUse] = useState('')
   const scanRef = useRef(null)
 
   useEffect(() => {
@@ -38,8 +41,10 @@ export default function POSPage() {
     else if (discountType === 'percent') discount = subtotal * Number(discountValue || 0) / 100
     const taxable = subtotal - discount
     const tax = taxable * Number(taxRate || 0) / 100
-    return { subtotal, discount, tax, total: taxable + tax }
-  }, [cart, discountType, discountValue, taxRate])
+    const total = Math.round((taxable + tax) * 100) / 100
+    const credit = Math.min(Number(creditUse || 0), creditBalance, total)
+    return { subtotal, discount, tax, total, credit, toPay: total - credit }
+  }, [cart, discountType, discountValue, taxRate, creditUse, creditBalance])
 
   const focusScan = () => setTimeout(() => scanRef.current?.focus(), 0)
 
@@ -53,7 +58,7 @@ export default function POSPage() {
     setError('')
     try {
       const { data } = await lookupStockItem(code)
-      setCart(c => [...c, { code: data.code, product_name: data.product_name, unit_price: data.price }])
+      setCart(c => [...c, { code: data.code, product_name: data.product_name, variant: variantLabel(data), unit_price: data.price }])
     } catch (err) {
       setError(err.response?.data?.detail || `Unknown code: ${code}`)
     }
@@ -63,7 +68,10 @@ export default function POSPage() {
   const removeLine = (code) => setCart(c => c.filter(l => l.code !== code))
 
   const handlePhoneBlur = async () => {
-    if (!customer.phone || customer.name) return
+    setCreditBalance(0); setCreditUse('')
+    if (customer.phone.length !== 10) return
+    getStoreCredit(customer.phone).then(r => setCreditBalance(Number(r.data.balance))).catch(() => {})
+    if (customer.name) return
     try {
       const { data } = await lookupCustomers(customer.phone)
       const match = data.find(c => c.phone === customer.phone) || data[0]
@@ -71,22 +79,28 @@ export default function POSPage() {
     } catch { /* ignore */ }
   }
 
+  const customerReady = customer.phone.length === 10 && customer.name.trim().length > 0
+
   const handleCheckout = async () => {
     if (cart.length === 0) return
+    if (!customerReady) { setError('Customer name and a 10-digit phone are required.'); return }
     setSaving(true); setError('')
     try {
       const { data } = await checkout({
         codes: cart.map(l => l.code),
-        customer: { name: customer.name, phone: customer.phone },
+        customer: { name: customer.name.trim(), phone: customer.phone },
         discount_type: discountType,
         discount_value: discountValue || 0,
         payment_mode: paymentMode,
+        credit_used: totals.credit.toFixed(2),
       })
       setReceipt(data)
       setCart([]); setCustomer({ name: '', phone: '' })
       setDiscountType('none'); setDiscountValue('')
+      setCreditBalance(0); setCreditUse('')
     } catch (e) {
-      setError(e.response?.data?.codes || e.response?.data?.detail || 'Checkout failed.')
+      const d = e.response?.data
+      setError(d?.codes || d?.customer?.phone?.[0] || d?.customer?.name?.[0] || d?.customer?.[0] || d?.credit_used || d?.detail || 'Checkout failed.')
     } finally { setSaving(false) }
   }
 
@@ -113,7 +127,10 @@ export default function POSPage() {
                 {cart.length === 0 && <tr><td colSpan={4} className="px-4 py-10 text-center text-gray-400">Scan items to start a bill</td></tr>}
                 {cart.map(l => (
                   <tr key={l.code}>
-                    <td className="px-4 py-2 text-gray-800">{l.product_name}</td>
+                    <td className="px-4 py-2 text-gray-800">
+                      {l.product_name}
+                      {l.variant && <div className="text-xs text-gray-400">{l.variant}</div>}
+                    </td>
                     <td className="px-4 py-2 font-mono text-xs text-gray-500">{l.code}</td>
                     <td className="px-4 py-2 text-gray-700">{money(l.unit_price)}</td>
                     <td className="px-4 py-2 text-right"><button onClick={() => removeLine(l.code)} className="text-xs text-red-500 hover:text-red-700">Remove</button></td>
@@ -127,12 +144,26 @@ export default function POSPage() {
         {/* Checkout panel */}
         <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4 h-fit">
           <div>
-            <div className="text-sm font-semibold text-gray-700 mb-2">Customer (optional)</div>
-            <input value={customer.phone} onChange={e => setCustomer({ ...customer, phone: e.target.value })} onBlur={handlePhoneBlur}
-              placeholder="Phone" className="w-full mb-2 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+            <div className="text-sm font-semibold text-gray-700 mb-2">Customer <span className="text-red-500">*</span></div>
+            <input value={customer.phone} onBlur={handlePhoneBlur}
+              onChange={e => { setCustomer({ ...customer, phone: e.target.value.replace(/\D/g, '').slice(0, 10) }); setCreditBalance(0); setCreditUse('') }}
+              type="tel" inputMode="numeric" pattern="[0-9]{10}" maxLength={10} autoComplete="off"
+              required placeholder="Phone *" className="w-full mb-2 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
             <input value={customer.name} onChange={e => setCustomer({ ...customer, name: e.target.value })}
-              placeholder="Name" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+              required placeholder="Name *" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
           </div>
+
+          {creditBalance > 0 && (
+            <div>
+              <div className="text-sm font-semibold text-gray-700 mb-2">Store credit <span className="font-normal text-gray-500">({money(creditBalance)} available)</span></div>
+              <div className="flex gap-2">
+                <input type="number" min="0" max={creditBalance} value={creditUse} onChange={e => setCreditUse(e.target.value)}
+                  placeholder="0" className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                <button type="button" onClick={() => setCreditUse(String(Math.min(creditBalance, totals.total)))}
+                  className="px-3 py-2 rounded-lg border border-gray-300 text-xs text-gray-700 hover:bg-gray-50">Use max</button>
+              </div>
+            </div>
+          )}
 
           <div>
             <div className="text-sm font-semibold text-gray-700 mb-2">Discount</div>
@@ -161,12 +192,21 @@ export default function POSPage() {
             {totals.discount > 0 && <Row label="Discount" value={`− ${money(totals.discount)}`} />}
             {totals.tax > 0 && <Row label="Tax" value={money(totals.tax)} />}
             <div className="flex justify-between font-bold text-base pt-1"><span>Total</span><span>{money(totals.total)}</span></div>
+            {totals.credit > 0 && (
+              <>
+                <Row label="Store credit" value={`− ${money(totals.credit)}`} />
+                <div className="flex justify-between font-bold text-base"><span>To pay</span><span>{money(totals.toPay)}</span></div>
+              </>
+            )}
           </div>
 
-          <button onClick={handleCheckout} disabled={saving || cart.length === 0 || !paymentMode}
+          <button onClick={handleCheckout} disabled={saving || cart.length === 0 || !paymentMode || !customerReady}
             className="w-full bg-indigo-600 text-white rounded-lg py-3 text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">
-            {saving ? 'Processing…' : `Checkout · ${money(totals.total)}`}
+            {saving ? 'Processing…' : `Checkout · ${money(totals.toPay)}`}
           </button>
+          {cart.length > 0 && !customerReady && (
+            <p className="text-xs text-gray-400 text-center">Enter the customer's 10-digit phone and name to check out.</p>
+          )}
         </div>
       </div>
 

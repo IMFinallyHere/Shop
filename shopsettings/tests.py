@@ -64,3 +64,28 @@ class ShopSettingsTestCase(TestCase):
         active = a.get("/api/payment-methods/?active=1", HTTP_HOST="acme.localhost").data
         active_names = {m["name"] for m in (active.get("results", active) if isinstance(active, dict) else active)}
         self.assertNotIn("Paytm", active_names)
+
+    def test_sizes_seed_in_order_and_are_per_shop(self):
+        a = self.client_for("acme.localhost", "acme@test.com")
+        b = self.client_for("bella.localhost", "bella@test.com")
+        names = [s["name"] for s in a.get("/api/sizes/", HTTP_HOST="acme.localhost").data]
+        self.assertEqual(names[:4], ["XS", "S", "M", "L"])
+        created = a.post("/api/sizes/", {"name": " 4XL "}, format="json", HTTP_HOST="acme.localhost")
+        self.assertEqual(created.status_code, 201, created.data)
+        self.assertEqual(created.data["name"], "4XL")
+        self.assertEqual(created.data["position"], len(names))  # appended at the end
+        dupe = a.post("/api/sizes/", {"name": "xl"}, format="json", HTTP_HOST="acme.localhost")
+        self.assertEqual(dupe.status_code, 400)  # case-insensitive duplicate of XL
+        self.assertNotIn("4XL", [s["name"] for s in b.get("/api/sizes/", HTTP_HOST="bella.localhost").data])
+
+    def test_colors_crud_hex_and_active_filter(self):
+        a = self.client_for("acme.localhost", "acme@test.com")
+        self.assertEqual(a.get("/api/colors/", HTTP_HOST="acme.localhost").data, [])  # no seed
+        bad = a.post("/api/colors/", {"name": "Teal", "hex": "teal"}, format="json", HTTP_HOST="acme.localhost")
+        self.assertEqual(bad.status_code, 400)
+        teal = a.post("/api/colors/", {"name": "Teal", "hex": "#008080"}, format="json", HTTP_HOST="acme.localhost")
+        self.assertEqual(teal.status_code, 201, teal.data)
+        a.patch(f"/api/colors/{teal.data['id']}/", {"is_active": False}, format="json", HTTP_HOST="acme.localhost")
+        self.assertEqual(a.get("/api/colors/?active=1", HTTP_HOST="acme.localhost").data, [])
+        # Unused colors can be deleted.
+        self.assertEqual(a.delete(f"/api/colors/{teal.data['id']}/", HTTP_HOST="acme.localhost").status_code, 204)

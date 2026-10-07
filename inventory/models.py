@@ -37,7 +37,7 @@ class Seller(models.Model):
 
 
 class Product(models.Model):
-    """A cloth product. Physical units live in :class:`StockItem`."""
+    """A cloth product (e.g. "Kurti A"). Color/size live on :class:`ProductVariant`."""
 
     name = models.CharField(max_length=150)
     sku = models.CharField(max_length=64, blank=True, help_text="Optional manufacturer code")
@@ -48,11 +48,6 @@ class Product(models.Model):
         Seller, null=True, blank=True, on_delete=models.SET_NULL, related_name="products"
     )
     fabric_type = models.CharField(max_length=80, blank=True)
-    color = models.CharField(max_length=50, blank=True)
-    size = models.CharField(max_length=30, blank=True)
-    cost_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    low_stock_threshold = models.PositiveIntegerField(default=5)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -65,31 +60,83 @@ class Product(models.Model):
         return self.name
 
 
+class ProductVariant(models.Model):
+    """A color + size of a product; stock is counted per variant.
+
+    Color and size reference the shop's lists in Settings, so renaming one there
+    updates every variant (bills keep the name snapshotted at sale time).
+    """
+
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="variants")
+    # PROTECT: a color/size in use can only be deactivated, not deleted.
+    color = models.ForeignKey(
+        "shopsettings.Color", null=True, blank=True, on_delete=models.PROTECT, related_name="variants"
+    )
+    size = models.ForeignKey(
+        "shopsettings.Size", null=True, blank=True, on_delete=models.PROTECT, related_name="variants"
+    )
+    low_stock_threshold = models.PositiveIntegerField(default=5)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["color__position", "color__name", "size__position", "size__name"]
+        constraints = [
+            # nulls_distinct=False: only one "no color" + "M" variant per product.
+            models.UniqueConstraint(
+                fields=["product", "color", "size"], name="uniq_variant_per_product", nulls_distinct=False
+            ),
+        ]
+
+    @property
+    def label(self):
+        return " / ".join(v.name for v in (self.color, self.size) if v)
+
+    def __str__(self):
+        return f"{self.product.name} — {self.label}" if self.label else self.product.name
+
+
+class StockBatch(models.Model):
+    """Units of one variant added together, with their own cost and selling price."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    variant = models.ForeignKey(ProductVariant, on_delete=models.CASCADE, related_name="batches")
+    cost_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    quantity = models.PositiveIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.variant} × {self.quantity} @ {self.price}"
+
+
 def generate_stock_code():
-    """A short, unique barcode value (encoded by both the Code128 and QR labels)."""
+    """A short, unique barcode value (encoded by the Code128 label)."""
     return uuid.uuid4().hex[:12].upper()
 
 
 class StockItem(models.Model):
-    """A single physical unit of a product, with its own barcode."""
+    """A single physical unit of a variant, with its own barcode; priced by its batch."""
 
     IN_STOCK = "in_stock"
     SOLD = "sold"
     REMOVED = "removed"
     STATUS_CHOICES = [(IN_STOCK, "In stock"), (SOLD, "Sold"), (REMOVED, "Removed")]
 
-    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="stock_items")
+    variant = models.ForeignKey(ProductVariant, on_delete=models.CASCADE, related_name="stock_items")
+    batch = models.ForeignKey(StockBatch, on_delete=models.CASCADE, related_name="items")
     code = models.CharField(max_length=32, unique=True, editable=False)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=IN_STOCK)
-    batch = models.UUIDField(db_index=True, help_text="Groups units added together")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["-created_at"]
         indexes = [
             # Serves the IN_STOCK_COUNT annotation and product/status filtering;
-            # the leftmost-prefix also covers product-only lookups.
-            models.Index(fields=["product", "status"]),
+            # the leftmost-prefix also covers variant-only lookups.
+            models.Index(fields=["variant", "status"]),
             models.Index(fields=["-created_at"]),
         ]
 

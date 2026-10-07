@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { getBills, getBill } from '../api/billing'
 import BillReceipt from '../components/billing/BillReceipt'
 import SearchInput from '../components/common/SearchInput'
@@ -16,6 +17,7 @@ export default function SalesPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [receipt, setReceipt] = useState(null)
+  const navigate = useNavigate()
 
   useEffect(() => { fetch() }, [page, search])
 
@@ -52,8 +54,16 @@ export default function SalesPage() {
                   <td className="px-4 py-3 text-gray-600">{b.customer_name || '—'}</td>
                   <td className="px-4 py-3 text-gray-600">{b.items?.length ?? '—'}</td>
                   <td className="px-4 py-3 text-gray-600">{b.payment_mode?.toUpperCase()}</td>
-                  <td className="px-4 py-3 text-gray-800">{money(b.total)}</td>
-                  <td className="px-4 py-3"><button onClick={() => openReceipt(b.id)} className="text-xs font-medium text-indigo-600 hover:text-indigo-800">View / Print</button></td>
+                  <td className="px-4 py-3 text-gray-800">
+                    {money(b.total)}
+                    <ReturnBadge bill={b} />
+                  </td>
+                  <td className="px-4 py-3 space-x-3 whitespace-nowrap">
+                    <button onClick={() => openReceipt(b.id)} className="text-xs font-medium text-indigo-600 hover:text-indigo-800">View / Print</button>
+                    {b.items?.some(i => !i.returned) && (
+                      <button onClick={() => navigate(`/returns?bill=${b.id}`)} className="text-xs font-medium text-amber-600 hover:text-amber-800">Return</button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -71,5 +81,16 @@ export default function SalesPage() {
 
       <BillReceipt bill={receipt} onClose={() => setReceipt(null)} />
     </div>
+  )
+}
+
+function ReturnBadge({ bill }) {
+  const refunded = Number(bill.refunded_total || 0)
+  if (refunded <= 0) return null
+  const full = bill.items?.every(i => i.returned)
+  return (
+    <span className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-medium ${full ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+      {full ? 'Returned' : 'Partly returned'}
+    </span>
   )
 }

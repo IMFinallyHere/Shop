@@ -1,5 +1,4 @@
 import JsBarcode from 'jsbarcode'
-import QRCode from 'qrcode'
 
 // Render a Code128 1D barcode into a <canvas>.
 export function drawCode128(canvas, code, opts = {}) {
@@ -7,11 +6,6 @@ export function drawCode128(canvas, code, opts = {}) {
     format: 'CODE128', displayValue: true, fontSize: 12,
     width: opts.width ?? 1.6, height: opts.height ?? 44, margin: 4,
   })
-}
-
-// Render a QR code into a <canvas> (async).
-export function drawQR(canvas, code, size = 96) {
-  return QRCode.toCanvas(canvas, code, { width: size, margin: 1 })
 }
 
 function triggerDownload(canvas, filename) {
@@ -46,11 +40,4 @@ export function downloadCode128({ code, product_name, price }) {
   const bc = document.createElement('canvas')
   drawCode128(bc, code, { width: 1.9, height: 70 })
   triggerDownload(labelCard(bc, { product_name, price }), `barcode-${code}.png`)
-}
-
-// Download just the QR code (with name/price header) as a PNG.
-export async function downloadQR({ code, product_name, price }) {
-  const qr = document.createElement('canvas')
-  await drawQR(qr, code, 220)
-  triggerDownload(labelCard(qr, { product_name, price }), `qr-${code}.png`)
 }

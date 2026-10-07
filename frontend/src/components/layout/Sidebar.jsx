@@ -8,6 +8,7 @@ const links = [
   { to: '/sellers', label: 'Sellers', icon: '🚚' },
   { to: '/pos', label: 'Billing (POS)', icon: '🧾' },
   { to: '/sales', label: 'Sales', icon: '💰' },
+  { to: '/returns', label: 'Returns', icon: '↩️' },
   { to: '/customers', label: 'Customers', icon: '🙋' },
   { to: '/settings', label: 'Settings', icon: '⚙️' },
   { to: '/users', label: 'Users', icon: '👥' },

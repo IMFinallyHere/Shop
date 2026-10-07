@@ -1,19 +1,23 @@
 import { useEffect, useState } from 'react'
 import {
   getProducts, createProduct, updateProduct, deleteProduct, addStock,
-  getCategories, getSellers,
+  updateVariant, deleteVariant, getCategories, getSellers,
 } from '../api/inventory'
+import { getColors, getSizes } from '../api/shopsettings'
 import ActionMenu from '../components/common/ActionMenu'
 import Modal from '../components/common/Modal'
 import ConfirmDialog from '../components/common/ConfirmDialog'
 import ProductForm from '../components/forms/ProductForm'
 import PrintBarcodes from '../components/inventory/PrintBarcodes'
+import AddStockLines from '../components/inventory/AddStockLines'
+import VariantList from '../components/inventory/VariantList'
 import SearchInput from '../components/common/SearchInput'
 import Spinner from '../components/common/Spinner'
 import ErrorAlert from '../components/common/ErrorAlert'
+import { EMPTY_LINE, variantLabel } from '../utils/variant'
 
-const EMPTY = { name: '', sku: '', category: '', seller: '', fabric_type: '', color: '', size: '', cost_price: '', price: '', low_stock_threshold: 5 }
-const KNOWN = ['name', 'sku', 'category', 'seller', 'fabric_type', 'color', 'size', 'cost_price', 'price', 'low_stock_threshold']
+const EMPTY = { name: '', sku: '', category: '', seller: '', fabric_type: '' }
+const KNOWN = ['name', 'sku', 'category', 'seller', 'fabric_type']
 
 export default function ProductsPage() {
   const [products, setProducts] = useState([])
@@ -30,7 +34,10 @@ export default function ProductsPage() {
   const [formData, setFormData] = useState(EMPTY)
   const [categories, setCategories] = useState([])
   const [sellers, setSellers] = useState([])
-  const [addQty, setAddQty] = useState('')
+  const [lines, setLines] = useState([{ ...EMPTY_LINE }])
+  const [lineErrors, setLineErrors] = useState([])
+  const [colors, setColors] = useState([])
+  const [sizes, setSizes] = useState([])
   const [printItems, setPrintItems] = useState(null)
 
   const PAGE_SIZE = 20
@@ -62,11 +69,17 @@ export default function ProductsPage() {
   const openCreate = () => { setFormData({ ...EMPTY }); setFieldErrors({}); setModal('create') }
   const openEdit = (p) => {
     setSelected(p)
-    setFormData({ name: p.name, sku: p.sku, category: p.category ?? '', seller: p.seller ?? '', fabric_type: p.fabric_type, color: p.color, size: p.size, cost_price: p.cost_price, price: p.price, low_stock_threshold: p.low_stock_threshold })
+    setFormData({ name: p.name, sku: p.sku, category: p.category ?? '', seller: p.seller ?? '', fabric_type: p.fabric_type })
     setFieldErrors({}); setModal('edit')
   }
   const openDelete = (p) => { setSelected(p); setModal('delete') }
-  const openAddStock = (p) => { setSelected(p); setAddQty(''); setError(''); setModal('addstock') }
+  const openAddStock = (p) => {
+    setSelected(p); setLines([{ ...EMPTY_LINE }]); setLineErrors([]); setError(''); setModal('addstock')
+    // Fetched on open so colors/sizes just added in Settings show up.
+    getColors({ active: 1 }).then(r => setColors(r.data)).catch(() => setError('Failed to load colors.'))
+    getSizes({ active: 1 }).then(r => setSizes(r.data)).catch(() => setError('Failed to load sizes.'))
+  }
+  const openVariants = (p) => { setSelected(p); setError(''); setModal('variants') }
   const closeModal = () => { setModal(null); setSelected(null); setError(''); setFieldErrors({}) }
 
   const parseErrors = (resp) => {
@@ -99,19 +112,52 @@ export default function ProductsPage() {
   }
 
   const handleAddStock = async () => {
-    setSaving(true); setError('')
+    setSaving(true); setError(''); setLineErrors([])
     try {
-      const { data } = await addStock(selected.id, parseInt(addQty, 10))
+      const payload = lines.map(l => ({ ...l, color: l.color || null, size: l.size || null }))
+      const { data } = await addStock(selected.id, payload)
       fetchProducts(); closeModal()
-      setPrintItems(data.items)  // open the print view for the new batch
+      setPrintItems(data.items)  // open the print view for everything just added
     } catch (e) {
-      const q = e.response?.data?.quantity
-      setError((Array.isArray(q) ? q[0] : q) || e.response?.data?.detail || 'Failed to add stock.')
+      const errs = e.response?.data?.lines
+      if (Array.isArray(errs) && typeof errs[0] === 'object') {
+        // Per-line field errors: [{ quantity: ['…'] }, {}, …]
+        setLineErrors(errs.map(le => Object.fromEntries(Object.entries(le || {}).map(([k, v]) => [k, Array.isArray(v) ? v[0] : v]))))
+      } else {
+        setError((Array.isArray(errs) ? errs[0] : errs) || e.response?.data?.detail || 'Failed to add stock.')
+      }
     } finally { setSaving(false) }
   }
 
+  // Refresh the list and keep the open Variants modal in sync.
+  const refreshSelected = async () => {
+    const r = await getProducts({ page, search, ...(lowOnly ? { low_stock: 1 } : {}) })
+    const list = r.data.results ?? r.data
+    setProducts(list); setCount(r.data.count ?? 0)
+    const fresh = list.find(p => p.id === selected?.id)
+    if (fresh) setSelected(fresh)
+  }
+
+  const handleThreshold = async (v, value) => {
+    try { await updateVariant(v.id, { low_stock_threshold: value }); await refreshSelected() }
+    catch (e) { setError(e.response?.data?.low_stock_threshold?.[0] || 'Failed to update threshold.') }
+  }
+
+  const handleDeleteVariant = async (v) => {
+    setError('')
+    try {
+      await deleteVariant(v.id)
+      await refreshSelected()
+      setSelected(s => s && { ...s, variants: s.variants.filter(x => x.id !== v.id) })
+    } catch (e) { setError(e.response?.data?.detail || 'Failed to delete variant.') }
+  }
+
+  const linesValid = lines.length > 0 && lines.every(l => Number(l.quantity) >= 1 && l.cost_price !== '' && l.price !== '')
+
   const totalPages = Math.ceil(count / PAGE_SIZE)
   const money = (v) => `₹${Number(v).toLocaleString('en-IN')}`
+  const priceRange = (p) => p.price_min == null ? '—'
+    : p.price_min === p.price_max ? money(p.price_min) : `${money(p.price_min)} – ${money(p.price_max)}`
 
   return (
     <div>
@@ -146,11 +192,15 @@ export default function ProductsPage() {
                 <tr key={p.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3">
                     <div className="font-medium text-gray-800">{p.name}</div>
-                    <div className="text-xs text-gray-400">{[p.color, p.size, p.fabric_type].filter(Boolean).join(' · ') || p.sku || '—'}</div>
+                    <div className="text-xs text-gray-400">
+                      {p.variants.length
+                        ? p.variants.map(v => `${variantLabel(v) || 'Default'} · ${v.stock_quantity}`).join(', ')
+                        : (p.fabric_type || p.sku || 'No stock yet')}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-gray-600">{p.category_name || '—'}</td>
                   <td className="px-4 py-3 text-gray-600">{p.seller_name || '—'}</td>
-                  <td className="px-4 py-3 text-gray-700">{money(p.price)}</td>
+                  <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{priceRange(p)}</td>
                   <td className="px-4 py-3">
                     <span className={`text-xs px-2 py-0.5 rounded-full ${p.is_low_stock ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
                       {p.stock_quantity}{p.is_low_stock ? ' · low' : ''}
@@ -159,6 +209,7 @@ export default function ProductsPage() {
                   <td className="px-4 py-3">
                     <ActionMenu actions={[
                       { label: 'Add Stock', icon: '📦', onClick: () => openAddStock(p) },
+                      { label: 'Variants', icon: '🎨', onClick: () => openVariants(p) },
                       { label: 'Edit', icon: '✏️', onClick: () => openEdit(p) },
                       { label: 'Delete', icon: '🗑️', onClick: () => openDelete(p), variant: 'danger' },
                     ]} />
@@ -196,19 +247,21 @@ export default function ProductsPage() {
         </div>
       </Modal>
 
-      <Modal isOpen={modal === 'addstock'} onClose={closeModal} title={`Add Stock — ${selected?.name}`} size="sm">
+      <Modal isOpen={modal === 'addstock'} onClose={closeModal} title={`Add Stock — ${selected?.name}`} size="xl">
         <ErrorAlert message={error} />
         <p className="text-sm text-gray-500 mb-3">
-          Current units in stock: <span className="font-medium text-gray-800">{selected?.stock_quantity}</span>.
-          Each unit added gets its own barcode; you can print them next.
+          One line per color/size. Each line is priced separately, and every unit gets its own barcode; you can print them next.
         </p>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Quantity to add</label>
-        <input type="number" min="1" autoFocus value={addQty} onChange={e => setAddQty(e.target.value)} placeholder="e.g. 5"
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+        <AddStockLines lines={lines} onChange={setLines} variants={selected?.variants ?? []} colors={colors} sizes={sizes} errors={lineErrors} />
         <div className="flex justify-end gap-3 mt-6">
           <button onClick={closeModal} className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm">Cancel</button>
-          <button onClick={handleAddStock} disabled={saving || !addQty || Number(addQty) < 1} className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 text-sm">{saving ? 'Adding…' : 'Add & print'}</button>
+          <button onClick={handleAddStock} disabled={saving || !linesValid} className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 text-sm">{saving ? 'Adding…' : 'Add & print'}</button>
         </div>
+      </Modal>
+
+      <Modal isOpen={modal === 'variants'} onClose={closeModal} title={`Variants — ${selected?.name}`} size="lg">
+        <ErrorAlert message={error} onDismiss={() => setError('')} />
+        <VariantList variants={selected?.variants ?? []} onThreshold={handleThreshold} onDelete={handleDeleteVariant} />
       </Modal>
 
       <ConfirmDialog isOpen={modal === 'delete'} onClose={closeModal} onConfirm={handleDelete} loading={saving}

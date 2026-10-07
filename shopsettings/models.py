@@ -1,6 +1,7 @@
 from django.db import models
 
 DEFAULT_PAYMENT_METHODS = ["Cash", "UPI", "Card"]
+DEFAULT_SIZES = ["XS", "S", "M", "L", "XL", "XXL", "XXXL", "Free Size"]
 
 
 class ShopSettings(models.Model):
@@ -38,3 +39,38 @@ def ensure_payment_methods():
         PaymentMethod.objects.bulk_create(
             [PaymentMethod(name=n, position=i) for i, n in enumerate(DEFAULT_PAYMENT_METHODS)]
         )
+
+
+class Size(models.Model):
+    """A size the shop stocks (e.g. M, XL); product variants reference these."""
+
+    name = models.CharField(max_length=30, unique=True)
+    is_active = models.BooleanField(default=True)
+    position = models.PositiveIntegerField(default=0, help_text="Display order (S before M)")
+
+    class Meta:
+        ordering = ["position", "name"]
+
+    def __str__(self):
+        return self.name
+
+
+class Color(models.Model):
+    """A color the shop stocks; product variants reference these."""
+
+    name = models.CharField(max_length=50, unique=True)
+    hex = models.CharField(max_length=7, blank=True, help_text="Optional swatch, e.g. #000000")
+    is_active = models.BooleanField(default=True)
+    position = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["position", "name"]
+
+    def __str__(self):
+        return self.name
+
+
+def ensure_sizes():
+    """Seed common clothing sizes the first time a shop touches its size list."""
+    if not Size.objects.exists():
+        Size.objects.bulk_create([Size(name=n, position=i) for i, n in enumerate(DEFAULT_SIZES)])
