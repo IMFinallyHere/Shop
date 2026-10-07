@@ -12,28 +12,29 @@ const niceMax = (v) => {
   return [1, 2, 2.5, 5, 10].map(m => m * p).find(m => m >= v)
 }
 
-// Single-series column chart of the last 7 days' sales. Today's column is labeled;
+// Single-series column chart of the last 7 days' sales. It fills its parent's height
+// (min 200px), so it lines up with whatever sits beside it. Today's column is labeled;
 // every column has a hover tooltip; an sr-only table carries the numbers.
 export default function SalesChart({ days }) {
   const [hover, setHover] = useState(null)
   const max = niceMax(Math.max(...days.map(d => Number(d.total))))
-  const H = 160
+  const pct = (d) => (Number(d.total) / max) * 100
 
   return (
-    <div>
-      <div className="relative flex" style={{ height: H + 24 }}>
+    <div className="flex min-h-[200px] flex-1 flex-col">
+      <div className="flex flex-1">
         {/* y-axis: 0 and max, recessive */}
-        <div className="flex w-14 shrink-0 flex-col justify-between pb-6 pr-2 text-right text-[11px] tabular-nums text-zinc-400">
-          <span className="-translate-y-1/2">{moneyShort(max)}</span>
-          <span className="translate-y-1/2">₹0</span>
+        <div className="relative w-14 shrink-0 text-right text-[11px] tabular-nums text-zinc-400">
+          <span className="absolute right-2 top-0 -translate-y-1/2">{moneyShort(max)}</span>
+          <span className="absolute bottom-0 right-2 translate-y-1/2">₹0</span>
         </div>
         <div className="relative flex-1">
           <div className="absolute inset-x-0 top-0 border-t border-zinc-100" />
           <div className="absolute inset-x-0 top-1/2 border-t border-zinc-100" />
-          <div className="absolute inset-x-0 border-t border-zinc-200" style={{ top: H }} />
-          <div className="absolute inset-x-0 top-0 flex" style={{ height: H }}>
+          <div className="absolute inset-x-0 bottom-0 border-t border-zinc-200" />
+          <div className="absolute inset-0 flex">
             {days.map((d, i) => {
-              const h = Math.max((Number(d.total) / max) * H, Number(d.total) > 0 ? 3 : 0)
+              const h = pct(d)
               const isToday = i === days.length - 1
               return (
                 <div
@@ -42,17 +43,18 @@ export default function SalesChart({ days }) {
                   onMouseEnter={() => setHover(i)}
                   onMouseLeave={() => setHover(null)}
                 >
-                  {isToday && Number(d.total) > 0 && hover == null && (
+                  {isToday && h > 0 && hover == null && (
                     <span className="mb-1 text-[11px] font-medium tabular-nums text-zinc-700">{moneyShort(d.total)}</span>
                   )}
                   <div
-                    className={clsx('w-full max-w-[24px] rounded-t-[4px] transition-colors',
+                    className={clsx('w-full max-w-[24px] shrink-0 rounded-t-[4px] transition-colors',
                       hover === i ? 'bg-brand-600' : isToday ? 'bg-brand-500' : 'bg-brand-500/70')}
-                    style={{ height: h }}
+                    // Keep tiny non-zero days visible.
+                    style={{ height: h > 0 ? `max(${h}%, 3px)` : 0 }}
                   />
                   {hover === i && (
-                    <div className="pointer-events-none absolute bottom-full z-10 mb-2 w-max animate-fade-in rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs shadow-pop"
-                      style={{ bottom: h + 8 }}>
+                    <div className="pointer-events-none absolute z-10 w-max animate-fade-in rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs shadow-pop"
+                      style={{ bottom: `calc(${h}% + 8px)` }}>
                       <div className="text-zinc-500">{fullDate(d.date)}</div>
                       <div className="mt-0.5 font-semibold tabular-nums text-zinc-900">{money(d.total)}</div>
                       <div className="text-zinc-500">{d.count} bill{d.count !== 1 ? 's' : ''}</div>
@@ -62,14 +64,14 @@ export default function SalesChart({ days }) {
               )
             })}
           </div>
-          <div className="absolute inset-x-0 flex" style={{ top: H + 6 }}>
-            {days.map((d, i) => (
-              <span key={d.date} className={clsx('flex-1 text-center text-[11px]', i === days.length - 1 ? 'font-medium text-zinc-700' : 'text-zinc-400')}>
-                {i === days.length - 1 ? 'Today' : dayLabel(d.date)}
-              </span>
-            ))}
-          </div>
         </div>
+      </div>
+      <div className="flex pl-14 pt-1.5">
+        {days.map((d, i) => (
+          <span key={d.date} className={clsx('flex-1 text-center text-[11px]', i === days.length - 1 ? 'font-medium text-zinc-700' : 'text-zinc-400')}>
+            {i === days.length - 1 ? 'Today' : dayLabel(d.date)}
+          </span>
+        ))}
       </div>
       <table className="sr-only">
         <caption>Sales, last 7 days</caption>

@@ -58,10 +58,11 @@ export default function DashboardPage() {
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-5">
-        <Card className="lg:col-span-3">
+        <Card className="flex flex-col lg:col-span-3">
           <CardHeader title="Sales, last 7 days" subtitle={data ? `${money(weekTotal)} total` : ' '} />
-          <div className="px-5 pb-4 pt-6">
-            {data ? <SalesChart days={data.last_7_days} /> : <div className="h-[184px] animate-pulse rounded-lg bg-zinc-50" />}
+          {/* The chart grows to the card's height (set by the Low stock card beside it). */}
+          <div className="flex flex-1 flex-col px-5 pb-4 pt-6">
+            {data ? <SalesChart days={data.last_7_days} /> : <div className="min-h-[200px] flex-1 animate-pulse rounded-lg bg-zinc-50" />}
           </div>
         </Card>
 
