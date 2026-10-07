@@ -292,6 +292,11 @@ Goal: modern, simple, functional, intuitive. Clean light look, one accent (indig
 
 
 ## Demo data seeded in the remote DB (for exploring)
+- **`python manage.py seed_demo <shop>`** (e.g. `acme`) fills a shop through its own API:
+  9 colors, 6 categories, 3 sellers, 12 clothing products (~170 units, alert at ≤2 left),
+  sets tax to 5%, ~30 bills backdated over 14 days for 12 demo customers (phones
+  `98765000xx`), 1 refund + 1 store-credit return. Refuses to run twice on a shop.
+  Seeded on the local Docker DB for **acme** on 2026-10-07.
 - Platform owner (public/`localhost`): `admin@shop.test` / `admin123` — now a
   public-schema superuser; log in on `localhost` → shop picker → **Platform Admin**
   (`/admin`) to see all shops + their members.

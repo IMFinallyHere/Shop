@@ -10,6 +10,7 @@ from tenant_users.tenants.tasks import provision_tenant
 from tenant_users.tenants.utils import create_public_tenant
 
 from accounts.models import User
+from billing.models import Bill, Return
 from customers.models import Customer
 from shopsettings.models import ShopSettings
 from tenants.models import Tenant
@@ -273,3 +274,18 @@ class DashboardTests(BillingTestCase):
         other = b.get("/api/dashboard/", HTTP_HOST="bella.localhost").data
         self.assertEqual(other["today"]["bills"], 0)
         self.assertEqual(other["recent_bills"], [])
+
+
+class SeedDemoTests(BillingTestCase):
+    def test_seed_demo_fills_shop_once(self):
+        from django.core.management import CommandError
+        from inventory.models import ProductVariant
+        call_command("seed_demo", "bella", stdout=open("/dev/null", "w"))
+        with schema_context("bella"):
+            self.assertGreaterEqual(Bill.objects.count(), 20)
+            self.assertEqual(Return.objects.count(), 2)
+            self.assertFalse(ProductVariant.objects.exclude(low_stock_threshold=2).exists())
+            days = {b.created_at.date() for b in Bill.objects.all()}
+            self.assertGreater(len(days), 7)  # backdated across two weeks
+        with self.assertRaises(CommandError):
+            call_command("seed_demo", "bella", stdout=open("/dev/null", "w"))
