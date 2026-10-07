@@ -17,7 +17,7 @@ export default function BarcodeLabel({ code, product_name, color_name, size_name
   }
 
   return (
-    <div className="barcode-label inline-flex flex-col items-center border border-gray-300 rounded-lg p-3 bg-white">
+    <div className="barcode-label inline-flex flex-col items-center rounded-lg border border-zinc-200 bg-white p-3">
       {product_name && <div className="text-sm font-semibold text-gray-800 text-center max-w-[220px] truncate">{product_name}</div>}
       {variantLabel({ color_name, size_name }) && <div className="text-xs text-gray-600">{variantLabel({ color_name, size_name })}</div>}
       {price != null && price !== '' && <div className="text-xs text-gray-500">₹{price}</div>}

@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { Layers, PackagePlus, Pencil, Plus, Shirt, Trash2 } from 'lucide-react'
 import {
   getProducts, createProduct, updateProduct, deleteProduct, addStock,
   updateVariant, deleteVariant, getCategories, getSellers,
 } from '../api/inventory'
 import { getColors, getSizes } from '../api/shopsettings'
+import useQuery, { asList } from '../hooks/useQuery'
 import ActionMenu from '../components/common/ActionMenu'
 import Modal from '../components/common/Modal'
 import ConfirmDialog from '../components/common/ConfirmDialog'
@@ -12,25 +15,31 @@ import PrintBarcodes from '../components/inventory/PrintBarcodes'
 import AddStockLines from '../components/inventory/AddStockLines'
 import VariantList from '../components/inventory/VariantList'
 import SearchInput from '../components/common/SearchInput'
-import Spinner from '../components/common/Spinner'
 import ErrorAlert from '../components/common/ErrorAlert'
+import PageHeader, { Toolbar } from '../components/ui/PageHeader'
+import Button from '../components/ui/Button'
+import Badge, { Swatch } from '../components/ui/Badge'
+import Pagination from '../components/ui/Pagination'
+import SegmentedControl from '../components/ui/SegmentedControl'
+import { Table, Td, Tr } from '../components/ui/Table'
+import { useToast } from '../components/ui/Toast'
 import { EMPTY_LINE, variantLabel } from '../utils/variant'
+import { moneyShort } from '../utils/format'
 
 const EMPTY = { name: '', sku: '', category: '', seller: '', fabric_type: '' }
 const KNOWN = ['name', 'sku', 'category', 'seller', 'fabric_type']
+const PAGE_SIZE = 20
 
 export default function ProductsPage() {
-  const [products, setProducts] = useState([])
-  const [count, setCount] = useState(0)
+  const [params, setParams] = useSearchParams()
+  const lowOnly = params.get('low') === '1'
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
-  const [lowOnly, setLowOnly] = useState(false)
-  const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [fieldErrors, setFieldErrors] = useState({})
   const [modal, setModal] = useState(null)
-  const [selected, setSelected] = useState(null)
+  const [selectedId, setSelectedId] = useState(null)
   const [formData, setFormData] = useState(EMPTY)
   const [categories, setCategories] = useState([])
   const [sellers, setSellers] = useState([])
@@ -39,25 +48,24 @@ export default function ProductsPage() {
   const [colors, setColors] = useState([])
   const [sizes, setSizes] = useState([])
   const [printItems, setPrintItems] = useState(null)
+  const toast = useToast()
 
-  const PAGE_SIZE = 20
+  const { data, loading, error: loadError, reload } = useQuery(
+    () => getProducts({ page, search, ...(lowOnly ? { low_stock: 1 } : {}) }),
+    `${page}|${search}|${lowOnly}`,
+  )
+  const { rows: products, count } = asList(data)
+  // Look the selected product up in the latest list so modals stay in sync after reloads.
+  const [snapshot, setSnapshot] = useState(null)
+  const selected = products.find(p => p.id === selectedId) ?? snapshot
 
   useEffect(() => {
     getCategories().then(r => setCategories(r.data.results ?? r.data))
     getSellers().then(r => setSellers(r.data.results ?? r.data))
   }, [])
 
-  useEffect(() => { fetchProducts() }, [page, search, lowOnly])
-
-  const fetchProducts = () => {
-    setLoading(true)
-    const params = { page, search }
-    if (lowOnly) params.low_stock = 1
-    getProducts(params)
-      .then(r => { setProducts(r.data.results ?? r.data); setCount(r.data.count ?? 0) })
-      .catch(() => setError('Failed to load products.'))
-      .finally(() => setLoading(false))
-  }
+  const setLowOnly = (v) => { setParams(v ? { low: '1' } : {}); setPage(1) }
+  const select = (p) => { setSelectedId(p.id); setSnapshot(p) }
 
   const clean = (d) => {
     const out = { ...d }
@@ -68,19 +76,19 @@ export default function ProductsPage() {
 
   const openCreate = () => { setFormData({ ...EMPTY }); setFieldErrors({}); setModal('create') }
   const openEdit = (p) => {
-    setSelected(p)
+    select(p)
     setFormData({ name: p.name, sku: p.sku, category: p.category ?? '', seller: p.seller ?? '', fabric_type: p.fabric_type })
     setFieldErrors({}); setModal('edit')
   }
-  const openDelete = (p) => { setSelected(p); setModal('delete') }
+  const openDelete = (p) => { select(p); setModal('delete') }
   const openAddStock = (p) => {
-    setSelected(p); setLines([{ ...EMPTY_LINE }]); setLineErrors([]); setError(''); setModal('addstock')
+    select(p); setLines([{ ...EMPTY_LINE }]); setLineErrors([]); setError(''); setModal('addstock')
     // Fetched on open so colors/sizes just added in Settings show up.
     getColors({ active: 1 }).then(r => setColors(r.data)).catch(() => setError('Failed to load colors.'))
     getSizes({ active: 1 }).then(r => setSizes(r.data)).catch(() => setError('Failed to load sizes.'))
   }
-  const openVariants = (p) => { setSelected(p); setError(''); setModal('variants') }
-  const closeModal = () => { setModal(null); setSelected(null); setError(''); setFieldErrors({}) }
+  const openVariants = (p) => { select(p); setError(''); setModal('variants') }
+  const closeModal = () => { setModal(null); setSelectedId(null); setSnapshot(null); setError(''); setFieldErrors({}) }
 
   const parseErrors = (resp) => {
     const fields = {}; let general = ''
@@ -91,9 +99,9 @@ export default function ProductsPage() {
     return { fields, general }
   }
 
-  const save = async (fn) => {
+  const save = async (fn, message) => {
     setSaving(true); setError(''); setFieldErrors({})
-    try { await fn(); fetchProducts(); closeModal() }
+    try { await fn(); reload(); closeModal(); toast(message) }
     catch (e) {
       const { fields, general } = parseErrors(e.response?.data)
       setFieldErrors(fields)
@@ -101,12 +109,12 @@ export default function ProductsPage() {
     } finally { setSaving(false) }
   }
 
-  const handleCreate = () => save(() => createProduct(clean(formData)))
-  const handleEdit = () => save(() => updateProduct(selected.id, clean(formData)))
+  const handleCreate = () => save(() => createProduct(clean(formData)), 'Product created')
+  const handleEdit = () => save(() => updateProduct(selected.id, clean(formData)), 'Product updated')
 
   const handleDelete = async () => {
     setSaving(true)
-    try { await deleteProduct(selected.id); fetchProducts(); closeModal() }
+    try { await deleteProduct(selected.id); reload(); closeModal(); toast('Product deleted') }
     catch (e) { setError(e.response?.data?.detail || 'Failed to delete.') }
     finally { setSaving(false) }
   }
@@ -116,7 +124,8 @@ export default function ProductsPage() {
     try {
       const payload = lines.map(l => ({ ...l, color: l.color || null, size: l.size || null }))
       const { data } = await addStock(selected.id, payload)
-      fetchProducts(); closeModal()
+      reload(); closeModal()
+      toast(`${data.items.length} unit${data.items.length !== 1 ? 's' : ''} added`)
       setPrintItems(data.items)  // open the print view for everything just added
     } catch (e) {
       const errs = e.response?.data?.lines
@@ -129,143 +138,122 @@ export default function ProductsPage() {
     } finally { setSaving(false) }
   }
 
-  // Refresh the list and keep the open Variants modal in sync.
-  const refreshSelected = async () => {
-    const r = await getProducts({ page, search, ...(lowOnly ? { low_stock: 1 } : {}) })
-    const list = r.data.results ?? r.data
-    setProducts(list); setCount(r.data.count ?? 0)
-    const fresh = list.find(p => p.id === selected?.id)
-    if (fresh) setSelected(fresh)
-  }
-
   const handleThreshold = async (v, value) => {
-    try { await updateVariant(v.id, { low_stock_threshold: value }); await refreshSelected() }
+    try { await updateVariant(v.id, { low_stock_threshold: value }); reload() }
     catch (e) { setError(e.response?.data?.low_stock_threshold?.[0] || 'Failed to update threshold.') }
   }
 
   const handleDeleteVariant = async (v) => {
     setError('')
-    try {
-      await deleteVariant(v.id)
-      await refreshSelected()
-      setSelected(s => s && { ...s, variants: s.variants.filter(x => x.id !== v.id) })
-    } catch (e) { setError(e.response?.data?.detail || 'Failed to delete variant.') }
+    try { await deleteVariant(v.id); reload(); toast('Variant deleted') }
+    catch (e) { setError(e.response?.data?.detail || 'Failed to delete variant.') }
   }
 
   const linesValid = lines.length > 0 && lines.every(l => Number(l.quantity) >= 1 && l.cost_price !== '' && l.price !== '')
+  const totalUnits = lines.reduce((s, l) => s + (Number(l.quantity) || 0), 0)
 
-  const totalPages = Math.ceil(count / PAGE_SIZE)
-  const money = (v) => `₹${Number(v).toLocaleString('en-IN')}`
   const priceRange = (p) => p.price_min == null ? '—'
-    : p.price_min === p.price_max ? money(p.price_min) : `${money(p.price_min)} – ${money(p.price_max)}`
+    : p.price_min === p.price_max ? moneyShort(p.price_min) : `${moneyShort(p.price_min)} – ${moneyShort(p.price_max)}`
+
+  const formFooter = (onSave, label) => <>
+    <Button onClick={closeModal}>Cancel</Button>
+    <Button variant="primary" onClick={onSave} loading={saving}>{label}</Button>
+  </>
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Products</h1>
-        <button onClick={openCreate} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">+ New Product</button>
-      </div>
+      <PageHeader title="Products" subtitle="Your catalogue, with stock across all colors and sizes."
+        actions={<Button variant="primary" icon={Plus} onClick={openCreate}>New product</Button>} />
 
-      <div className="mb-4 flex items-center gap-4">
-        <div className="flex-1"><SearchInput value={search} onChange={v => { setSearch(v); setPage(1) }} placeholder="Search products…" /></div>
-        <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer whitespace-nowrap">
-          <input type="checkbox" checked={lowOnly} onChange={e => { setLowOnly(e.target.checked); setPage(1) }} className="w-4 h-4 text-indigo-600" />
-          Low stock only
-        </label>
-      </div>
+      <Toolbar>
+        <SearchInput value={search} onChange={v => { setSearch(v); setPage(1) }} placeholder="Search products…" />
+        <SegmentedControl options={[{ value: false, label: 'All' }, { value: true, label: 'Low stock' }]} value={lowOnly} onChange={setLowOnly} />
+      </Toolbar>
 
-      <ErrorAlert message={error} onDismiss={() => setError('')} />
+      <ErrorAlert message={(!modal && error) || (loadError && 'Failed to load products.')} onDismiss={() => setError('')} />
 
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        {loading ? <Spinner /> : (
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                {['Product', 'Category', 'Seller', 'Price', 'Stock', 'Actions'].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {products.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">No products found</td></tr>}
-              {products.map(p => (
-                <tr key={p.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-gray-800">{p.name}</div>
-                    <div className="text-xs text-gray-400">
-                      {p.variants.length
-                        ? p.variants.map(v => `${variantLabel(v) || 'Default'} · ${v.stock_quantity}`).join(', ')
-                        : (p.fabric_type || p.sku || 'No stock yet')}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">{p.category_name || '—'}</td>
-                  <td className="px-4 py-3 text-gray-600">{p.seller_name || '—'}</td>
-                  <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{priceRange(p)}</td>
-                  <td className="px-4 py-3">
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${p.is_low_stock ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
-                      {p.stock_quantity}{p.is_low_stock ? ' · low' : ''}
+      <Table
+        columns={[{ label: 'Product' }, { label: 'Variants' }, { label: 'Category' }, { label: 'Price' }, { label: 'In stock' }, { label: '', className: 'w-12' }]}
+        loading={loading} isEmpty={products.length === 0}
+        empty={lowOnly
+          ? { icon: Shirt, title: 'Nothing is low on stock', description: 'Every variant is above its low-stock threshold.' }
+          : { icon: Shirt, title: search ? 'No matching products' : 'No products yet', description: search ? 'Try a different search.' : 'Create a product, then add stock to print barcodes.',
+              action: !search && <Button variant="primary" icon={Plus} onClick={openCreate}>New product</Button> }}
+      >
+        {products.map(p => (
+          <Tr key={p.id}>
+            <Td>
+              <div className="font-medium text-zinc-900">{p.name}</div>
+              <div className="text-xs text-zinc-500">{[p.fabric_type, p.sku, p.seller_name].filter(Boolean).join(' · ') || '—'}</div>
+            </Td>
+            <Td>
+              {p.variants.length ? (
+                <div className="flex max-w-xs flex-wrap gap-1">
+                  {p.variants.slice(0, 4).map(v => (
+                    <span key={v.id} className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs ring-1 ring-inset ${v.is_low_stock ? 'bg-amber-50 text-amber-800 ring-amber-200' : 'bg-zinc-50 text-zinc-600 ring-zinc-200'}`}>
+                      <Swatch hex={v.color_hex} className="h-2.5 w-2.5" />
+                      {variantLabel(v) || 'Default'} <span className="tabular-nums text-zinc-400">{v.stock_quantity}</span>
                     </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <ActionMenu actions={[
-                      { label: 'Add Stock', icon: '📦', onClick: () => openAddStock(p) },
-                      { label: 'Variants', icon: '🎨', onClick: () => openVariants(p) },
-                      { label: 'Edit', icon: '✏️', onClick: () => openEdit(p) },
-                      { label: 'Delete', icon: '🗑️', onClick: () => openDelete(p), variant: 'danger' },
-                    ]} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+                  ))}
+                  {p.variants.length > 4 && (
+                    <button onClick={() => openVariants(p)} className="rounded-md px-1.5 py-0.5 text-xs text-brand-600 hover:bg-brand-50">+{p.variants.length - 4} more</button>
+                  )}
+                </div>
+              ) : <span className="text-xs text-zinc-400">No stock yet</span>}
+            </Td>
+            <Td className="text-zinc-500">{p.category_name || '—'}</Td>
+            <Td className="whitespace-nowrap tabular-nums">{priceRange(p)}</Td>
+            <Td>
+              <Badge tone={p.stock_quantity === 0 ? 'danger' : p.is_low_stock ? 'warning' : 'success'} dot>
+                {p.stock_quantity}{p.is_low_stock && p.stock_quantity > 0 ? ' · low' : ''}
+              </Badge>
+            </Td>
+            <Td className="text-right">
+              <div className="flex items-center justify-end gap-1">
+                <Button variant="ghost" size="xs" icon={PackagePlus} onClick={() => openAddStock(p)} className="hidden md:inline-flex">Add stock</Button>
+                <ActionMenu actions={[
+                  { label: 'Add stock', icon: PackagePlus, onClick: () => openAddStock(p) },
+                  { label: 'Variants', icon: Layers, onClick: () => openVariants(p) },
+                  { label: 'Edit', icon: Pencil, onClick: () => openEdit(p) },
+                  { label: 'Delete', icon: Trash2, onClick: () => openDelete(p), variant: 'danger' },
+                ]} />
+              </div>
+            </Td>
+          </Tr>
+        ))}
+      </Table>
+      <Pagination page={page} pageSize={PAGE_SIZE} count={count} onChange={setPage} />
 
-      {totalPages > 1 && (
-        <div className="flex justify-center gap-2 mt-4">
-          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1 rounded border text-sm disabled:opacity-40">Prev</button>
-          <span className="px-3 py-1 text-sm text-gray-600">{page} / {totalPages}</span>
-          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="px-3 py-1 rounded border text-sm disabled:opacity-40">Next</button>
-        </div>
-      )}
-
-      <Modal isOpen={modal === 'create'} onClose={closeModal} title="New Product" size="lg">
+      <Modal isOpen={modal === 'create'} onClose={closeModal} title="New product" size="lg" footer={formFooter(handleCreate, 'Create product')}>
         <ErrorAlert message={error} />
         <ProductForm data={formData} onChange={setFormData} categories={categories} sellers={sellers} errors={fieldErrors} />
-        <div className="flex justify-end gap-3 mt-6">
-          <button onClick={closeModal} className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm">Cancel</button>
-          <button onClick={handleCreate} disabled={saving} className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 text-sm">{saving ? 'Creating…' : 'Create'}</button>
-        </div>
       </Modal>
 
-      <Modal isOpen={modal === 'edit'} onClose={closeModal} title="Edit Product" size="lg">
+      <Modal isOpen={modal === 'edit'} onClose={closeModal} title="Edit product" size="lg" footer={formFooter(handleEdit, 'Save changes')}>
         <ErrorAlert message={error} />
         <ProductForm data={formData} onChange={setFormData} categories={categories} sellers={sellers} errors={fieldErrors} />
-        <div className="flex justify-end gap-3 mt-6">
-          <button onClick={closeModal} className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm">Cancel</button>
-          <button onClick={handleEdit} disabled={saving} className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 text-sm">{saving ? 'Saving…' : 'Save'}</button>
-        </div>
       </Modal>
 
-      <Modal isOpen={modal === 'addstock'} onClose={closeModal} title={`Add Stock — ${selected?.name}`} size="xl">
+      <Modal isOpen={modal === 'addstock'} onClose={closeModal} title={`Add stock · ${selected?.name ?? ''}`} size="2xl"
+        description="One line per color and size. Every unit gets its own barcode — you can print them next."
+        footer={<>
+          <Button onClick={closeModal}>Cancel</Button>
+          <Button variant="primary" icon={PackagePlus} onClick={handleAddStock} loading={saving} disabled={!linesValid}>
+            {totalUnits > 0 ? `Add ${totalUnits} unit${totalUnits !== 1 ? 's' : ''} & print` : 'Add & print'}
+          </Button>
+        </>}>
         <ErrorAlert message={error} />
-        <p className="text-sm text-gray-500 mb-3">
-          One line per color/size. Each line is priced separately, and every unit gets its own barcode; you can print them next.
-        </p>
         <AddStockLines lines={lines} onChange={setLines} variants={selected?.variants ?? []} colors={colors} sizes={sizes} errors={lineErrors} />
-        <div className="flex justify-end gap-3 mt-6">
-          <button onClick={closeModal} className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm">Cancel</button>
-          <button onClick={handleAddStock} disabled={saving || !linesValid} className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 text-sm">{saving ? 'Adding…' : 'Add & print'}</button>
-        </div>
       </Modal>
 
-      <Modal isOpen={modal === 'variants'} onClose={closeModal} title={`Variants — ${selected?.name}`} size="lg">
+      <Modal isOpen={modal === 'variants'} onClose={closeModal} title={`Variants · ${selected?.name ?? ''}`} size="xl"
+        description="Change the low-stock alert level per variant. A variant can be deleted once it has no units.">
         <ErrorAlert message={error} onDismiss={() => setError('')} />
         <VariantList variants={selected?.variants ?? []} onThreshold={handleThreshold} onDelete={handleDeleteVariant} />
       </Modal>
 
       <ConfirmDialog isOpen={modal === 'delete'} onClose={closeModal} onConfirm={handleDelete} loading={saving}
-        title="Delete Product" message={`Delete "${selected?.name}"? This removes the product and all its stock units.`} />
+        title="Delete product" message={`Delete "${selected?.name}"? This removes the product and all its stock units.`} />
 
       <PrintBarcodes items={printItems} title={`New stock — ${printItems?.[0]?.product_name ?? ''}`} onClose={() => setPrintItems(null)} />
     </div>

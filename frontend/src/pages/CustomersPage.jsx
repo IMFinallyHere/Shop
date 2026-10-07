@@ -1,54 +1,47 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { Users } from 'lucide-react'
 import { getCustomers } from '../api/customers'
+import useQuery, { asList } from '../hooks/useQuery'
 import SearchInput from '../components/common/SearchInput'
-import Spinner from '../components/common/Spinner'
 import ErrorAlert from '../components/common/ErrorAlert'
+import PageHeader, { Toolbar } from '../components/ui/PageHeader'
+import Badge from '../components/ui/Badge'
+import { Table, Td, Tr } from '../components/ui/Table'
+import { initials, money } from '../utils/format'
 
 export default function CustomersPage() {
-  const [customers, setCustomers] = useState([])
   const [search, setSearch] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-
-  useEffect(() => { fetch() }, [search])
-
-  const fetch = () => {
-    setLoading(true)
-    getCustomers({ search })
-      .then(r => setCustomers(r.data))
-      .catch(() => setError('Failed to load customers.'))
-      .finally(() => setLoading(false))
-  }
+  const { data, loading, error } = useQuery(() => getCustomers({ search }), search)
+  const customers = asList(data).rows
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-800 mb-6">Customers</h1>
-      <p className="text-sm text-gray-500 mb-4">Customers who have purchased from this shop.</p>
-      <div className="mb-4"><SearchInput value={search} onChange={setSearch} placeholder="Search by name or phone…" /></div>
-      <ErrorAlert message={error} onDismiss={() => setError('')} />
+      <PageHeader title="Customers" subtitle="People who have purchased from this shop." />
+      <Toolbar><SearchInput value={search} onChange={setSearch} placeholder="Search by name or phone…" /></Toolbar>
+      <ErrorAlert message={error && 'Failed to load customers.'} />
 
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        {loading ? <Spinner /> : (
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>{['Name', 'Phone', 'Email', 'Purchases', 'Store credit'].map(h =>
-                <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>)}</tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {customers.length === 0 && <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">No customers yet</td></tr>}
-              {customers.map(c => (
-                <tr key={c.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-medium text-gray-800">{c.name}</td>
-                  <td className="px-4 py-3 text-gray-600">{c.phone}</td>
-                  <td className="px-4 py-3 text-gray-600">{c.email || '—'}</td>
-                  <td className="px-4 py-3 text-gray-600">{c.bill_count}</td>
-                  <td className="px-4 py-3 text-gray-600">{Number(c.credit_balance) > 0 ? `₹${Number(c.credit_balance).toFixed(2)}` : '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+      <Table
+        columns={[{ label: 'Customer' }, { label: 'Phone' }, { label: 'Email' }, { label: 'Purchases' }, { label: 'Store credit', className: 'text-right' }]}
+        loading={loading} isEmpty={customers.length === 0}
+        empty={{ icon: Users, title: search ? 'No matching customers' : 'No customers yet', description: search ? 'Try a different name or number.' : 'Customers are saved automatically when you create a bill.' }}
+      >
+        {customers.map(c => (
+          <Tr key={c.id}>
+            <Td>
+              <div className="flex items-center gap-3">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-xs font-semibold text-zinc-600">{initials(c.name)}</span>
+                <span className="font-medium text-zinc-900">{c.name}</span>
+              </div>
+            </Td>
+            <Td className="tabular-nums">{c.phone}</Td>
+            <Td className="text-zinc-500">{c.email || '—'}</Td>
+            <Td>{c.bill_count}</Td>
+            <Td className="text-right">
+              {Number(c.credit_balance) > 0 ? <Badge tone="success">{money(c.credit_balance)}</Badge> : <span className="text-zinc-400">—</span>}
+            </Td>
+          </Tr>
+        ))}
+      </Table>
     </div>
   )
 }

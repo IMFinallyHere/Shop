@@ -1,13 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import clsx from 'clsx'
+import { Eye, ScanBarcode, Undo2, X } from 'lucide-react'
 import { createReturn, findBillByCode, getBill, getReturn, getReturns } from '../api/billing'
 import { getPaymentMethods } from '../api/shopsettings'
+import useQuery, { asList } from '../hooks/useQuery'
 import ReturnReceipt from '../components/billing/ReturnReceipt'
 import SearchInput from '../components/common/SearchInput'
-import Spinner from '../components/common/Spinner'
 import ErrorAlert from '../components/common/ErrorAlert'
+import PageHeader from '../components/ui/PageHeader'
+import Button from '../components/ui/Button'
+import Badge from '../components/ui/Badge'
+import { Card } from '../components/ui/Card'
+import { Field, Input } from '../components/ui/Field'
+import Pagination from '../components/ui/Pagination'
+import SegmentedControl from '../components/ui/SegmentedControl'
+import { Table, Td, Tr } from '../components/ui/Table'
+import { useToast } from '../components/ui/Toast'
+import { formatDate, formatDateTime, money } from '../utils/format'
 
-const money = (v) => `₹${Number(v).toFixed(2)}`
 const PAGE_SIZE = 20
 
 // "INV-00012" or "12" → 12
@@ -29,12 +40,12 @@ export default function ReturnsPage() {
   const [error, setError] = useState('')
   const [receipt, setReceipt] = useState(null)
   const scanRef = useRef(null)
+  const toast = useToast()
 
-  const [returns, setReturns] = useState([])
-  const [count, setCount] = useState(0)
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
-  const [loading, setLoading] = useState(false)
+  const { data, loading, error: loadError, reload } = useQuery(() => getReturns({ page, search }), `${page}|${search}`)
+  const { rows: returns, count } = asList(data)
 
   useEffect(() => {
     getPaymentMethods({ active: 1 }).then(r => {
@@ -43,14 +54,6 @@ export default function ReturnsPage() {
       if (list.length) setPaymentMode(list[0].name)
     }).catch(() => {})
   }, [])
-
-  const fetchReturns = () => {
-    setLoading(true)
-    getReturns({ page, search })
-      .then(r => { setReturns(r.data.results ?? r.data); setCount(r.data.count ?? 0) })
-      .catch(() => setError('Failed to load returns.'))
-      .finally(() => setLoading(false))
-  }
 
   const loadBill = async (fetcher) => {
     setError('')
@@ -69,8 +72,6 @@ export default function ReturnsPage() {
     const id = params.get('bill')
     if (id) loadBill(() => getBill(id)) // eslint-disable-line react-hooks/set-state-in-effect
   }, [params])
-
-  useEffect(() => { fetchReturns() }, [page, search]) // eslint-disable-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
 
   const handleScan = (e) => {
     if (e.key !== 'Enter') return
@@ -112,8 +113,9 @@ export default function ReturnsPage() {
         payment_mode: mode === 'refund' ? paymentMode : '', reason,
       })
       setReceipt(data)
+      toast(`Return ${data.number} recorded`)
       clear()
-      fetchReturns()
+      reload()
     } catch (e) {
       const d = e.response?.data
       setError(d?.items || d?.mode || d?.payment_mode || d?.bill || d?.detail || 'Return failed.')
@@ -121,132 +123,126 @@ export default function ReturnsPage() {
   }
 
   const openReceipt = (id) => getReturn(id).then(r => setReceipt(r.data)).catch(() => setError('Failed to load return.'))
-  const totalPages = Math.ceil(count / PAGE_SIZE)
   const allReturned = bill?.items.every(i => i.returned)
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-800 mb-6">Returns</h1>
-      <ErrorAlert message={error} onDismiss={() => setError('')} />
+      <PageHeader title="Returns" subtitle="Scan a returned item or enter its bill number to start." />
 
-      <input
-        ref={scanRef} autoFocus value={scan}
-        onChange={e => setScan(e.target.value)} onKeyDown={handleScan}
-        placeholder="Scan a returned item's barcode, or type a bill no. (INV-00012), then Enter…"
-        className="w-full mb-6 border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-      />
-
-      {bill && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-              <div>
-                <span className="font-semibold text-gray-800">{bill.number}</span>
-                <span className="ml-3 text-xs text-gray-500">{new Date(bill.created_at).toLocaleString()}</span>
-                {bill.customer_name && <span className="ml-3 text-xs text-gray-500">{bill.customer_name} · {bill.customer_phone}</span>}
-              </div>
-              <button onClick={clear} className="text-xs text-gray-500 hover:text-gray-700">Clear</button>
-            </div>
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>{['', 'Item', 'Code', 'Price', 'Refund'].map(h => <th key={h} className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase">{h}</th>)}</tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {bill.items.map(i => (
-                  <tr key={i.id} className={i.returned ? 'text-gray-400' : 'cursor-pointer hover:bg-gray-50'} onClick={() => !i.returned && toggle(i.id)}>
-                    <td className="px-4 py-2">
-                      <input type="checkbox" disabled={i.returned} checked={selected.has(i.id)} onChange={() => toggle(i.id)} onClick={e => e.stopPropagation()} />
-                    </td>
-                    <td className="px-4 py-2">
-                      {i.product_name}
-                      {i.returned && <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-[10px]">Returned</span>}
-                    </td>
-                    <td className="px-4 py-2 font-mono text-xs">{i.code}</td>
-                    <td className="px-4 py-2">{money(i.unit_price)}</td>
-                    <td className="px-4 py-2">{money(i.refund_amount)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <p className="px-4 py-2 text-xs text-gray-400">Refund is each item's share of the bill total (discount and tax included). Returned units go back into stock.</p>
-          </div>
-
-          <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4 h-fit">
-            {allReturned ? <p className="text-sm text-gray-500">Every item on this bill has been returned.</p> : (
-              <>
-                <div>
-                  <div className="text-sm font-semibold text-gray-700 mb-2">Settle as</div>
-                  <label className="flex items-center gap-2 text-sm mb-1">
-                    <input type="radio" checked={mode === 'refund'} onChange={() => setMode('refund')} /> Refund
-                  </label>
-                  <label className={`flex items-center gap-2 text-sm ${bill.customer_id ? '' : 'text-gray-400'}`}>
-                    <input type="radio" disabled={!bill.customer_id} checked={mode === 'credit'} onChange={() => setMode('credit')} /> Store credit
-                  </label>
-                  {!bill.customer_id && <p className="mt-1 text-xs text-gray-400">Store credit needs a customer on the bill.</p>}
-                </div>
-
-                {mode === 'refund' && (
-                  <div>
-                    <div className="text-sm font-semibold text-gray-700 mb-1">Refund via</div>
-                    <select value={paymentMode} onChange={e => setPaymentMode(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
-                      {paymentMethods.length === 0 && <option value="">No methods configured</option>}
-                      {paymentMethods.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
-                    </select>
-                  </div>
-                )}
-
-                <input value={reason} onChange={e => setReason(e.target.value)} maxLength={255}
-                  placeholder="Reason (optional)" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-
-                <div className="border-t border-gray-200 pt-3 flex justify-between font-bold text-base">
-                  <span>{mode === 'credit' ? 'Credit' : 'Refund'}</span><span>{money(refund)}</span>
-                </div>
-
-                <button onClick={handleSubmit} disabled={saving || selected.size === 0 || (mode === 'refund' && !paymentMode)}
-                  className="w-full bg-indigo-600 text-white rounded-lg py-3 text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">
-                  {saving ? 'Processing…' : `Return ${selected.size} item${selected.size === 1 ? '' : 's'} · ${money(refund)}`}
-                </button>
-              </>
-            )}
-          </div>
+      <div className="mb-6">
+        <div className="flex items-center gap-3 rounded-xl border border-zinc-300 bg-white px-4 shadow-card transition-colors focus-within:border-brand-500 focus-within:ring-4 focus-within:ring-brand-500/10">
+          <ScanBarcode size={22} className="shrink-0 text-zinc-400" />
+          <input
+            ref={scanRef} autoFocus value={scan}
+            onChange={e => setScan(e.target.value)} onKeyDown={handleScan}
+            placeholder="Scan the item's barcode, or type a bill no. like INV-00012"
+            className="h-14 flex-1 bg-transparent text-base text-zinc-900 placeholder:text-zinc-400 focus:outline-none"
+            aria-label="Barcode or bill number"
+          />
         </div>
-      )}
-
-      <h2 className="text-lg font-semibold text-gray-800 mb-3">Past returns</h2>
-      <div className="mb-4"><SearchInput value={search} onChange={v => { setSearch(v); setPage(1) }} placeholder="Search by customer…" /></div>
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        {loading ? <Spinner /> : (
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>{['Return', 'Bill', 'Date', 'Customer', 'Items', 'Settled', 'Amount', ''].map(h =>
-                <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>)}</tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {returns.length === 0 && <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">No returns yet</td></tr>}
-              {returns.map(r => (
-                <tr key={r.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-medium text-gray-800">{r.number}</td>
-                  <td className="px-4 py-3 text-gray-600">{r.bill_number}</td>
-                  <td className="px-4 py-3 text-gray-500">{new Date(r.created_at).toLocaleDateString()}</td>
-                  <td className="px-4 py-3 text-gray-600">{r.customer_name || '—'}</td>
-                  <td className="px-4 py-3 text-gray-600">{r.items.length}</td>
-                  <td className="px-4 py-3 text-gray-600">{r.mode === 'credit' ? 'Store credit' : r.payment_mode}</td>
-                  <td className="px-4 py-3 text-gray-800">{money(r.amount)}</td>
-                  <td className="px-4 py-3"><button onClick={() => openReceipt(r.id)} className="text-xs font-medium text-indigo-600 hover:text-indigo-800">View / Print</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
       </div>
 
-      {totalPages > 1 && (
-        <div className="flex justify-center gap-2 mt-4">
-          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1 rounded border text-sm disabled:opacity-40">Prev</button>
-          <span className="px-3 py-1 text-sm text-gray-600">{page} / {totalPages}</span>
-          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="px-3 py-1 rounded border text-sm disabled:opacity-40">Next</button>
+      <ErrorAlert message={error} onDismiss={() => setError('')} />
+
+      {bill && (
+        <div className="mb-10 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_340px]">
+          <Card className="overflow-hidden">
+            <div className="flex items-start justify-between gap-3 border-b border-zinc-100 px-5 py-3.5">
+              <div className="min-w-0">
+                <div className="font-semibold text-zinc-900">{bill.number}</div>
+                <div className="text-xs text-zinc-500">
+                  {formatDateTime(bill.created_at)}
+                  {bill.customer_name && ` · ${bill.customer_name} · ${bill.customer_phone}`}
+                </div>
+              </div>
+              <Button variant="ghost" size="sm" icon={X} onClick={clear}>Clear</Button>
+            </div>
+            <div className="px-5 pt-3 text-xs font-medium text-zinc-500">Select the items being returned</div>
+            <ul className="divide-y divide-zinc-100 p-2">
+              {bill.items.map(i => (
+                <li key={i.id}>
+                  <label className={clsx('flex items-center gap-3 rounded-lg px-3 py-2.5',
+                    i.returned ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-zinc-50',
+                    selected.has(i.id) && 'bg-brand-50/60 hover:bg-brand-50')}>
+                    <input type="checkbox" disabled={i.returned} checked={selected.has(i.id)} onChange={() => toggle(i.id)} className="h-4 w-4 accent-brand-600" />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-zinc-900">{i.product_name}</div>
+                      <div className="font-mono text-xs text-zinc-500">{i.code}</div>
+                    </div>
+                    {i.returned
+                      ? <Badge>Returned</Badge>
+                      : <div className="text-right">
+                          <div className="text-sm font-medium tabular-nums text-zinc-900">{money(i.refund_amount)}</div>
+                          {Number(i.refund_amount) !== Number(i.unit_price) && <div className="text-xs tabular-nums text-zinc-400 line-through">{money(i.unit_price)}</div>}
+                        </div>}
+                  </label>
+                </li>
+              ))}
+            </ul>
+            <p className="border-t border-zinc-100 px-5 py-3 text-xs text-zinc-500">Refund is each item's share of the bill total (discount and tax included). Returned units go back into stock.</p>
+          </Card>
+
+          <div className="lg:sticky lg:top-0 lg:self-start">
+            <Card className="space-y-4 p-5">
+              {allReturned ? <p className="text-sm text-zinc-500">Every item on this bill has been returned.</p> : (
+                <>
+                  <Field label="Settle as" hint={!bill.customer_id ? 'Store credit needs a customer on the bill.' : undefined}>
+                    <SegmentedControl stretch value={mode} onChange={v => (v === 'credit' && !bill.customer_id) ? null : setMode(v)}
+                      options={[{ value: 'refund', label: 'Refund' }, { value: 'credit', label: 'Store credit' }]} />
+                  </Field>
+
+                  {mode === 'refund' && (
+                    <Field label="Refund via">
+                      {paymentMethods.length === 0
+                        ? <p className="text-sm text-zinc-500">No payment methods configured.</p>
+                        : <SegmentedControl stretch options={paymentMethods.map(m => ({ value: m.name, label: m.name }))} value={paymentMode} onChange={setPaymentMode} />}
+                    </Field>
+                  )}
+
+                  <Field label="Reason">
+                    {id => <Input id={id} value={reason} onChange={e => setReason(e.target.value)} maxLength={255} placeholder="Optional — e.g. size didn't fit" />}
+                  </Field>
+
+                  <div className="flex items-baseline justify-between border-t border-zinc-100 pt-4">
+                    <span className="font-medium text-zinc-900">{mode === 'credit' ? 'Credit' : 'Refund'}</span>
+                    <span className="text-2xl font-semibold tracking-tight tabular-nums text-zinc-900">{money(refund)}</span>
+                  </div>
+
+                  <Button variant="primary" size="lg" className="w-full" icon={Undo2} onClick={handleSubmit} loading={saving}
+                    disabled={selected.size === 0 || (mode === 'refund' && !paymentMode)}>
+                    {selected.size === 0 ? 'Select items to return' : `Return ${selected.size} item${selected.size === 1 ? '' : 's'}`}
+                  </Button>
+                </>
+              )}
+            </Card>
+          </div>
         </div>
       )}
+
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-base font-semibold text-zinc-900">Past returns</h2>
+        <SearchInput value={search} onChange={v => { setSearch(v); setPage(1) }} placeholder="Search by customer…" />
+      </div>
+      <ErrorAlert message={loadError && 'Failed to load returns.'} />
+      <Table
+        columns={[{ label: 'Return' }, { label: 'Bill' }, { label: 'Date' }, { label: 'Customer' }, { label: 'Items' }, { label: 'Settled' }, { label: 'Amount', className: 'text-right' }, { label: '', className: 'w-px' }]}
+        loading={loading} isEmpty={returns.length === 0}
+        empty={{ icon: Undo2, title: search ? 'No matching returns' : 'No returns yet', description: search ? 'Try a different customer name.' : 'Processed returns and credit notes will be listed here.' }}
+      >
+        {returns.map(r => (
+          <Tr key={r.id} className="cursor-pointer" onClick={() => openReceipt(r.id)}>
+            <Td className="font-medium text-zinc-900">{r.number}</Td>
+            <Td className="text-zinc-500">{r.bill_number}</Td>
+            <Td className="whitespace-nowrap text-zinc-500">{formatDate(r.created_at)}</Td>
+            <Td>{r.customer_name || '—'}</Td>
+            <Td>{r.items.length}</Td>
+            <Td><Badge tone={r.mode === 'credit' ? 'success' : 'neutral'}>{r.mode === 'credit' ? 'Store credit' : r.payment_mode}</Badge></Td>
+            <Td className="text-right font-medium tabular-nums text-zinc-900">{money(r.amount)}</Td>
+            <Td><Button variant="ghost" size="xs" icon={Eye} onClick={e => { e.stopPropagation(); openReceipt(r.id) }}>View</Button></Td>
+          </Tr>
+        ))}
+      </Table>
+      <Pagination page={page} pageSize={PAGE_SIZE} count={count} onChange={setPage} />
 
       <ReturnReceipt ret={receipt} onClose={() => { setReceipt(null); scanRef.current?.focus() }} />
     </div>

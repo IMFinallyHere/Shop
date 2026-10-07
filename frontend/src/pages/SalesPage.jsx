@@ -1,83 +1,66 @@
-import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { Eye, Receipt, ScanBarcode, Undo2 } from 'lucide-react'
 import { getBills, getBill } from '../api/billing'
+import useQuery, { asList } from '../hooks/useQuery'
 import BillReceipt from '../components/billing/BillReceipt'
 import SearchInput from '../components/common/SearchInput'
-import Spinner from '../components/common/Spinner'
 import ErrorAlert from '../components/common/ErrorAlert'
+import PageHeader, { Toolbar } from '../components/ui/PageHeader'
+import Button from '../components/ui/Button'
+import Badge from '../components/ui/Badge'
+import Pagination from '../components/ui/Pagination'
+import { Table, Td, Tr } from '../components/ui/Table'
+import { formatDateTime, money } from '../utils/format'
 
-const money = (v) => `₹${Number(v).toFixed(2)}`
 const PAGE_SIZE = 20
 
 export default function SalesPage() {
-  const [bills, setBills] = useState([])
-  const [count, setCount] = useState(0)
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
-  const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [receipt, setReceipt] = useState(null)
   const navigate = useNavigate()
-
-  useEffect(() => { fetch() }, [page, search])
-
-  const fetch = () => {
-    setLoading(true)
-    getBills({ page, search })
-      .then(r => { setBills(r.data.results ?? r.data); setCount(r.data.count ?? 0) })
-      .catch(() => setError('Failed to load sales.'))
-      .finally(() => setLoading(false))
-  }
+  const { data, loading, error: loadError } = useQuery(() => getBills({ page, search }), `${page}|${search}`)
+  const { rows: bills, count } = asList(data)
 
   const openReceipt = (id) => getBill(id).then(r => setReceipt(r.data)).catch(() => setError('Failed to load bill.'))
-  const totalPages = Math.ceil(count / PAGE_SIZE)
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-800 mb-6">Sales</h1>
-      <div className="mb-4"><SearchInput value={search} onChange={v => { setSearch(v); setPage(1) }} placeholder="Search by customer…" /></div>
-      <ErrorAlert message={error} onDismiss={() => setError('')} />
+      <PageHeader title="Sales" subtitle="Every bill created at the counter."
+        actions={<Button as={Link} to="/pos" variant="primary" icon={ScanBarcode}>New bill</Button>} />
+      <Toolbar><SearchInput value={search} onChange={v => { setSearch(v); setPage(1) }} placeholder="Search by customer…" /></Toolbar>
+      <ErrorAlert message={error || (loadError && 'Failed to load sales.')} onDismiss={() => setError('')} />
 
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        {loading ? <Spinner /> : (
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>{['Bill', 'Date', 'Customer', 'Items', 'Payment', 'Total', ''].map(h =>
-                <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>)}</tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {bills.length === 0 && <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">No sales yet</td></tr>}
-              {bills.map(b => (
-                <tr key={b.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-medium text-gray-800">{b.number}</td>
-                  <td className="px-4 py-3 text-gray-500">{new Date(b.created_at).toLocaleDateString()}</td>
-                  <td className="px-4 py-3 text-gray-600">{b.customer_name || '—'}</td>
-                  <td className="px-4 py-3 text-gray-600">{b.items?.length ?? '—'}</td>
-                  <td className="px-4 py-3 text-gray-600">{b.payment_mode?.toUpperCase()}</td>
-                  <td className="px-4 py-3 text-gray-800">
-                    {money(b.total)}
-                    <ReturnBadge bill={b} />
-                  </td>
-                  <td className="px-4 py-3 space-x-3 whitespace-nowrap">
-                    <button onClick={() => openReceipt(b.id)} className="text-xs font-medium text-indigo-600 hover:text-indigo-800">View / Print</button>
-                    {b.items?.some(i => !i.returned) && (
-                      <button onClick={() => navigate(`/returns?bill=${b.id}`)} className="text-xs font-medium text-amber-600 hover:text-amber-800">Return</button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      {totalPages > 1 && (
-        <div className="flex justify-center gap-2 mt-4">
-          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1 rounded border text-sm disabled:opacity-40">Prev</button>
-          <span className="px-3 py-1 text-sm text-gray-600">{page} / {totalPages}</span>
-          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="px-3 py-1 rounded border text-sm disabled:opacity-40">Next</button>
-        </div>
-      )}
+      <Table
+        columns={[{ label: 'Bill' }, { label: 'Date' }, { label: 'Customer' }, { label: 'Items' }, { label: 'Payment' }, { label: 'Total', className: 'text-right' }, { label: '', className: 'w-px' }]}
+        loading={loading} isEmpty={bills.length === 0}
+        empty={{ icon: Receipt, title: search ? 'No matching bills' : 'No sales yet', description: search ? 'Try a different customer name.' : 'Bills appear here once you check out at the counter.' }}
+      >
+        {bills.map(b => (
+          <Tr key={b.id} className="cursor-pointer" onClick={() => openReceipt(b.id)}>
+            <Td className="font-medium text-zinc-900">{b.number}</Td>
+            <Td className="whitespace-nowrap text-zinc-500">{formatDateTime(b.created_at)}</Td>
+            <Td>{b.customer_name || '—'}</Td>
+            <Td>{b.items?.length ?? '—'}</Td>
+            <Td><Badge>{b.payment_mode}</Badge></Td>
+            <Td className="text-right">
+              <div className="font-medium tabular-nums text-zinc-900">{money(b.total)}</div>
+              <ReturnBadge bill={b} />
+            </Td>
+            <Td onClick={e => e.stopPropagation()}>
+              <div className="flex justify-end gap-1">
+                <Button variant="ghost" size="xs" icon={Eye} onClick={() => openReceipt(b.id)}>View</Button>
+                {b.items?.some(i => !i.returned) && (
+                  <Button variant="ghost" size="xs" icon={Undo2} onClick={() => navigate(`/returns?bill=${b.id}`)}>Return</Button>
+                )}
+              </div>
+            </Td>
+          </Tr>
+        ))}
+      </Table>
+      <Pagination page={page} pageSize={PAGE_SIZE} count={count} onChange={setPage} />
 
       <BillReceipt bill={receipt} onClose={() => setReceipt(null)} />
     </div>
@@ -88,9 +71,5 @@ function ReturnBadge({ bill }) {
   const refunded = Number(bill.refunded_total || 0)
   if (refunded <= 0) return null
   const full = bill.items?.every(i => i.returned)
-  return (
-    <span className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-medium ${full ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
-      {full ? 'Returned' : 'Partly returned'}
-    </span>
-  )
+  return <Badge tone={full ? 'danger' : 'warning'} className="mt-1">{full ? 'Returned' : 'Partly returned'}</Badge>
 }
