@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Percent } from 'lucide-react'
 import {
   getShopSettings, updateShopSettings,
@@ -7,11 +8,12 @@ import {
   getColors, createColor, updateColor, deleteColor,
 } from '../api/shopsettings'
 import OptionList from '../components/settings/OptionList'
+import Section from '../components/settings/Section'
+import PrintingSettings from '../components/settings/PrintingSettings'
 import Spinner from '../components/common/Spinner'
 import ErrorAlert from '../components/common/ErrorAlert'
 import PageHeader from '../components/ui/PageHeader'
 import Button from '../components/ui/Button'
-import { Card } from '../components/ui/Card'
 import Tabs from '../components/ui/Tabs'
 import { useToast } from '../components/ui/Toast'
 
@@ -20,24 +22,18 @@ const TABS = [
   { value: 'payments', label: 'Payment methods' },
   { value: 'sizes', label: 'Sizes' },
   { value: 'colors', label: 'Colors' },
+  { value: 'printing', label: 'Printing' },
 ]
 
 const sizeApi = { create: createSize, update: updateSize, remove: deleteSize }
 const colorApi = { create: createColor, update: updateColor, remove: deleteColor }
 const methodApi = { create: createPaymentMethod, update: updatePaymentMethod, remove: deletePaymentMethod }
 
-function Section({ title, description, children }) {
-  return (
-    <Card className="p-5 sm:p-6">
-      <h2 className="text-sm font-semibold text-zinc-900">{title}</h2>
-      {description && <p className="mb-4 mt-1 text-sm text-zinc-500">{description}</p>}
-      {children}
-    </Card>
-  )
-}
-
 export default function SettingsPage() {
-  const [tab, setTab] = useState('general')
+  const [params, setParams] = useSearchParams()
+  const tab = TABS.some(t => t.value === params.get('tab')) ? params.get('tab') : 'general'
+  const setTab = (t) => setParams(t === 'general' ? {} : { tab: t }, { replace: true })
+  const [shopSettings, setShopSettings] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [taxRate, setTaxRate] = useState('')
@@ -51,6 +47,7 @@ export default function SettingsPage() {
   useEffect(() => {
     Promise.all([getShopSettings(), getPaymentMethods(), getSizes(), getColors()])
       .then(([s, m, sz, c]) => {
+        setShopSettings(s.data)
         setTaxRate(s.data.default_tax_rate); setSavedTax(s.data.default_tax_rate)
         setMethods(m.data.results ?? m.data)
         setSizes(sz.data); setColors(c.data)
@@ -75,7 +72,7 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-3xl">
-      <PageHeader title="Settings" subtitle="How billing and stock work in this shop." />
+      <PageHeader title="Settings" subtitle="How billing, stock and printing work in this shop." />
       <Tabs tabs={TABS} value={tab} onChange={t => { setTab(t); setError('') }} />
       <ErrorAlert message={error} onDismiss={() => setError('')} />
 
@@ -109,6 +106,10 @@ export default function SettingsPage() {
           <Section title="Colors" description="Offered when adding stock. Click a swatch to change it. Colors in use can be turned off but not deleted.">
             <OptionList items={colors} api={colorApi} onChange={refreshColors} onError={setError} placeholder="Add a color (e.g. Maroon)" withHex />
           </Section>
+        )}
+
+        {tab === 'printing' && shopSettings && (
+          <PrintingSettings initial={shopSettings} onSaved={setShopSettings} onError={setError} />
         )}
       </>)}
     </div>

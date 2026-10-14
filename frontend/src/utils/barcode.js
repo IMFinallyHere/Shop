@@ -8,6 +8,17 @@ export function drawCode128(canvas, code, opts = {}) {
   })
 }
 
+// Render Code128 into an <svg> that scales to fill its box (crisp at any printer DPI).
+// Horizontal stretch keeps bar ratios intact, so the code still scans.
+export function drawCode128Svg(svg, code) {
+  JsBarcode(svg, code, { format: 'CODE128', displayValue: false, width: 2, height: 100, margin: 0 })
+  const w = svg.getAttribute('width'), h = svg.getAttribute('height')
+  svg.setAttribute('viewBox', `0 0 ${parseFloat(w)} ${parseFloat(h)}`)
+  svg.setAttribute('preserveAspectRatio', 'none')
+  svg.removeAttribute('width'); svg.removeAttribute('height')
+  svg.removeAttribute('style')
+}
+
 function triggerDownload(canvas, filename) {
   const a = document.createElement('a')
   a.href = canvas.toDataURL('image/png')

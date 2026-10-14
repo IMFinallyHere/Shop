@@ -1,3 +1,4 @@
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 DEFAULT_PAYMENT_METHODS = ["Cash", "UPI", "Card"]
@@ -7,7 +8,28 @@ DEFAULT_SIZES = ["XS", "S", "M", "L", "XL", "XXL", "XXXL", "Free Size"]
 class ShopSettings(models.Model):
     """Per-shop configuration (one row per schema)."""
 
+    RECEIPT_WIDTHS = [(58, "58 mm"), (80, "80 mm"), (210, "A4")]
+
     default_tax_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+
+    # Stock-unit labels: one label per page at this physical size (thermal roll).
+    label_width_mm = models.PositiveSmallIntegerField(default=50, validators=[MinValueValidator(20), MaxValueValidator(110)])
+    label_height_mm = models.PositiveSmallIntegerField(default=25, validators=[MinValueValidator(10), MaxValueValidator(150)])
+    label_show_name = models.BooleanField(default=True)
+    label_show_variant = models.BooleanField(default=True)
+    label_show_price = models.BooleanField(default=True)
+    label_show_code_text = models.BooleanField(default=True)
+    label_copies = models.PositiveSmallIntegerField(default=1, validators=[MinValueValidator(1), MaxValueValidator(10)])
+
+    # Receipts.
+    receipt_width_mm = models.PositiveSmallIntegerField(choices=RECEIPT_WIDTHS, default=80)
+    receipt_shop_name = models.CharField(max_length=100, blank=True, help_text="Blank uses the shop's name")
+    receipt_address = models.CharField(max_length=255, blank=True)
+    receipt_phone = models.CharField(max_length=30, blank=True)
+    receipt_gstin = models.CharField(max_length=20, blank=True)
+    receipt_footer = models.CharField(max_length=200, blank=True, default="Thank you, visit again!")
+    auto_print_after_bill = models.BooleanField(default=False, help_text="Open the print dialog right after checkout")
+
     updated_at = models.DateTimeField(auto_now=True)
 
     @classmethod

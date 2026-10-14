@@ -89,3 +89,18 @@ class ShopSettingsTestCase(TestCase):
         self.assertEqual(a.get("/api/colors/?active=1", HTTP_HOST="acme.localhost").data, [])
         # Unused colors can be deleted.
         self.assertEqual(a.delete(f"/api/colors/{teal.data['id']}/", HTTP_HOST="acme.localhost").status_code, 204)
+
+    def test_print_settings_round_trip_and_bounds(self):
+        a = self.client_for("acme.localhost", "acme@test.com")
+        data = a.get("/api/shop-settings/", HTTP_HOST="acme.localhost").data
+        self.assertEqual((data["label_width_mm"], data["label_height_mm"], data["receipt_width_mm"]), (50, 25, 80))
+        resp = a.put("/api/shop-settings/", {
+            "label_width_mm": 38, "label_height_mm": 25, "label_show_price": False, "label_copies": 2,
+            "receipt_width_mm": 58, "receipt_gstin": "27ABCDE1234F1Z5", "auto_print_after_bill": True,
+        }, format="json", HTTP_HOST="acme.localhost")
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual((resp.data["label_width_mm"], resp.data["label_copies"], resp.data["receipt_width_mm"]), (38, 2, 58))
+        self.assertFalse(resp.data["label_show_price"])
+        self.assertTrue(resp.data["auto_print_after_bill"])
+        for bad in ({"label_width_mm": 5}, {"label_height_mm": 500}, {"label_copies": 0}, {"receipt_width_mm": 100}):
+            self.assertEqual(a.put("/api/shop-settings/", bad, format="json", HTTP_HOST="acme.localhost").status_code, 400, bad)

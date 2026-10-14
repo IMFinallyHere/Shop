@@ -9,7 +9,7 @@ from .serializers import ColorSerializer, PaymentMethodSerializer, ShopSettingsS
 
 
 class ShopSettingsView(APIView):
-    """Singleton per-shop settings (currently just the default tax rate)."""
+    """Singleton per-shop settings (tax rate, label and receipt printing)."""
 
     permission_classes = [IsSuperuserOrStaff]
 

@@ -8,6 +8,7 @@ import { lookupCustomers } from '../api/customers'
 import { checkout, getStoreCredit } from '../api/billing'
 import { getShopSettings, getPaymentMethods } from '../api/shopsettings'
 import BillReceipt from '../components/billing/BillReceipt'
+import usePrintSettings from '../hooks/usePrintSettings'
 import ErrorAlert from '../components/common/ErrorAlert'
 import ConfirmDialog from '../components/common/ConfirmDialog'
 import Button from '../components/ui/Button'
@@ -44,6 +45,7 @@ export default function POSPage() {
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [receipt, setReceipt] = useState(null)
+  const printSettings = usePrintSettings()
   const [creditBalance, setCreditBalance] = useState(0)   // this shop's store credit for the phone
   const [creditUse, setCreditUse] = useState('')
   const [confirmClear, setConfirmClear] = useState(false)
@@ -284,7 +286,7 @@ export default function POSPage() {
         </Card>
       </div>
 
-      <BillReceipt bill={receipt} onClose={() => { setReceipt(null); focusScan() }} />
+      <BillReceipt bill={receipt} autoPrint={printSettings.auto_print_after_bill} onClose={() => { setReceipt(null); focusScan() }} />
       <ConfirmDialog isOpen={confirmClear} onClose={() => setConfirmClear(false)} title="Clear this bill?"
         message="All scanned items and customer details will be removed." confirmLabel="Clear bill"
         onConfirm={() => { resetBill(); setConfirmClear(false); focusScan() }} />

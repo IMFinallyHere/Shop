@@ -294,6 +294,21 @@ Goal: modern, simple, functional, intuitive. Clean light look, one accent (indig
 - [x] Tests: search exact jumps, shop isolation, sold→returned→resold timeline, customer detail.
       Billing tests split so the shared base class no longer re-runs its tests in subclasses.
 
+## Phase 15 — Printer setup: thermal labels + receipts (browser print)  🚧
+- **Approach:** browser print (`window.print()`) at exact physical sizes via `@page`; any
+  printer with an OS driver works. No silent printing yet (later: Chrome `--kiosk-printing`
+  or QZ Tray if the dialog gets in the way at the counter).
+- **Backend:** `ShopSettings` gains label size/content/copies and receipt width (58/80/A4),
+  header (name, address, phone, GSTIN), footer and `auto_print_after_bill`
+  (`shopsettings/0003_print_settings`). Test `test_print_settings_round_trip_and_bounds`.
+- **Frontend:** Settings → Printing tab (presets, live true-size preview, test label /
+  test receipt, setup checklist). `usePrintSettings` caches settings for all print views.
+  `PrintSheet` hides the app when printing (no blank pages), sets `@page` size, and measures
+  receipt height for continuous rolls. `ThermalLabel` = one SVG-barcode label per page.
+  `ReceiptFrame` is shared by bill + return receipts. POS auto-opens the dialog when enabled.
+- [x] Backend suite green (36 tests).
+- [ ] Test on a real thermal printer.
+
 ## Local development database (Docker)  ✅
 - `docker-compose.yml` runs `postgres:17-alpine` (`shop-db-1`, volume `shop_pgdata`,
   port 5432); it reads `DB_NAME/DB_USER/DB_PASSWORD` from `.env`, which now points at
@@ -368,6 +383,9 @@ Goal: modern, simple, functional, intuitive. Clean light look, one accent (indig
 - **2026-10-07** Phase 11: returns with refund or store credit (per-shop ledger usable at
   POS), scan-to-return, credit notes; customer now mandatory on every bill. Billing
   suite = 13 green tests.
+
+- **2026-10-12** Phase 15: printer setup — label size/content and receipt width/header in
+  Settings → Printing; labels and receipts print at exact size on thermal rolls.
 
 ## Bootstrap (run once `.env` DB_* is filled)
 ```bash
