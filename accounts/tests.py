@@ -103,6 +103,16 @@ class MultiTenancyTestCase(TestCase):
         login, _ = self.login(resp.data["domain"], "carol@test.com")
         self.assertEqual(login.status_code, 200)
         self.assertTrue(login.data["user"]["is_superuser"])
+        self.assertEqual(resp.data["domain"], f"{slug}.localhost")
+
+    def test_signup_rejected_on_a_shop_subdomain(self):
+        resp = APIClient().post(
+            "/api/auth/signup/",
+            {"shop_name": "Nested Shop", "email": "nested@test.com", "password": PW},
+            format="json", HTTP_HOST="acme.localhost",
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertFalse(Tenant.objects.filter(schema_name__startswith="nested").exists())
 
     # --- isolation & membership --------------------------------------------
 

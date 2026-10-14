@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.auth.models import Group, Permission
 from django.db import transaction
 from django.utils.text import slugify
@@ -206,7 +207,7 @@ class SignupSerializer(serializers.Serializer):
             tenant = Tenant(schema_name=slug, name=validated_data['shop_name'],
                             slug=slug, owner=owner)
             tenant.save()
-            domain = f'{slug}.{self.context["base_domain"]}'
+            domain = f'{slug}.{settings.TENANT_USERS_DOMAIN}'
             Domain.objects.create(domain=domain, tenant=tenant, is_primary=True)
             tenant.add_user(owner, is_superuser=True, is_staff=True)
         return {'shop': validated_data['shop_name'], 'slug': slug,

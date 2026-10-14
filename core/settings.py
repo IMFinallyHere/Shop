@@ -118,8 +118,25 @@ SIMPLE_JWT = {
 }
 
 # Frontend is served per-shop on subdomains in dev (e.g. acme.localhost:5173)
-# plus the bare main domain for the signup/landing page.
-CORS_ALLOWED_ORIGIN_REGEXES = [
-    r"^http://([a-z0-9-]+\.)?localhost:5173$",
-]
+# plus the bare main domain for the signup/landing page. In production nginx serves
+# the frontend and /api from the same host, so no cross-origin access is needed.
+CORS_ALLOWED_ORIGIN_REGEXES = config(
+    "CORS_ALLOWED_ORIGIN_REGEXES", cast=Csv(), default=r"^http://([a-z0-9-]+\.)?localhost:5173$"
+)
 CORS_ALLOW_CREDENTIALS = True
+
+# --- Production (behind nginx, HTTPS terminated there) ----------------------
+# nginx sets X-Forwarded-Proto; trust it so request.is_secure() is right.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+if not DEBUG:
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
+
+# Errors go to stderr, which systemd captures in journald.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "root": {"handlers": ["console"], "level": "WARNING"},
+    "loggers": {"django": {"handlers": ["console"], "level": "INFO", "propagate": False}},
+}

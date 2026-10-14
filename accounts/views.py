@@ -145,10 +145,11 @@ class SignupView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        base_domain = request.get_host().split(':')[0]
-        serializer = SignupSerializer(
-            data=request.data, context={'base_domain': base_domain}
-        )
+        # Shops are created from the main domain only; a signup sent to a shop's
+        # subdomain would otherwise make a nested domain (x.acme.<main>).
+        if request.tenant.schema_name != get_public_schema_name():
+            return Response({'detail': 'Sign up on the main site.'}, status=status.HTTP_400_BAD_REQUEST)
+        serializer = SignupSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         result = serializer.save()
         return Response(result, status=status.HTTP_201_CREATED)

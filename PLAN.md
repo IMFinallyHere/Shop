@@ -345,6 +345,70 @@ Measured on a scratch shop `perf` (local Postgres 17): 20k products · 100k vari
 - [x] Backend suite green (36 tests).
 - [ ] Test on a real thermal printer.
 
+## Phase 16 — Production deploy to 169.58.71.221 (`shop.gokuldelicacy.in`)  📋 planned
+**Constraint:** the server already runs `amazon-review` (FastAPI on 127.0.0.1:8000, SQLite,
+nginx site `amazon-review`, cert `amazon.ecogas.co.in`). We only **add** things; nothing
+of theirs is edited, restarted or shared (own user, folder, DB, port, nginx file, cert).
+
+**Domains (Cloudflare, option A)**
+- `shop.gokuldelicacy.in` → grey (DNS only): landing, signup, shop picker, platform admin.
+- `*.shop.gokuldelicacy.in` → **grey (DNS only)** → `169.58.71.221`: one subdomain per shop.
+  (Cloudflare's free cert can't cover 2-level wildcards, so shops go direct to the origin.)
+- TLS: one Let's Encrypt cert for `shop.gokuldelicacy.in` + `*.shop.gokuldelicacy.in` via
+  DNS-01 (`certbot-dns-cloudflare`, token scoped to Zone DNS Edit on gokuldelicacy.in,
+  stored `/root/.secrets/cloudflare.ini` 600). The existing certbot timer renews it.
+- Both records are DNS only, so no Cloudflare SSL rule is needed. Token works over IPv4
+  and IPv6 (server prefers IPv6; both are in the token's IP filter).
+
+**Server layout**
+| Piece | Value |
+|---|---|
+| Linux user | `shop` (no login shell), owns `/opt/shop` |
+| Code | `/opt/shop/releases/<time>-<sha>` via `git archive` over ssh, current one symlinked at `/opt/shop/app` |
+| Venv | `/opt/shop/venv` (system Python 3.12), shared by releases |
+| Config | `/opt/shop/shared/.env` (600) |
+| Frontend | `/opt/shop/app/frontend/dist`, built on the laptop |
+| App server | `gunicorn core.wsgi` on **127.0.0.1:8001**, 3 workers, systemd `shop.service` with the same hardening as amazon-review |
+| DB | PostgreSQL 17 (PGDG apt repo, matches dev), listens on localhost only, DB/user `shop`; `pg_trgm` created by the postgres superuser up front |
+| nginx | new `/etc/nginx/sites-available/shop` (+ symlink) for `shop.gokuldelicacy.in` and `*.shop.gokuldelicacy.in`: `/api/` → 8001 (Host header kept for django-tenants), everything else → `dist` with SPA fallback; `/assets/` cached with `expires max` (not `add_header`, which would drop the shared security headers from `conf.d/security.conf`) |
+| Backups | nightly `pg_dump -Fc` cron → `/opt/shop/backups`, keep 14 |
+
+**Code changes (in repo, before deploy)**
+- [x] `frontend/src/utils/domain.js`: main domain from `VITE_MAIN_DOMAIN` (falls back to
+      `localhost`) instead of hardcoded localhost.
+- [x] `core/settings.py`: `CORS_ALLOWED_ORIGIN_REGEXES` from env (prod is same-origin, so
+      empty); `SECURE_PROXY_SSL_HEADER`; production security flags when `DEBUG=False`;
+      console logging so errors land in journald.
+- [x] Signup only allowed on the main domain (today a signup on `acme.shop…` would create
+      `x.acme.shop…`).
+- [x] `requirements.txt`: add `gunicorn` (26.2.0).
+- [x] `deploy/` (see `deploy/README.md`; releases dir + symlink, `--rollback`): `nginx-shop.conf`, `shop.service`, `env.production.example`, `deploy.sh`
+      (build frontend → rsync → pip install → `migrate_schemas` → restart `shop` only →
+      health check `https://shop.gokuldelicacy.in/api/…`).
+
+**Server steps (one time)**
+1. Install `postgresql-17`, `python3.12-venv`, `python3-certbot-dns-cloudflare` (apt only
+   adds packages; nothing existing is restarted).
+2. Create user `shop`, folders, DB + role, `CREATE EXTENSION pg_trgm`.
+3. Issue the wildcard cert (DNS-01) — doesn't touch nginx or the amazon cert.
+4. First `deploy.sh`; then `migrate_schemas --shared`, `create_public_tenant
+   --domain_url shop.gokuldelicacy.in`, set the platform-admin password.
+5. Add nginx site → `nginx -t` → `systemctl reload nginx` (graceful; amazon-review keeps
+   serving). If `nginx -t` fails, remove the symlink and stop.
+6. Verify, then add the backup cron.
+
+**Verification**
+- `curl -I https://amazon.ecogas.co.in/` unchanged before and after every nginx step.
+- `https://shop.gokuldelicacy.in` loads; sign up a test shop → lands on
+  `https://<slug>.shop.gokuldelicacy.in/dashboard`; add stock, bill, print label/receipt.
+- `systemctl status shop amazon-review`; `ss -tlnp` shows 8000 and 8001 on 127.0.0.1 only,
+  5432 on localhost only.
+- `certbot renew --dry-run` passes for both certs.
+
+**Needed from owner:** `*.shop` grey-cloud record, Cloudflare API token, SSL rule for
+`shop.gokuldelicacy.in`. **Decided:** production starts with an empty DB. `*.shop` grey record added and resolving (2026-10-14).
+Optional later: enable `ufw` (22/80/443), Cloudflare real-IP for logs, swap file.
+
 ## Local development database (Docker)  ✅
 - `docker-compose.yml` runs `postgres:17-alpine` (`shop-db-1`, volume `shop_pgdata`,
   port 5432); it reads `DB_NAME/DB_USER/DB_PASSWORD` from `.env`, which now points at
