@@ -13,7 +13,7 @@ from rest_framework.filters import SearchFilter
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.permissions import IsSuperuserOrStaff
+from accounts.permissions import ShopPermission
 from inventory.models import LOW_STOCK, ProductVariant, StockItem
 from inventory.stock import recount
 from shopsettings.models import PaymentMethod, ShopSettings, ensure_payment_methods
@@ -80,7 +80,9 @@ class CustomerOrNumberSearch(SearchFilter):
 
 
 class BillViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsSuperuserOrStaff]
+    permission_classes = [ShopPermission]
+    perm_model = "billing.bill"
+    perms = {"by_code": "billing.view_bill"}
     serializer_class = BillSerializer
     http_method_names = ["get", "post"]  # bills are immutable once created
     filter_backends = [CustomerOrNumberSearch]
@@ -184,7 +186,8 @@ class BillViewSet(viewsets.ModelViewSet):
 
 
 class ReturnViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsSuperuserOrStaff]
+    permission_classes = [ShopPermission]
+    perm_model = "billing.return"
     serializer_class = ReturnSerializer
     http_method_names = ["get", "post"]  # returns are immutable once created
     filter_backends = [CustomerOrNumberSearch]
@@ -262,7 +265,8 @@ class ReturnViewSet(viewsets.ModelViewSet):
 class StoreCreditView(APIView):
     """``GET /store-credit/?phone=`` → this shop's credit balance for that customer."""
 
-    permission_classes = [IsSuperuserOrStaff]
+    permission_classes = [ShopPermission]
+    perm_model = "billing.creditentry"
 
     def get(self, request):
         phone = request.query_params.get("phone", "").strip()
@@ -273,7 +277,8 @@ class StoreCreditView(APIView):
 class DashboardView(APIView):
     """``GET /dashboard/`` → today's figures, a 7-day sales series, low stock and recent bills."""
 
-    permission_classes = [IsSuperuserOrStaff]
+    permission_classes = [ShopPermission]
+    perms = {"GET": "billing.view_bill"}  # sales figures
 
     def get(self, request):
         today = timezone.localdate()

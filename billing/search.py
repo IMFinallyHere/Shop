@@ -8,7 +8,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.permissions import IsSuperuserOrStaff
+from accounts.permissions import ShopPermission
 from customers.models import Customer
 from inventory.models import Product, Seller, StockItem
 from .models import Bill, BillItem, CreditEntry, Return
@@ -42,7 +42,8 @@ class SearchView(APIView):
     ``RET-00003`` or a full phone number) so the UI can jump straight to it.
     """
 
-    permission_classes = [IsSuperuserOrStaff]
+    permission_classes = [ShopPermission]
+    perms = {"GET": "billing.view_bill"}
 
     def get(self, request):
         q = request.query_params.get("q", "").strip()
@@ -110,7 +111,8 @@ class SearchView(APIView):
 class UnitHistoryView(APIView):
     """``GET /units/<code>/history/`` → everything about one physical unit."""
 
-    permission_classes = [IsSuperuserOrStaff]
+    permission_classes = [ShopPermission]
+    perms = {"GET": "inventory.view_stockitem"}
 
     def get(self, request, code):
         item = StockItem.objects.select_related(*UNIT_RELATED).filter(code=code.strip().upper()).first()

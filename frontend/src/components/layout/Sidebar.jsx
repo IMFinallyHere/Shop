@@ -4,11 +4,14 @@ import { PanelLeftClose, PanelLeftOpen, X } from 'lucide-react'
 import { NAV } from './nav'
 import Logo from '../ui/Logo'
 import { useAuth } from '../../contexts/AuthContext'
+import { can } from '../../utils/permissions'
 
 // Desktop: fixed column, collapsible to an icon rail. Mobile: off-canvas drawer.
 export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCloseMobile }) {
   const { user } = useAuth()
   const shopName = user?.shop_name || 'Shop'
+  // Only what this user may open; sections with nothing left disappear.
+  const nav = NAV.map(s => ({ ...s, items: s.items.filter(i => can(user, i.perm)) })).filter(s => s.items.length)
 
   return (
     <>
@@ -32,7 +35,7 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
         </div>
 
         <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
-          {NAV.map(({ section, items }) => (
+          {nav.map(({ section, items }) => (
             <div key={section}>
               <div className={clsx('mb-1 px-2.5 text-[11px] font-medium uppercase tracking-wider text-zinc-400', collapsed && 'lg:invisible lg:h-0 lg:mb-0')}>
                 {section}

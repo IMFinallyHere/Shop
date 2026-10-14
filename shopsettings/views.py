@@ -3,7 +3,7 @@ from rest_framework import status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.permissions import IsSuperuserOrStaff
+from accounts.permissions import ANY_STAFF, ShopPermission
 from .models import Color, PaymentMethod, ShopSettings, Size, ensure_payment_methods, ensure_sizes
 from .serializers import ColorSerializer, PaymentMethodSerializer, ShopSettingsSerializer, SizeSerializer
 
@@ -11,7 +11,9 @@ from .serializers import ColorSerializer, PaymentMethodSerializer, ShopSettingsS
 class ShopSettingsView(APIView):
     """Singleton per-shop settings (tax rate, label and receipt printing)."""
 
-    permission_classes = [IsSuperuserOrStaff]
+    permission_classes = [ShopPermission]
+    # Every staff member reads these: the counter needs the tax rate and print settings.
+    perms = {"GET": ANY_STAFF, "PUT": "shopsettings.change_shopsettings"}
 
     def get(self, request):
         return Response(ShopSettingsSerializer(ShopSettings.load()).data)
@@ -25,7 +27,9 @@ class ShopSettingsView(APIView):
 
 
 class PaymentMethodViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsSuperuserOrStaff]
+    permission_classes = [ShopPermission]
+    perm_model = "shopsettings.paymentmethod"
+    perms = {"list": ANY_STAFF, "retrieve": ANY_STAFF}
     serializer_class = PaymentMethodSerializer
 
     def get_queryset(self):
@@ -40,7 +44,8 @@ class _VariantOptionViewSet(viewsets.ModelViewSet):
     """Shared CRUD for sizes/colors: `?active=1` filter, append new rows at the end,
     and refuse to delete one that product variants still use."""
 
-    permission_classes = [IsSuperuserOrStaff]
+    permission_classes = [ShopPermission]
+    perms = {"list": ANY_STAFF, "retrieve": ANY_STAFF}
     pagination_class = None  # short lists, used whole in dropdowns
     model = None
 
@@ -68,6 +73,7 @@ class _VariantOptionViewSet(viewsets.ModelViewSet):
 
 
 class SizeViewSet(_VariantOptionViewSet):
+    perm_model = "shopsettings.size"
     serializer_class = SizeSerializer
     model = Size
 
@@ -77,5 +83,6 @@ class SizeViewSet(_VariantOptionViewSet):
 
 
 class ColorViewSet(_VariantOptionViewSet):
+    perm_model = "shopsettings.color"
     serializer_class = ColorSerializer
     model = Color

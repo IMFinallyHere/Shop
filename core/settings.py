@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 from datetime import timedelta
 from decouple import config, Csv
@@ -107,7 +108,20 @@ REST_FRAMEWORK = {
     ),
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
+    # JSON only: the browsable HTML renderer needs templates this API doesn't ship.
+    "DEFAULT_RENDERER_CLASSES": ("rest_framework.renderers.JSONRenderer",),
+    # Per-client limits on the unauthenticated endpoints (password guessing, mass
+    # signups). nginx enforces the same limits across all workers in production.
+    "DEFAULT_THROTTLE_RATES": {
+        "login": config("THROTTLE_LOGIN", default="10/min"),
+        "signup": config("THROTTLE_SIGNUP", default="5/hour"),
+    },
+    # Behind nginx: the client's IP is the last X-Forwarded-For hop it adds.
+    "NUM_PROXIES": config("NUM_PROXIES", cast=int, default=0),
 }
+# The test suite logs in far more often than any real client.
+if "test" in sys.argv:
+    REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"] = {"login": "10000/min", "signup": "10000/min"}
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),

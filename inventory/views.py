@@ -9,7 +9,7 @@ from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.response import Response
 
-from accounts.permissions import IsSuperuserOrStaff
+from accounts.permissions import ShopPermission
 from shopsettings.models import Color, Size
 from .models import LOW_STOCK, Category, Product, ProductVariant, Seller, StockBatch, StockItem, generate_stock_code
 from .serializers import (
@@ -55,7 +55,8 @@ STOCK_ITEM_RELATED = ("batch", "variant__product__category", "variant__color", "
 
 
 class CategoryViewSet(AllRowsMixin, viewsets.ModelViewSet):
-    permission_classes = [IsSuperuserOrStaff]
+    permission_classes = [ShopPermission]
+    perm_model = "inventory.category"
     serializer_class = CategorySerializer
     filter_backends = [SearchFilter]
     search_fields = ["name"]
@@ -65,7 +66,8 @@ class CategoryViewSet(AllRowsMixin, viewsets.ModelViewSet):
 
 
 class SellerViewSet(AllRowsMixin, viewsets.ModelViewSet):
-    permission_classes = [IsSuperuserOrStaff]
+    permission_classes = [ShopPermission]
+    perm_model = "inventory.seller"
     serializer_class = SellerSerializer
     filter_backends = [SearchFilter]
     search_fields = ["name", "phone", "email"]
@@ -75,7 +77,9 @@ class SellerViewSet(AllRowsMixin, viewsets.ModelViewSet):
 
 
 class ProductViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsSuperuserOrStaff]
+    permission_classes = [ShopPermission]
+    perm_model = "inventory.product"
+    perms = {"add_stock": "inventory.add_stockitem"}
     serializer_class = ProductSerializer
     filter_backends = [OrderingFilter]
     ordering_fields = ["name", "price_min", "stock_quantity", "created_at"]
@@ -149,7 +153,8 @@ def create_units(variant, batch, quantity):
 class ProductVariantViewSet(viewsets.ModelViewSet):
     """Edit a variant's color/size/threshold, or delete one with no sales history."""
 
-    permission_classes = [IsSuperuserOrStaff]
+    permission_classes = [ShopPermission]
+    perm_model = "inventory.productvariant"
     serializer_class = ProductVariantSerializer
     http_method_names = ["get", "patch", "delete", "head", "options"]
 
@@ -175,7 +180,9 @@ class ProductVariantViewSet(viewsets.ModelViewSet):
 class StockItemViewSet(viewsets.ReadOnlyModelViewSet):
     """The Stock section: every physical unit, one row each."""
 
-    permission_classes = [IsSuperuserOrStaff]
+    permission_classes = [ShopPermission]
+    perm_model = "inventory.stockitem"
+    perms = {"lookup": "inventory.view_stockitem", "remove": "inventory.change_stockitem"}
     serializer_class = StockItemSerializer
 
     def get_queryset(self):

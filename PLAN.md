@@ -412,6 +412,25 @@ admin `smallemail00@gmail.com`, nginx site, nightly backup cron. amazon-review u
 (not restarted; `/` 404 and `/docs` 401 before and after). **Decided:** production starts with an empty DB. `*.shop` grey record added and resolving (2026-10-14).
 Optional later: enable `ufw` (22/80/443), Cloudflare real-IP for logs, swap file.
 
+## Phase 17 — Security fixes after the first audit  ✅ 2026-10-14
+- **Cross-shop customer leak:** `/customers/lookup/` matched partial phones/names over the
+  global table and returned emails. Now exact 10-digit phone only, name only.
+- **Rate limits:** login 10/min, signup 5/hour per client (DRF `ScopedRateThrottle` +
+  nginx `limit_req`; nginx also caps the API at 20 r/s). `NUM_PROXIES=1` in prod, and
+  nginx sets `X-Forwarded-For` to the client alone so it can't be spoofed.
+- **Passwords:** Django's validators on signup, add user and change password (was 6 chars).
+- **Real permissions:** `ShopPermission` — owner can do anything; staff need the model
+  permission from their groups (views declare `perm_model` / `perms`). Users, groups and
+  permissions pages are owner-only. New shops get **Cashier** and **Manager** groups
+  (`accounts/roles.py`; `manage.py ensure_roles` for older shops). `/auth/me/` returns
+  `permissions`; the sidebar, top bar and pages hide what the user can't open.
+- **Account safety:** add-user always needs a password (same answer for new and existing
+  emails; existing accounts keep theirs); signup with an existing email needs its password.
+- **JSON only** (HTML `Accept` was a 500, now 406). **CSP** + security headers on the site.
+- **Dependencies:** Django 6.0.9, DRF 3.17.2, PyJWT 2.15.1, sqlparse 0.6.0, axios 1.20,
+  react-router 7.18 — pip-audit and npm audit clean.
+- **Server:** fail2ban for SSH, Ubuntu security updates; owner reboots manually.
+
 ## Local development database (Docker)  ✅
 - `docker-compose.yml` runs `postgres:17-alpine` (`shop-db-1`, volume `shop_pgdata`,
   port 5432); it reads `DB_NAME/DB_USER/DB_PASSWORD` from `.env`, which now points at

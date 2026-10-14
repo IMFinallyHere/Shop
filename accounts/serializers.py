@@ -1,12 +1,14 @@
 from django.conf import settings
+from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth.models import Group, Permission
 from django.db import transaction
 from django.utils.text import slugify
-from django_tenants.utils import get_public_schema_name, schema_context
+from django_tenants.utils import get_public_schema_name, schema_context, tenant_context
 from rest_framework import serializers
 from tenant_users.permissions.models import UserTenantPermissions
 
 from .models import User
+from .roles import ensure_default_roles
 from tenants.models import Domain, Tenant
 
 
@@ -62,10 +64,14 @@ class TenantUserSerializer(serializers.ModelSerializer):
 
 
 class TenantUserCreateSerializer(serializers.Serializer):
-    """Adds a user to the current shop, creating the global account if needed."""
+    """Adds a user to the current shop, creating the global account if needed.
+
+    A password is always required so the response doesn't reveal whether the email
+    already has an account; an existing account keeps its own password.
+    """
 
     email = serializers.EmailField()
-    password = serializers.CharField(write_only=True, min_length=6, required=False)
+    password = serializers.CharField(write_only=True, validators=[validate_password])
     first_name = serializers.CharField(required=False, allow_blank=True, default='')
     last_name = serializers.CharField(required=False, allow_blank=True, default='')
     is_staff = serializers.BooleanField(default=False)
@@ -78,10 +84,6 @@ class TenantUserCreateSerializer(serializers.Serializer):
         if profile and UserTenantPermissions.objects.filter(profile=profile).exists():
             raise serializers.ValidationError(
                 {'email': 'This user is already a member of this shop.'}
-            )
-        if not profile and not attrs.get('password'):
-            raise serializers.ValidationError(
-                {'password': 'Password is required for a new user.'}
             )
         attrs['_profile'] = profile
         return attrs
@@ -128,7 +130,7 @@ class TenantUserUpdateSerializer(serializers.Serializer):
 
 class ChangePasswordSerializer(serializers.Serializer):
     old_password = serializers.CharField()
-    new_password = serializers.CharField(min_length=6)
+    new_password = serializers.CharField(validators=[validate_password])
 
 
 class AssignGroupsSerializer(serializers.Serializer):
@@ -159,11 +161,18 @@ class MeSerializer(serializers.Serializer):
     is_staff = serializers.BooleanField()
     is_superuser = serializers.BooleanField()
     group_names = serializers.SerializerMethodField()
+    permissions = serializers.SerializerMethodField()
 
     def get_group_names(self, obj):
         if not obj.has_tenant_permissions():
             return []
         return list(obj.tenant_perms.groups.values_list('name', flat=True))
+
+    def get_permissions(self, obj):
+        """'app.codename' strings this user holds in the current shop (owners hold all)."""
+        if not obj.has_tenant_permissions():
+            return []
+        return sorted(obj.get_all_permissions())
 
 
 class SignupSerializer(serializers.Serializer):
@@ -171,7 +180,7 @@ class SignupSerializer(serializers.Serializer):
 
     shop_name = serializers.CharField(max_length=100)
     email = serializers.EmailField()
-    password = serializers.CharField(write_only=True, min_length=6)
+    password = serializers.CharField(write_only=True, validators=[validate_password])
     first_name = serializers.CharField(required=False, allow_blank=True, default='')
     last_name = serializers.CharField(required=False, allow_blank=True, default='')
 
@@ -190,6 +199,17 @@ class SignupSerializer(serializers.Serializer):
             if profile and Tenant.objects.filter(owner=profile).exists():
                 raise serializers.ValidationError('This email already owns a shop.')
         return value
+
+    def validate(self, attrs):
+        # An existing account (e.g. staff elsewhere) may open a shop only with its own
+        # password; otherwise anyone could attach a shop to someone else's account.
+        with schema_context(get_public_schema_name()):
+            profile = User.objects.filter(email=attrs['email']).first()
+        if profile and not profile.check_password(attrs['password']):
+            raise serializers.ValidationError(
+                {'password': 'This email already has an account. Enter its password.'}
+            )
+        return attrs
 
     @transaction.atomic
     def create(self, validated_data):
@@ -210,5 +230,7 @@ class SignupSerializer(serializers.Serializer):
             domain = f'{slug}.{settings.TENANT_USERS_DOMAIN}'
             Domain.objects.create(domain=domain, tenant=tenant, is_primary=True)
             tenant.add_user(owner, is_superuser=True, is_staff=True)
+        with tenant_context(tenant):
+            ensure_default_roles()
         return {'shop': validated_data['shop_name'], 'slug': slug,
                 'domain': domain, 'email': validated_data['email']}

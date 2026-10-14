@@ -3,7 +3,10 @@
 Run: `python manage.py test accounts` (creates/drops a `test_shop` database on the
 configured Postgres host).
 """
+from unittest import mock
+
 from django.contrib.auth.models import Group
+from django.core.cache import cache
 from django.core.management import call_command
 from django.db import connection
 from django.test import TestCase
@@ -13,11 +16,14 @@ from django_tenants.utils import (
     tenant_context,
 )
 from rest_framework.test import APIClient
+from rest_framework.throttling import ScopedRateThrottle
 from tenant_users.permissions.models import UserTenantPermissions
 from tenant_users.tenants.tasks import provision_tenant
 from tenant_users.tenants.utils import create_public_tenant
 
 from accounts.models import User
+from accounts.roles import ensure_default_roles
+from customers.models import Customer
 from tenants.models import Tenant
 
 PW = "pw12345678"
@@ -153,3 +159,85 @@ class MultiTenancyTestCase(TestCase):
         resp, client = self.login(host, email)
         client.credentials(HTTP_AUTHORIZATION=f"Bearer {resp.data['access']}")
         return resp, client
+
+    # --- security -----------------------------------------------------------
+
+    def _staff(self, email, group=None):
+        with schema_context(get_public_schema_name()):
+            user = User.objects.create_user(email=email, password=PW)
+        self.acme.add_user(user, is_staff=True)
+        if group:
+            with tenant_context(self.acme):
+                ensure_default_roles()
+                UserTenantPermissions.objects.get(profile=user).groups.add(Group.objects.get(name=group))
+        return self._auth("acme.localhost", email)[1]
+
+    def test_staff_only_do_what_their_groups_allow(self):
+        h = {"HTTP_HOST": "acme.localhost"}
+        bare = self._staff("bare@test.com")
+        self.assertEqual(bare.get("/api/products/", **h).status_code, 403)
+        self.assertEqual(bare.get("/api/shop-settings/", **h).status_code, 200)  # any staff reads settings
+
+        cashier = self._staff("till@test.com", group="Cashier")
+        self.assertEqual(cashier.get("/api/products/", **h).status_code, 200)
+        self.assertEqual(cashier.get("/api/dashboard/", **h).status_code, 200)
+        self.assertEqual(cashier.post("/api/products/", {"name": "X"}, format="json", **h).status_code, 403)
+        self.assertEqual(cashier.put("/api/shop-settings/", {"default_tax_rate": "5"}, format="json", **h).status_code, 403)
+        # Users, groups and permissions are the owner's alone, whatever the groups say.
+        for url in ("/api/users/", "/api/groups/", "/api/permissions/"):
+            self.assertEqual(cashier.get(url, **h).status_code, 403, url)
+        me = cashier.get("/api/auth/me/", **h).data
+        self.assertIn("billing.add_bill", me["permissions"])
+        self.assertNotIn("inventory.add_product", me["permissions"])
+
+    def test_customer_lookup_needs_the_exact_phone(self):
+        with schema_context(get_public_schema_name()):
+            Customer.objects.create(name="Meera", phone="9123456780", email="meera@test.com")
+        _, owner = self._auth("acme.localhost", "acme@test.com")
+        h = {"HTTP_HOST": "acme.localhost"}
+        self.assertEqual(owner.get("/api/customers/lookup/?phone=912", **h).data, [])
+        self.assertEqual(owner.get("/api/customers/lookup/?q=Meera", **h).data, [])
+        self.assertEqual(owner.get("/api/customers/lookup/?phone=9123456780", **h).data,
+                         [{"phone": "9123456780", "name": "Meera"}])
+
+    def test_signup_rejects_weak_passwords_and_borrowed_accounts(self):
+        c = APIClient()
+        weak = c.post("/api/auth/signup/", {"shop_name": "Weak", "email": "weak@test.com", "password": "12345678"},
+                      format="json", HTTP_HOST="localhost")
+        self.assertEqual(weak.status_code, 400)
+        self.assertIn("password", weak.data)
+        with schema_context(get_public_schema_name()):
+            User.objects.create_user(email="staffer@test.com", password=PW)
+        borrowed = c.post("/api/auth/signup/", {"shop_name": "Borrowed", "email": "staffer@test.com",
+                                                "password": "another-pass-123"}, format="json", HTTP_HOST="localhost")
+        self.assertEqual(borrowed.status_code, 400)
+        own = c.post("/api/auth/signup/", {"shop_name": "Own Shop", "email": "staffer@test.com", "password": PW},
+                     format="json", HTTP_HOST="localhost")
+        self.assertEqual(own.status_code, 201, own.data)
+        with tenant_context(Tenant.objects.get(schema_name=own.data["slug"])):
+            self.assertEqual(set(Group.objects.values_list("name", flat=True)), {"Cashier", "Manager"})
+
+    def test_adding_a_user_answers_the_same_for_new_and_existing_emails(self):
+        _, owner = self._auth("acme.localhost", "acme@test.com")
+        h = {"HTTP_HOST": "acme.localhost"}
+        for email in ("bella@test.com", "brand-new@test.com"):
+            no_pw = owner.post("/api/users/", {"email": email}, format="json", **h)
+            self.assertEqual(no_pw.status_code, 400)
+            self.assertIn("password", no_pw.data)
+            ok = owner.post("/api/users/", {"email": email, "password": "Strong-pass-123"}, format="json", **h)
+            self.assertEqual(ok.status_code, 201, ok.data)
+        # The existing account kept its own password.
+        self.assertEqual(self.login("bella.localhost", "bella@test.com")[0].status_code, 200)
+
+    def test_api_never_renders_html(self):
+        # Used to be a 500 (the browsable renderer has no templates); now a clean 406.
+        resp = APIClient().get("/api/auth/me/", HTTP_HOST="localhost", HTTP_ACCEPT="text/html")
+        self.assertEqual(resp.status_code, 406)
+        self.assertEqual(resp["Content-Type"], "application/json")
+
+    def test_login_is_rate_limited(self):
+        cache.clear()
+        with mock.patch.object(ScopedRateThrottle, "THROTTLE_RATES", {"login": "3/min"}):
+            codes = [self.login("acme.localhost", "acme@test.com", "wrong")[0].status_code for _ in range(4)]
+        cache.clear()
+        self.assertEqual(codes, [401, 401, 401, 429])

@@ -1,3 +1,5 @@
+import re
+
 from django.db.models import Count, Exists, Max, Min, OuterRef, Q, Subquery, Sum
 from django.db.models.functions import Lower
 from rest_framework import status
@@ -6,13 +8,16 @@ from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
-from accounts.permissions import IsSuperuserOrStaff
+from accounts.permissions import ShopPermission
 from .models import Customer
 from .serializers import CustomerSerializer
 
 
 class CustomerViewSet(viewsets.ViewSet):
-    permission_classes = [IsSuperuserOrStaff]
+    permission_classes = [ShopPermission]
+    perm_model = "customers.customer"
+    # The counter fills in a returning customer's name while billing.
+    perms = {"lookup": "billing.add_bill"}
 
     def list(self, request):
         """Customers who have bought from THIS shop (resolved via its bills), paginated."""
@@ -84,14 +89,13 @@ class CustomerViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=["get"])
     def lookup(self, request):
-        """Search the GLOBAL customer table (for autofill across shops)."""
+        """Autofill a returning customer's name at the counter from the GLOBAL table.
+
+        Exact 10-digit phone only, and only the name comes back: the table is shared by
+        every shop, so partial matches would let any shop page through all customers.
+        """
         phone = request.query_params.get("phone", "").strip()
-        q = request.query_params.get("q", "").strip()
-        qs = Customer.objects.all()
-        if phone:
-            qs = qs.filter(phone__icontains=phone)
-        elif q:
-            qs = qs.filter(name__icontains=q) | qs.filter(phone__icontains=q)
-        else:
+        if not re.fullmatch(r"\d{10}", phone):
             return Response([])
-        return Response(CustomerSerializer(qs[:10], many=True).data)
+        customer = Customer.objects.filter(phone=phone).first()
+        return Response([{"phone": customer.phone, "name": customer.name}] if customer else [])

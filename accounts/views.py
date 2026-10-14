@@ -6,6 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.filters import SearchFilter
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -13,7 +14,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from tenant_users.permissions.models import UserTenantPermissions
 
 from .models import User
-from .permissions import IsPlatformAdmin, IsSuperuserOrStaff
+from .permissions import IsPlatformAdmin, IsShopOwner
 from tenants.models import Tenant
 from .serializers import (
     AssignGroupPermissionsSerializer,
@@ -33,6 +34,9 @@ from .serializers import (
 
 class LoginView(TokenObtainPairView):
     """Email + password login (USERNAME_FIELD is email). Adds the user payload."""
+
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "login"
 
     def post(self, request, *args, **kwargs):
         response = super().post(request, *args, **kwargs)
@@ -143,6 +147,8 @@ class SignupView(APIView):
     """Public, unauthenticated. Creates the owner account + provisions a new shop."""
 
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "signup"
 
     def post(self, request):
         # Shops are created from the main domain only; a signup sent to a shop's
@@ -156,9 +162,9 @@ class SignupView(APIView):
 
 
 class UserViewSet(viewsets.ModelViewSet):
-    """Members of the current shop (per-tenant UserTenantPermissions rows)."""
+    """Members of the current shop (per-tenant UserTenantPermissions rows). Owner only."""
 
-    permission_classes = [IsSuperuserOrStaff]
+    permission_classes = [IsShopOwner]
     filter_backends = [SearchFilter]
     search_fields = ['profile__email', 'profile__first_name', 'profile__last_name']
 
@@ -240,7 +246,7 @@ class UserViewSet(viewsets.ModelViewSet):
 
 
 class GroupViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsSuperuserOrStaff]
+    permission_classes = [IsShopOwner]
 
     def get_queryset(self):
         return Group.objects.prefetch_related('permissions').order_by('name')
@@ -260,7 +266,7 @@ class GroupViewSet(viewsets.ModelViewSet):
 
 
 class PermissionViewSet(viewsets.ReadOnlyModelViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsShopOwner]
     serializer_class = PermissionSerializer
     pagination_class = None
 

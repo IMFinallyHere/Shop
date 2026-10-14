@@ -13,7 +13,7 @@ edited or restarted.
 | Settings | `/opt/shop/shared/.env` (from `env.production.example`, mode 600) |
 | API | `shop.service` → gunicorn on 127.0.0.1:8001 |
 | Database | PostgreSQL 17, localhost only, database and role `shop` |
-| Web | `/etc/nginx/sites-available/shop` (from `nginx-shop.conf`) |
+| Web | `/etc/nginx/sites-available/shop` (from `nginx-shop.conf`) + `/etc/nginx/snippets/shop-proxy.conf`; request limits and CSP live there |
 | TLS | Let's Encrypt `shop.gokuldelicacy.in` + wildcard, DNS-01 via `/root/.secrets/cloudflare.ini` |
 | Backups | `/opt/shop/backups`, nightly `pg_dump`, 14 kept |
 
@@ -62,13 +62,20 @@ systemctl daemon-reload && systemctl enable shop
 Then from the laptop run `deploy/deploy.sh` (it starts the service), and on the server:
 
 ```bash
-# 7. Public tenant for the main domain + the platform admin.
+# 7. Public tenant for the main domain + the platform admin, then the default
+#    Cashier/Manager groups for any shops that predate them (new shops get them on signup).
 cd /opt/shop/app
-sudo -u shop /opt/shop/venv/bin/python manage.py create_public_tenant \
-  --domain_url shop.gokuldelicacy.in --owner_email <admin email>
-# Set the admin's password with: … manage.py shell (accounts.User.set_password)
+# The CLI command can't make the owner a platform admin, so use the helper directly:
+sudo -u shop /opt/shop/venv/bin/python manage.py shell -c "
+from tenant_users.tenants.utils import create_public_tenant; import secrets
+create_public_tenant(domain_url='shop.gokuldelicacy.in', owner_email='<admin email>',
+                     is_superuser=True, is_staff=True, password=secrets.token_urlsafe(32))"
+# Set the admin's password (in a real terminal, not a non-interactive one):
+#   ssh -t root@server 'cd /opt/shop/app && sudo -u shop /opt/shop/venv/bin/python manage.py changepassword <email>'
+sudo -u shop /opt/shop/venv/bin/python manage.py ensure_roles
 
-# 8. nginx site. Stop if `nginx -t` fails, and remove the symlink.
+# 8. nginx site (+ its proxy snippet). Stop if `nginx -t` fails, and remove the symlink.
+cp deploy/nginx-shop-proxy.conf /etc/nginx/snippets/shop-proxy.conf
 cp deploy/nginx-shop.conf /etc/nginx/sites-available/shop
 ln -s /etc/nginx/sites-available/shop /etc/nginx/sites-enabled/shop
 nginx -t && systemctl reload nginx
