@@ -345,7 +345,7 @@ Measured on a scratch shop `perf` (local Postgres 17): 20k products · 100k vari
 - [x] Backend suite green (36 tests).
 - [ ] Test on a real thermal printer.
 
-## Phase 16 — Production deploy to 169.58.71.221 (`shop.gokuldelicacy.in`)  📋 planned
+## Phase 16 — Production deploy to 169.58.71.221 (`shop.gokuldelicacy.in`)  ✅ live 2026-10-14
 **Constraint:** the server already runs `amazon-review` (FastAPI on 127.0.0.1:8000, SQLite,
 nginx site `amazon-review`, cert `amazon.ecogas.co.in`). We only **add** things; nothing
 of theirs is edited, restarted or shared (own user, folder, DB, port, nginx file, cert).
@@ -405,8 +405,11 @@ of theirs is edited, restarted or shared (own user, folder, DB, port, nginx file
   5432 on localhost only.
 - `certbot renew --dry-run` passes for both certs.
 
-**Needed from owner:** `*.shop` grey-cloud record, Cloudflare API token, SSL rule for
-`shop.gokuldelicacy.in`. **Decided:** production starts with an empty DB. `*.shop` grey record added and resolving (2026-10-14).
+**Done 2026-10-14:** Postgres 17.11, `shop` user/db (+pg_trgm), wildcard cert (expires
+2027-01-12, renew dry-run OK), `shop.service` (gunicorn `--no-control-socket`: the sandbox
+makes its default socket dir read-only), public tenant `shop.gokuldelicacy.in` with platform
+admin `smallemail00@gmail.com`, nginx site, nightly backup cron. amazon-review untouched
+(not restarted; `/` 404 and `/docs` 401 before and after). **Decided:** production starts with an empty DB. `*.shop` grey record added and resolving (2026-10-14).
 Optional later: enable `ufw` (22/80/443), Cloudflare real-IP for logs, swap file.
 
 ## Local development database (Docker)  ✅

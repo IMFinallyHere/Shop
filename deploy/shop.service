@@ -12,7 +12,8 @@ WorkingDirectory=/opt/shop/app
 Environment=PYTHONDONTWRITEBYTECODE=1
 ExecStart=/opt/shop/venv/bin/gunicorn core.wsgi:application \
     --bind 127.0.0.1:8001 --workers 3 --timeout 30 \
-    --forwarded-allow-ips 127.0.0.1 --access-logfile - --error-logfile -
+    --forwarded-allow-ips 127.0.0.1 --no-control-socket \
+    --access-logfile - --error-logfile -
 Restart=always
 RestartSec=3
 UMask=0077
