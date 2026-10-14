@@ -1,0 +1,45 @@
+/* Motion for the public site. Everything here is off when the visitor asks for
+   reduced motion (see the block at the end). */
+
+/* Headline words rise in one after another on load. */
+.lp-word { display: inline-block; opacity: 0; transform: translateY(0.6em); animation: lp-rise .8s cubic-bezier(.2, .7, .2, 1) forwards; }
+.lp-fade { opacity: 0; animation: lp-rise .8s cubic-bezier(.2, .7, .2, 1) forwards; }
+@keyframes lp-rise { to { opacity: 1; transform: none; } }
+
+/* Sections and screenshots appear as they scroll into view. */
+.lp-reveal { opacity: 0; transform: translateY(32px); transition: opacity .8s ease, transform .9s cubic-bezier(.2, .7, .2, 1); }
+.lp-reveal.lp-zoom { transform: translateY(48px) scale(.94); }
+.lp-reveal[data-shown] { opacity: 1; transform: none; }
+
+/* Live counter: the tag bobs gently, a beam sweeps the barcode on each scan. */
+.lp-bob { animation: lp-bob 6s ease-in-out infinite; }
+@keyframes lp-bob { 0%, 100% { transform: rotate(-6deg) translateY(0); } 50% { transform: rotate(-4deg) translateY(-10px); } }
+.lp-beam { position: absolute; left: -6%; right: -6%; height: 3px; border-radius: 3px; background: #FDBA4D;
+  box-shadow: 0 0 12px 3px rgba(253, 186, 77, .75), 0 0 30px 8px rgba(253, 186, 77, .35); opacity: 0; }
+.lp-beam[data-on] { animation: lp-scan 1s ease-in-out; }
+@keyframes lp-scan { 0% { top: 0; opacity: 0; } 10% { opacity: 1; } 50% { top: 100%; } 90% { opacity: 1; } 100% { top: 0; opacity: 0; } }
+.lp-row { animation: lp-row .5s cubic-bezier(.2, .8, .2, 1.1) both; }
+@keyframes lp-row { from { opacity: 0; transform: translateX(-16px); background: rgba(253, 186, 77, .35); } to { opacity: 1; transform: none; background: transparent; } }
+.lp-pop { animation: lp-pop .45s cubic-bezier(.2, .9, .3, 1.4) both; }
+@keyframes lp-pop { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: none; } }
+.lp-swap { animation: lp-swap .45s ease both; }
+@keyframes lp-swap { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* Soft light behind the counter that breathes slowly. */
+.lp-glow { animation: lp-glow 7s ease-in-out infinite; }
+@keyframes lp-glow { 0%, 100% { opacity: .55; transform: scale(1); } 50% { opacity: .85; transform: scale(1.08); } }
+
+/* Strip of shop types under the hero. */
+.lp-marquee { display: flex; width: max-content; animation: lp-marquee 40s linear infinite; }
+.lp-marquee:hover { animation-play-state: paused; }
+@keyframes lp-marquee { to { transform: translateX(-50%); } }
+
+/* "How it works" progress bar while a step is on screen. */
+.lp-progress { transform-origin: left; animation: lp-progress linear forwards; }
+@keyframes lp-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-word, .lp-fade, .lp-reveal, .lp-reveal.lp-zoom { opacity: 1; transform: none; animation: none; transition: none; }
+  .lp-bob, .lp-glow, .lp-marquee, .lp-row, .lp-pop, .lp-swap, .lp-progress { animation: none; }
+  .lp-beam { display: none; }
+}

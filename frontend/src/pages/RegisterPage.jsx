@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CheckCircle2, Loader2 } from 'lucide-react'
-import { signup } from '../api/auth'
+import useCreateShop from '../hooks/useCreateShop'
 import AuthLayout from '../components/layout/AuthLayout'
 import ErrorAlert from '../components/common/ErrorAlert'
 import Button from '../components/ui/Button'
@@ -12,37 +12,13 @@ export default function RegisterPage() {
   const [form, setForm] = useState({
     shop_name: '', email: '', password: '', first_name: '', last_name: '',
   })
-  const [fieldErrors, setFieldErrors] = useState({})
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [done, setDone] = useState(null)
+  const { createShop, fieldErrors, error, loading, created: done } = useCreateShop()
 
   const update = (k) => (e) => setForm({ ...form, [k]: e.target.value })
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault()
-    setError(''); setFieldErrors({}); setLoading(true)
-    try {
-      const { data } = await signup(form)
-      setDone(data)
-      // Redirect to the new shop's subdomain login after a short pause.
-      const port = window.location.port ? `:${window.location.port}` : ''
-      const url = `${window.location.protocol}//${data.domain}${port}/login`
-      setTimeout(() => { window.location.assign(url) }, 1800)
-    } catch (err) {
-      const data = err.response?.data || {}
-      const fields = {}
-      let general = ''
-      Object.entries(data).forEach(([key, val]) => {
-        const msg = Array.isArray(val) ? val[0] : val
-        if (['shop_name', 'email', 'password', 'first_name', 'last_name'].includes(key)) fields[key] = msg
-        else general += (general ? ' ' : '') + msg
-      })
-      setFieldErrors(fields)
-      setError(general || (Object.keys(fields).length === 0 ? 'Signup failed. Please try again.' : ''))
-    } finally {
-      setLoading(false)
-    }
+    createShop(form)
   }
 
   const field = (name, label, { type = 'text', required = false, ...rest } = {}) => (
@@ -61,7 +37,7 @@ export default function RegisterPage() {
           <CheckCircle2 size={40} className="mb-3 text-emerald-500" />
           <p className="font-medium text-zinc-900">“{done.shop}” is ready</p>
           <p className="mt-1 flex items-center gap-1.5 text-sm text-zinc-500">
-            <Loader2 size={14} className="animate-spin" /> Taking you to {done.domain}…
+            <Loader2 size={14} className="animate-spin" /> Opening your dashboard at {done.domain}…
           </p>
         </div>
       ) : (

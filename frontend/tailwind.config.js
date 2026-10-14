@@ -8,10 +8,16 @@ export default {
     extend: {
       fontFamily: {
         sans: ['Inter', ...defaultTheme.fontFamily.sans],
+        // Public site headlines only (loaded by the landing page).
+        display: ['"Bricolage Grotesque"', 'Inter', ...defaultTheme.fontFamily.sans],
       },
       colors: {
         // Single accent used across the app; swap here to rebrand.
         brand: colors.indigo,
+        // Public site: indigo dye, marigold, cool cotton.
+        dye: { 950: '#120F33', 900: '#1A1650', 800: '#262070', 700: '#3A3396' },
+        marigold: { 200: '#FFE3A8', 300: '#FFD27A', 400: '#FDBA4D', 500: '#F59E0B', 600: '#C77A06' },
+        mist: '#EEF0F6',
       },
       boxShadow: {
         card: '0 1px 2px 0 rgb(0 0 0 / 0.04)',

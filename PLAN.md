@@ -431,6 +431,26 @@ Optional later: enable `ufw` (22/80/443), Cloudflare real-IP for logs, swap file
   react-router 7.18 — pip-audit and npm audit clean.
 - **Server:** fail2ban for SSH, Ubuntu security updates; owner reboots manually.
 
+## Phase 18 — Public website with signup  🚧 local only (not committed or deployed)
+- Main domain `/` is now the public site (`pages/LandingPage.jsx`); shop subdomains still
+  go to their dashboard. Product name lives in `frontend/src/brand.js` (placeholder "Shop").
+- Redesign (2026-10-14): Bricolage Grotesque headlines + Inter body, indigo with marigold.
+  Hero is a live billing demo (`components/landing/LiveCounter.jsx`): a tag is scanned, rows
+  drop into the bill, the total counts up, "Paid via UPI", repeat. Rising headline, scrolling
+  shop-type strip, auto-advancing steps with a progress bar, scroll reveals
+  (`landing.css`, `motion.js`). Reduced motion shows the finished state with no movement.
+- Sections: how it works (4 steps, real screenshots), dashboard, features, "Free during
+  early access", signup form.
+- Screenshots are real: demo shop **Asha Boutique** (`asha.localhost`, `owner@asha.test` /
+  `AshaDemo#2026`, seeded with `seed_demo asha`), captured with playwright-core + Chrome,
+  stored as WebP in `frontend/src/assets/landing/` (~310 KB total).
+- Signup (landing and `/register`) now signs the owner in and opens the new shop's
+  dashboard directly (`hooks/useCreateShop.js`). Tested end to end with "Rangoli Sarees".
+- Fixed `moneyShort` showing ₹1,205.4 instead of ₹1,205.40.
+- An expired login token no longer bounces the public website to `/login` (the API
+  client only redirects from pages that need a login).
+- [ ] Pick the product name. [ ] Commit and deploy when approved.
+
 ## Local development database (Docker)  ✅
 - `docker-compose.yml` runs `postgres:17-alpine` (`shop-db-1`, volume `shop_pgdata`,
   port 5432); it reads `DB_NAME/DB_USER/DB_PASSWORD` from `.env`, which now points at

@@ -2,6 +2,8 @@ import axios from 'axios'
 
 const api = axios.create({ baseURL: '/api' })
 
+const PUBLIC_PATHS = ['/', '/login', '/register']
+
 api.interceptors.request.use(config => {
   const token = localStorage.getItem('access_token')
   if (token) config.headers.Authorization = `Bearer ${token}`
@@ -24,7 +26,8 @@ api.interceptors.response.use(
       } catch {
         localStorage.removeItem('access_token')
         localStorage.removeItem('refresh_token')
-        window.location.href = '/login'
+        // Public pages (the website, sign in, sign up) just carry on signed out.
+        if (!PUBLIC_PATHS.includes(window.location.pathname)) window.location.href = '/login'
       }
     }
     return Promise.reject(error)

@@ -5,9 +5,10 @@ import { ToastProvider } from './components/ui/Toast'
 import DashboardLayout from './components/layout/DashboardLayout'
 import LoginPage from './pages/LoginPage'
 import Spinner from './components/common/Spinner'
-import { homePath } from './utils/domain'
+import { homePath, isMainDomain } from './utils/domain'
 
 // Pages load on demand so the first visit only downloads the route it needs.
+const LandingPage = lazy(() => import('./pages/LandingPage'))
 const RegisterPage = lazy(() => import('./pages/RegisterPage'))
 const ShopPickerPage = lazy(() => import('./pages/ShopPickerPage'))
 const PlatformAdminPage = lazy(() => import('./pages/PlatformAdminPage'))
@@ -34,11 +35,20 @@ function ProtectedRoute() {
   return isAuthenticated ? <Outlet /> : <Navigate to="/login" replace />
 }
 
+// The main domain's front page is the public site; a shop's goes to its dashboard.
+function Home() {
+  const { isAuthenticated, isLoading } = useAuth()
+  if (isMainDomain()) return <LandingPage />
+  if (isLoading) return <Spinner className="h-screen" />
+  return <Navigate to={isAuthenticated ? homePath() : '/login'} replace />
+}
+
 function AppRoutes() {
   return (
     <Suspense fallback={<Spinner className="h-screen" />}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/" element={<Home />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route element={<ProtectedRoute />}>
           {/* Main-domain pages (no shop context) */}
@@ -63,7 +73,6 @@ function AppRoutes() {
             <Route path="/groups" element={<GroupsPage />} />
             <Route path="/permissions" element={<PermissionsPage />} />
           </Route>
-          <Route path="/" element={<Navigate to={homePath()} replace />} />
           <Route path="*" element={<Navigate to={homePath()} replace />} />
         </Route>
       </Routes>
