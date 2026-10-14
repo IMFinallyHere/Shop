@@ -10,12 +10,16 @@ import PageHeader from '../components/ui/PageHeader'
 import Button from '../components/ui/Button'
 import Badge from '../components/ui/Badge'
 import { Field, Input } from '../components/ui/Field'
+import Pagination from '../components/ui/Pagination'
 import { Table, Td, Tr } from '../components/ui/Table'
 import { useToast } from '../components/ui/Toast'
 
+const PAGE_SIZE = 20
+
 export default function CategoriesPage() {
-  const { data, loading, error: loadError, reload } = useQuery(() => getCategories())
-  const items = asList(data).rows
+  const [page, setPage] = useState(1)
+  const { data, loading, error: loadError, reload } = useQuery(() => getCategories({ page }), page)
+  const { rows: items, count } = asList(data)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [fieldError, setFieldError] = useState('')
@@ -69,6 +73,7 @@ export default function CategoriesPage() {
           </Tr>
         ))}
       </Table>
+      <Pagination page={page} pageSize={PAGE_SIZE} count={count} onChange={setPage} />
 
       <Modal isOpen={modal === 'create' || modal === 'edit'} onClose={close} title={modal === 'edit' ? 'Edit category' : 'New category'} size="sm"
         footer={<><Button onClick={close}>Cancel</Button><Button variant="primary" onClick={save} loading={saving}>Save</Button></>}>

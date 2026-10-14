@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import clsx from 'clsx'
 import Sidebar from './Sidebar'
 import Topbar from './Topbar'
+import Spinner from '../common/Spinner'
 
 const COLLAPSE_KEY = 'sidebar_collapsed'
 const readCollapsed = () => { try { return localStorage.getItem(COLLAPSE_KEY) === '1' } catch { return false } }
@@ -25,7 +26,7 @@ export default function DashboardLayout() {
         <Topbar onOpenMobile={() => setMobileOpen(true)} />
         <main className="flex-1 overflow-y-auto">
           <div className={clsx('mx-auto px-4 py-6 sm:px-6 lg:py-8', fullBleed ? 'max-w-[1400px]' : 'max-w-6xl')}>
-            <Outlet />
+            <Suspense fallback={<Spinner className="py-24" />}><Outlet /></Suspense>
           </div>
         </main>
       </div>

@@ -7,19 +7,23 @@ import SearchInput from '../components/common/SearchInput'
 import ErrorAlert from '../components/common/ErrorAlert'
 import PageHeader, { Toolbar } from '../components/ui/PageHeader'
 import Badge from '../components/ui/Badge'
+import Pagination from '../components/ui/Pagination'
 import { Table, Td, Tr } from '../components/ui/Table'
 import { initials, money } from '../utils/format'
 
+const PAGE_SIZE = 20
+
 export default function CustomersPage() {
+  const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const navigate = useNavigate()
-  const { data, loading, error } = useQuery(() => getCustomers({ search }), search)
-  const customers = asList(data).rows
+  const { data, loading, error } = useQuery(() => getCustomers({ page, search }), `${page}|${search}`)
+  const { rows: customers, count } = asList(data)
 
   return (
     <div>
       <PageHeader title="Customers" subtitle="People who have purchased from this shop." />
-      <Toolbar><SearchInput value={search} onChange={setSearch} placeholder="Search by name or phone…" /></Toolbar>
+      <Toolbar><SearchInput value={search} onChange={v => { setSearch(v); setPage(1) }} placeholder="Search by name or phone…" /></Toolbar>
       <ErrorAlert message={error && 'Failed to load customers.'} />
 
       <Table
@@ -44,6 +48,7 @@ export default function CustomersPage() {
           </Tr>
         ))}
       </Table>
+      <Pagination page={page} pageSize={PAGE_SIZE} count={count} onChange={setPage} />
     </div>
   )
 }

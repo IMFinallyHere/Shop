@@ -25,6 +25,7 @@ SHARED_APPS = [
     "customers",          # global shared Customer table (public schema)
     "django.contrib.contenttypes",
     "django.contrib.auth",
+    "django.contrib.postgres",   # GIN trigram indexes for search
     "rest_framework",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
@@ -78,6 +79,9 @@ DATABASES = {
         "PASSWORD": config("DB_PASSWORD", default=""),
         "HOST": config("DB_HOST", default="localhost"),
         "PORT": config("DB_PORT", default="5432"),
+        # Reuse connections across requests instead of reconnecting every time.
+        "CONN_MAX_AGE": config("DB_CONN_MAX_AGE", cast=int, default=60),
+        "CONN_HEALTH_CHECKS": True,
     }
 }
 

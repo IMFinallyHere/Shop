@@ -101,6 +101,37 @@ class BillingTests(BillingTestCase):
         self.assertEqual(prod.data["stock_quantity"], 1)
         self.assertEqual(c.get(f"/api/stock-items/lookup/?code={codes[0]}", HTTP_HOST="acme.localhost").status_code, 404)
 
+    def test_denormalized_stock_follows_sell_return_remove(self):
+        """Product/variant stock figures stay equal to a fresh count of in-stock units."""
+        from django.db.models import Max, Min
+        from inventory.models import Product, ProductVariant, StockItem
+
+        host = "acme.localhost"
+        c = self.client_for(host, "acme@test.com")
+        pid, codes = self._product_with_units(host, c, 4, price="300")
+
+        def check(expected):
+            with schema_context("acme"):
+                units = StockItem.objects.filter(variant__product_id=pid, status=StockItem.IN_STOCK)
+                prices = units.aggregate(lo=Min("batch__price"), hi=Max("batch__price"))
+                p = Product.objects.get(pk=pid)
+                self.assertEqual((p.stock_quantity, units.count()), (expected, expected))
+                self.assertEqual((p.price_min, p.price_max), (prices["lo"], prices["hi"]))
+                for v in ProductVariant.objects.filter(product_id=pid):
+                    self.assertEqual(v.stock_quantity, units.filter(variant=v).count())
+
+        check(4)
+        bill = c.post("/api/bills/", {"codes": codes[:2], "payment_mode": "Cash", "customer": CUST},
+                      format="json", HTTP_HOST=host).data
+        check(2)
+        self.assertEqual(self._return(host, c, bill["id"], [bill["items"][0]["id"]]).status_code, 201)
+        check(3)
+        unit = c.get(f"/api/stock-items/lookup/?code={codes[3]}", HTTP_HOST=host).data
+        c.post(f"/api/stock-items/{unit['id']}/remove/", HTTP_HOST=host)
+        check(2)
+        c.post(f"/api/stock-items/{unit['id']}/remove/", HTTP_HOST=host)
+        check(2)
+
     def test_tax_comes_from_settings_not_request(self):
         self.set_tax("acme", 10)
         c = self.client_for("acme.localhost", "acme@test.com")
@@ -159,7 +190,7 @@ class BillingTests(BillingTestCase):
                format="json", HTTP_HOST="bella.localhost")
         with schema_context(get_public_schema_name()):
             self.assertEqual(Customer.objects.filter(phone="8887776666").count(), 1)
-        a_customers = a.get("/api/customers/", HTTP_HOST="acme.localhost").data
+        a_customers = a.get("/api/customers/", HTTP_HOST="acme.localhost").data["results"]
         self.assertEqual([c["name"] for c in a_customers], ["Ravi"])
         lookup = a.get("/api/customers/lookup/?phone=8887776666", HTTP_HOST="acme.localhost").data
         self.assertEqual(lookup[0]["name"], "Ravi")
@@ -170,7 +201,7 @@ class BillingTests(BillingTestCase):
         _, acodes = self._product_with_units("acme.localhost", a, 1)
         a.post("/api/bills/", {"codes": acodes, "payment_mode": "Cash", "customer": {"name": "OnlyAcme", "phone": "7000000000"}},
                format="json", HTTP_HOST="acme.localhost")
-        bella_customers = b.get("/api/customers/", HTTP_HOST="bella.localhost").data
+        bella_customers = b.get("/api/customers/", HTTP_HOST="bella.localhost").data["results"]
         self.assertNotIn("OnlyAcme", [c["name"] for c in bella_customers])
 
     # --- Returns & store credit (named test_return*/test_store_credit* so they run after
@@ -239,7 +270,7 @@ class BillingTests(BillingTestCase):
         bal = lambda c, host: Decimal(c.get(f"/api/store-credit/?phone={phone}", HTTP_HOST=host).data["balance"])
         self.assertEqual(bal(a, "acme.localhost"), Decimal("200.00"))
         self.assertEqual(bal(b, "bella.localhost"), Decimal("0.00"))  # per-shop credit
-        customers = a.get("/api/customers/", HTTP_HOST="acme.localhost").data
+        customers = a.get("/api/customers/", HTTP_HOST="acme.localhost").data["results"]
         self.assertEqual(Decimal([x for x in customers if x["phone"] == phone][0]["credit_balance"]), Decimal("200.00"))
 
         # Spend: more than balance → 400; no phone → 400; 150 of it → ok.

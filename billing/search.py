@@ -1,7 +1,9 @@
 """Global search (top bar) and the full history of one stock unit."""
 import re
+from decimal import Decimal
 
-from django.db.models import Count, Q
+from django.db.models import Count, Exists, OuterRef, Q, Sum
+from django.db.models.functions import Lower
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -9,11 +11,12 @@ from rest_framework.views import APIView
 from accounts.permissions import IsSuperuserOrStaff
 from customers.models import Customer
 from inventory.models import Product, Seller, StockItem
-from .models import Bill, BillItem, Return, credit_balance
+from .models import Bill, BillItem, CreditEntry, Return
 
 LIMIT = 5
 BILL_NO = re.compile(r"^INV-?(\d+)$", re.I)
 RETURN_NO = re.compile(r"^RET-?(\d+)$", re.I)
+CODE_PART = re.compile(r"^[0-9A-F]{1,12}$", re.I)  # could be part of a stock code
 UNIT_RELATED = ("batch", "variant__product__category", "variant__product__seller", "variant__color", "variant__size")
 
 
@@ -27,9 +30,9 @@ def _return_row(r):
             "amount": str(r.amount), "mode": r.mode, "created_at": r.created_at}
 
 
-def shop_customer_ids():
-    """Global customers who have bought from the current shop."""
-    return set(Bill.objects.exclude(customer_id__isnull=True).values_list("customer_id", flat=True))
+def shop_customers():
+    """Global customers who have bought from the current shop (resolved in SQL)."""
+    return Customer.objects.filter(Exists(Bill.objects.filter(customer_id=OuterRef("pk"))))
 
 
 class SearchView(APIView):
@@ -63,8 +66,16 @@ class SearchView(APIView):
             return Response(out)
 
         units = StockItem.objects.select_related(*UNIT_RELATED)
-        exact_unit = units.filter(code__iexact=q).first()
-        unit_hits = [exact_unit] if exact_unit else list(units.filter(code__icontains=q)[:LIMIT])
+        exact_unit = units.filter(code=q.upper()).first()  # codes are upper-case; uses the unique index
+        if exact_unit:
+            unit_hits = [exact_unit]
+        elif CODE_PART.match(q):
+            # Candidates via the trigram index first: ordering the whole match by
+            # created_at with a LIMIT makes Postgres walk every unit looking for hits.
+            ids = list(StockItem.objects.filter(code__icontains=q).order_by().values_list("id", flat=True)[:200])
+            unit_hits = list(units.filter(id__in=ids).order_by("-created_at")[:LIMIT])
+        else:
+            unit_hits = []  # barcodes are upper-case hex; nothing else can match
         out["units"] = [{"code": u.code, "product_name": u.variant.product.name, "label": u.variant.label,
                          "status": u.status, "price": str(u.batch.price)} for u in unit_hits]
         if exact_unit:
@@ -75,8 +86,8 @@ class SearchView(APIView):
         out["bills"] = [_bill_row(b) for b in bills.filter(who)[:LIMIT]]
         out["returns"] = [_return_row(r) for r in returns.filter(who)[:LIMIT]]
 
-        customers = Customer.objects.filter(id__in=shop_customer_ids()).filter(
-            Q(name__icontains=q) | Q(phone__icontains=q))[:LIMIT]
+        customers = shop_customers().filter(Q(name__icontains=q) | Q(phone__icontains=q)).order_by(
+            Lower("name"), "id")[:LIMIT]
         out["customers"] = [{"id": c.id, "name": c.name, "phone": c.phone} for c in customers]
         if q.isdigit() and len(q) == 10:
             match = next((c for c in out["customers"] if c["phone"] == q), None)
@@ -86,11 +97,10 @@ class SearchView(APIView):
         products = (
             Product.objects.select_related("category")
             .filter(Q(name__icontains=q) | Q(sku__icontains=q) | Q(fabric_type__icontains=q))
-            .annotate(in_stock=Count("variants__stock_items", filter=Q(variants__stock_items__status=StockItem.IN_STOCK)))
             .order_by("name")[:LIMIT]
         )
         out["products"] = [{"id": p.id, "name": p.name, "category": p.category.name if p.category else None,
-                            "in_stock": p.in_stock} for p in products]
+                            "in_stock": p.stock_quantity} for p in products]
         sellers = Seller.objects.filter(Q(name__icontains=q) | Q(phone__icontains=q)).annotate(
             n_products=Count("products")).order_by("name")[:LIMIT]
         out["sellers"] = [{"id": s.id, "name": s.name, "phone": s.phone, "products": s.n_products} for s in sellers]
@@ -103,7 +113,7 @@ class UnitHistoryView(APIView):
     permission_classes = [IsSuperuserOrStaff]
 
     def get(self, request, code):
-        item = StockItem.objects.select_related(*UNIT_RELATED).filter(code__iexact=code.strip()).first()
+        item = StockItem.objects.select_related(*UNIT_RELATED).filter(code=code.strip().upper()).first()
         if not item:
             return Response({"detail": f"No stock unit with code {code}."}, status=status.HTTP_404_NOT_FOUND)
         v, b = item.variant, item.batch
@@ -146,9 +156,13 @@ class UnitHistoryView(APIView):
             .annotate(n=Count("id")).values_list("customer_id", "n")
         )
         people = {c.id: c for c in Customer.objects.filter(id__in=buyer_ids)}
+        credit = dict(
+            CreditEntry.objects.filter(customer_id__in=buyer_ids).values("customer_id")
+            .annotate(s=Sum("amount")).values_list("customer_id", "s")
+        )
         customers = [
             {"id": cid, "name": people[cid].name, "phone": people[cid].phone, "email": people[cid].email,
-             "bills": bill_counts.get(cid, 0), "credit_balance": str(credit_balance(cid))}
+             "bills": bill_counts.get(cid, 0), "credit_balance": str(credit.get(cid) or Decimal("0.00"))}
             for cid in buyer_ids if cid in people
         ]
 
@@ -160,7 +174,7 @@ class UnitHistoryView(APIView):
                         "size_name": v.size.name if v.size else None,
                         "color_hex": (v.color.hex or None) if v.color else None,
                         "low_stock_threshold": v.low_stock_threshold,
-                        "in_stock": v.stock_items.filter(status=StockItem.IN_STOCK).count()},
+                        "in_stock": v.stock_quantity},
             "batch": {"id": str(b.id), "cost_price": str(b.cost_price), "price": str(b.price),
                       "margin": str(b.price - b.cost_price), "quantity": b.quantity, "created_at": b.created_at},
             "seller": seller and {"id": seller.id, "name": seller.name, "phone": seller.phone,

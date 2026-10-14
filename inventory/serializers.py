@@ -5,16 +5,8 @@ from shopsettings.models import Color, Size
 from .models import Category, Product, ProductVariant, Seller, StockItem
 
 
-def _in_stock_count(obj):
-    """Use the viewset's annotation when present, else count directly."""
-    value = getattr(obj, "stock_quantity", None)
-    if value is None:
-        return obj.stock_items.filter(status=StockItem.IN_STOCK).count()
-    return value
-
-
 class CategorySerializer(serializers.ModelSerializer):
-    product_count = serializers.IntegerField(source="products.count", read_only=True)
+    product_count = serializers.IntegerField(read_only=True, default=0)  # viewset annotation
 
     class Meta:
         model = Category
@@ -22,7 +14,7 @@ class CategorySerializer(serializers.ModelSerializer):
 
 
 class SellerSerializer(serializers.ModelSerializer):
-    product_count = serializers.IntegerField(source="products.count", read_only=True)
+    product_count = serializers.IntegerField(read_only=True, default=0)  # viewset annotation
 
     class Meta:
         model = Seller
@@ -34,7 +26,6 @@ class ProductVariantSerializer(serializers.ModelSerializer):
     color_name = serializers.CharField(source="color.name", read_only=True, default=None)
     color_hex = serializers.CharField(source="color.hex", read_only=True, default=None)
     size_name = serializers.CharField(source="size.name", read_only=True, default=None)
-    stock_quantity = serializers.SerializerMethodField()
     is_low_stock = serializers.SerializerMethodField()
     # Cost/price of the newest batch (viewset annotations), to prefill the next restock.
     last_cost_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True, default=None)
@@ -46,13 +37,10 @@ class ProductVariantSerializer(serializers.ModelSerializer):
             "id", "product", "color", "color_name", "color_hex", "size", "size_name", "low_stock_threshold",
             "stock_quantity", "is_low_stock", "last_cost_price", "last_price",
         ]
-        read_only_fields = ["product"]
-
-    def get_stock_quantity(self, obj):
-        return _in_stock_count(obj)
+        read_only_fields = ["product", "stock_quantity"]
 
     def get_is_low_stock(self, obj):
-        return _in_stock_count(obj) <= obj.low_stock_threshold
+        return obj.stock_quantity <= obj.low_stock_threshold
 
     def validate(self, attrs):
         inst = self.instance
@@ -69,11 +57,7 @@ class ProductSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source="category.name", read_only=True)
     seller_name = serializers.CharField(source="seller.name", read_only=True)
     variants = ProductVariantSerializer(many=True, read_only=True)
-    # Total in-stock units across variants (from the viewset annotation, or counted).
-    stock_quantity = serializers.SerializerMethodField()
     is_low_stock = serializers.SerializerMethodField()
-    price_min = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True, default=None)
-    price_max = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True, default=None)
 
     class Meta:
         model = Product
@@ -82,15 +66,11 @@ class ProductSerializer(serializers.ModelSerializer):
             "fabric_type", "variants", "stock_quantity", "is_low_stock",
             "price_min", "price_max", "is_active", "created_at", "updated_at",
         ]
-
-    def get_stock_quantity(self, obj):
-        value = getattr(obj, "stock_quantity", None)
-        if value is None:
-            return StockItem.objects.filter(variant__product=obj, status=StockItem.IN_STOCK).count()
-        return value
+        # Denormalized in-stock figures (inventory.stock.recount).
+        read_only_fields = ["stock_quantity", "price_min", "price_max"]
 
     def get_is_low_stock(self, obj):
-        return any(_in_stock_count(v) <= v.low_stock_threshold for v in obj.variants.all())
+        return any(v.stock_quantity <= v.low_stock_threshold for v in obj.variants.all())
 
 
 class StockItemSerializer(serializers.ModelSerializer):

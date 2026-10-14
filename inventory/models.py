@@ -1,6 +1,9 @@
 import uuid
 
 from django.db import models
+from django.db.models import F, Q
+
+from core.db import trigram_index
 
 
 class Category(models.Model):
@@ -30,7 +33,10 @@ class Seller(models.Model):
 
     class Meta:
         ordering = ["name"]
-        indexes = [models.Index(fields=["name"])]
+        indexes = [
+            models.Index(fields=["name"]),
+            trigram_index("name", "seller_name_trgm"),
+        ]
 
     def __str__(self):
         return self.name
@@ -49,15 +55,27 @@ class Product(models.Model):
     )
     fabric_type = models.CharField(max_length=80, blank=True)
     is_active = models.BooleanField(default=True)
+    # Denormalized from in-stock units (kept current by inventory.stock.recount) so
+    # lists can sort/filter on them without aggregating every unit.
+    stock_quantity = models.PositiveIntegerField(default=0, editable=False)
+    price_min = models.DecimalField(max_digits=10, decimal_places=2, null=True, editable=False)
+    price_max = models.DecimalField(max_digits=10, decimal_places=2, null=True, editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["name"]
-        indexes = [models.Index(fields=["name"])]
+        indexes = [
+            models.Index(fields=["name"]),
+            trigram_index("name", "product_name_trgm"),
+            trigram_index("sku", "product_sku_trgm"),
+        ]
 
     def __str__(self):
         return self.name
+
+
+LOW_STOCK = Q(stock_quantity__lte=F("low_stock_threshold"))
 
 
 class ProductVariant(models.Model):
@@ -76,10 +94,17 @@ class ProductVariant(models.Model):
         "shopsettings.Size", null=True, blank=True, on_delete=models.PROTECT, related_name="variants"
     )
     low_stock_threshold = models.PositiveIntegerField(default=5)
+    # In-stock unit count, denormalized (see inventory.stock.recount).
+    stock_quantity = models.PositiveIntegerField(default=0, editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["color__position", "color__name", "size__position", "size__name"]
+        indexes = [
+            # Partial index of low-stock variants: the dashboard and the products
+            # "low stock" filter only ever look at these.
+            models.Index(fields=["product"], condition=LOW_STOCK, name="variant_low_stock_idx"),
+        ]
         constraints = [
             # nulls_distinct=False: only one "no color" + "M" variant per product.
             models.UniqueConstraint(
@@ -107,6 +132,8 @@ class StockBatch(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        # Serves the "newest batch of a variant" subquery (restock prefill).
+        indexes = [models.Index(fields=["variant", "-created_at"])]
 
     def __str__(self):
         return f"{self.variant} × {self.quantity} @ {self.price}"
@@ -138,6 +165,10 @@ class StockItem(models.Model):
             # the leftmost-prefix also covers variant-only lookups.
             models.Index(fields=["variant", "status"]),
             models.Index(fields=["-created_at"]),
+            # The Stock page's default view: one status, newest first. Covering ``id`` lets
+            # deep pages skip through the index alone (see StockItemViewSet.list).
+            models.Index(fields=["status", "-created_at"], include=["id"], name="stockitem_status_created_idx"),
+            trigram_index("code", "stockitem_code_trgm"),
         ]
 
     def save(self, *args, **kwargs):

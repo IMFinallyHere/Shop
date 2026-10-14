@@ -294,6 +294,42 @@ Goal: modern, simple, functional, intuitive. Clean light look, one accent (indig
 - [x] Tests: search exact jumps, shop isolation, sold→returned→resold timeline, customer detail.
       Billing tests split so the shared base class no longer re-runs its tests in subclasses.
 
+## Phase 14 — Performance for large shops (target: every API < 500 ms p95)  ✅
+Measured on a scratch shop `perf` (local Postgres 17): 20k products · 100k variants ·
+1M units · 300k bills / 600k lines · 30k returns · 100k customers.
+- [x] Tooling: `seed_large <shop>` (COPY-based bulk loader, creates the shop if missing)
+      and `bench_api <shop>` (p50/p95 + query count for 43 read endpoints; fails over budget).
+- [x] Denormalized `stock_quantity` on `ProductVariant`/`Product` + in-stock
+      `price_min/max` on `Product`, kept current by `inventory.stock.recount()` in
+      add-stock, checkout, return, remove and variant delete (backfilled in
+      `inventory/0009`). Products list no longer aggregates every unit.
+- [x] `pg_trgm` GIN indexes on `UPPER(col)` (`core.db.trigram_index` — Django's
+      `icontains` is `UPPER(col) LIKE`, so a bare-column index is never used) for unit
+      codes, product name/sku, seller name, bill/return customer name/phone, customer
+      name/phone. Partial index of low-stock variants; covering `(status, -created_at)`
+      index for the Stock page; `StockBatch(variant, -created_at)`.
+- [x] Customers list paginated and resolved in one SQL query (was: every customer id
+      pulled into Python). Frontend Customers/Categories/Sellers pages paginate;
+      product-form dropdowns use `?all=1`.
+- [x] Dashboard uses datetime ranges (not `__date`) and the low-stock column.
+- [x] Global search: shop customers via `EXISTS`, exact barcode via the unique index,
+      code substring search skipped for non-hex queries; stock-list search sorts the
+      matches instead of walking the created_at index; Stock page pages through ids
+      (deferred join). Bills/Returns list search: customer name/phone or exact number.
+- [x] Add-stock inserts units with one `bulk_create` per line (was 2 queries per unit).
+- [x] `CONN_MAX_AGE=60` + health checks (no reconnect per request).
+- [x] Frontend routes lazy-loaded (entry chunk 273 kB / 86 kB gzip).
+
+| endpoint (worst case) | before p95 | after p95 |
+|---|---|---|
+| customers/ | 15.7 s | 57 ms |
+| search/?q=das | 14.1 s | 142 ms |
+| products/?low_stock=1 | 5.8 s | 77 ms |
+| products/ | 2.3 s | 19 ms |
+| dashboard/ | 2.2 s | 101 ms |
+| stock-items/?search=<code> | 1.4 s | 34 ms |
+| units/<code>/history/ | 242 ms | 20 ms |
+
 ## Phase 15 — Printer setup: thermal labels + receipts (browser print)  🚧
 - **Approach:** browser print (`window.print()`) at exact physical sizes via `@page`; any
   printer with an OS driver works. No silent printing yet (later: Chrome `--kiosk-printing`
@@ -383,6 +419,10 @@ Goal: modern, simple, functional, intuitive. Clean light look, one accent (indig
 - **2026-10-07** Phase 11: returns with refund or store credit (per-shop ledger usable at
   POS), scan-to-return, credit notes; customer now mandatory on every bill. Billing
   suite = 13 green tests.
+
+- **2026-10-07** Phase 14: performance pass for large shops — denormalized stock counts,
+  trigram search indexes, paginated customers, `seed_large`/`bench_api` tooling. All 43
+  read endpoints < 500 ms p95 on 1M units (worst ~200 ms). Suite = 35 green tests.
 
 - **2026-10-12** Phase 15: printer setup — label size/content and receipt width/header in
   Settings → Printing; labels and receipts print at exact size on thermal rolls.

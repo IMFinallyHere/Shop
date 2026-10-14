@@ -1,4 +1,7 @@
 from django.db import models
+from django.db.models.functions import Lower
+
+from core.db import trigram_index
 
 
 class Customer(models.Model):
@@ -16,7 +19,13 @@ class Customer(models.Model):
 
     class Meta:
         ordering = ["name"]
-        indexes = [models.Index(fields=["name"])]
+        indexes = [
+            models.Index(fields=["name"]),
+            # Shop customer lists sort case-insensitively.
+            models.Index(Lower("name"), "id", name="customer_lower_name_idx"),
+            trigram_index("name", "customer_name_trgm"),
+            trigram_index("phone", "customer_phone_trgm"),
+        ]
 
     def __str__(self):
         return f"{self.name} ({self.phone})"

@@ -61,8 +61,8 @@ export default function ProductsPage() {
   const selected = products.find(p => p.id === selectedId) ?? snapshot
 
   useEffect(() => {
-    getCategories().then(r => setCategories(r.data.results ?? r.data))
-    getSellers().then(r => setSellers(r.data.results ?? r.data))
+    getCategories({ all: 1 }).then(r => setCategories(r.data.results ?? r.data))
+    getSellers({ all: 1 }).then(r => setSellers(r.data.results ?? r.data))
   }, [])
 
   // Filters live in the URL (dashboard and search link here with ?low=1, ?q=, ?seller=).

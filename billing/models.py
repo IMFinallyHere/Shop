@@ -4,6 +4,7 @@ from django.conf import settings
 from django.db import models
 from django.db.models import Sum
 
+from core.db import trigram_index
 from inventory.models import StockItem
 
 
@@ -41,7 +42,11 @@ class Bill(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
-        indexes = [models.Index(fields=["-created_at"])]
+        indexes = [
+            models.Index(fields=["-created_at"]),
+            trigram_index("customer_name", "bill_customer_name_trgm"),
+            trigram_index("customer_phone", "bill_customer_phone_trgm"),
+        ]
 
     @property
     def number(self):
@@ -105,7 +110,11 @@ class Return(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
-        indexes = [models.Index(fields=["-created_at"])]
+        indexes = [
+            models.Index(fields=["-created_at"]),
+            trigram_index("customer_name", "return_customer_name_trgm"),
+            trigram_index("customer_phone", "return_customer_phone_trgm"),
+        ]
 
     @property
     def number(self):

@@ -1,7 +1,9 @@
-from django.db.models import Count, Max, Min, Sum
+from django.db.models import Count, Exists, Max, Min, OuterRef, Q, Subquery, Sum
+from django.db.models.functions import Lower
 from rest_framework import status
 from rest_framework import viewsets
 from rest_framework.decorators import action
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
 from accounts.permissions import IsSuperuserOrStaff
@@ -13,33 +15,29 @@ class CustomerViewSet(viewsets.ViewSet):
     permission_classes = [IsSuperuserOrStaff]
 
     def list(self, request):
-        """Customers who have bought from THIS shop (resolved via its bills)."""
+        """Customers who have bought from THIS shop (resolved via its bills), paginated."""
         from billing.models import Bill, CreditEntry  # tenant app; imported lazily
 
-        counts = (
-            Bill.objects.exclude(customer_id__isnull=True)
-            .values("customer_id")
-            .annotate(n=Count("id"))
-        )
-        count_map = {row["customer_id"]: row["n"] for row in counts}
-        credit_map = {
-            row["customer_id"]: row["s"]
-            for row in CreditEntry.objects.values("customer_id").annotate(s=Sum("amount"))
-        }
-        if not count_map:
-            return Response([])
-        customers = Customer.objects.filter(id__in=count_map.keys())
-        search = request.query_params.get("search")
+        bills = Bill.objects.filter(customer_id=OuterRef("pk")).order_by().values("customer_id")
+        credit = CreditEntry.objects.filter(customer_id=OuterRef("pk")).order_by().values("customer_id")
+        # The public customer table is on the tenant's search_path, so this is one query;
+        # the per-row subqueries only run for the page being returned.
+        customers = Customer.objects.filter(Exists(bills)).annotate(
+            n_bills=Subquery(bills.annotate(n=Count("id")).values("n")),
+            credit=Subquery(credit.annotate(s=Sum("amount")).values("s")),
+        ).order_by(Lower("name"), "id")
+        search = request.query_params.get("search", "").strip()
         if search:
-            customers = customers.filter(name__icontains=search) | customers.filter(phone__icontains=search)
+            customers = customers.filter(Q(name__icontains=search) | Q(phone__icontains=search))
+        paginator = PageNumberPagination()
+        page = paginator.paginate_queryset(customers, request, view=self)
         data = []
-        for c in customers:
+        for c in page:
             row = CustomerSerializer(c).data
-            row["bill_count"] = count_map.get(c.id, 0)
-            row["credit_balance"] = str(credit_map.get(c.id) or "0.00")
+            row["bill_count"] = c.n_bills
+            row["credit_balance"] = str(c.credit or "0.00")
             data.append(row)
-        data.sort(key=lambda r: r["name"].lower())
-        return Response(data)
+        return paginator.get_paginated_response(data)
 
     def retrieve(self, request, pk=None):
         """One customer as THIS shop knows them: profile, totals, bills, returns, credit."""

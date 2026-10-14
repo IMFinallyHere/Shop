@@ -1,8 +1,9 @@
-from datetime import timedelta
+import re
+from datetime import datetime, time, timedelta
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Count, F, Prefetch, Q, Sum
+from django.db.models import Count, OuterRef, Prefetch, Q, Subquery, Sum
 from django.db.models.functions import TruncDate
 from django.utils import timezone
 from django_tenants.utils import get_public_schema_name, schema_context
@@ -13,7 +14,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsSuperuserOrStaff
-from inventory.models import ProductVariant, StockItem
+from inventory.models import LOW_STOCK, ProductVariant, StockItem
+from inventory.stock import recount
 from shopsettings.models import PaymentMethod, ShopSettings, ensure_payment_methods
 from .models import (
     Bill, BillItem, CreditEntry, Return, ReturnItem, credit_balance, money, refund_shares,
@@ -54,12 +56,34 @@ def resolve_customer(name, phone):
         return customer.id, customer.name, customer.phone
 
 
+class CustomerOrNumberSearch(SearchFilter):
+    """Search by customer name/phone (trigram-indexed), or an exact document number.
+
+    ``123``, ``INV-123`` or ``RET-123`` match that id exactly (returns also by bill); a substring match on the
+    id would cast every row's id to text and scan the whole table.
+    """
+
+    NUMBER = re.compile(r"^(?:INV|RET)?-?(\d+)$", re.I)
+
+    def filter_queryset(self, request, queryset, view):
+        q = request.query_params.get(self.search_param, "").strip()
+        if not q:
+            return queryset
+        match = Q(customer_name__icontains=q) | Q(customer_phone__icontains=q)
+        number = self.NUMBER.match(q)
+        if number:
+            n = int(number.group(1))
+            match |= Q(pk=n)
+            if queryset.model is Return and not q.upper().startswith("RET"):
+                match |= Q(bill_id=n)  # a return's bill number
+        return queryset.filter(match)
+
+
 class BillViewSet(viewsets.ModelViewSet):
     permission_classes = [IsSuperuserOrStaff]
     serializer_class = BillSerializer
     http_method_names = ["get", "post"]  # bills are immutable once created
-    filter_backends = [SearchFilter]
-    search_fields = ["customer_name", "customer_phone", "id"]
+    filter_backends = [CustomerOrNumberSearch]
 
     def get_queryset(self):
         return Bill.objects.prefetch_related(
@@ -151,6 +175,7 @@ class BillViewSet(viewsets.ModelViewSet):
                 for u in units
             ])
             StockItem.objects.filter(id__in=[u.id for u in units]).update(status=StockItem.SOLD)
+            recount(variant_ids={u.variant_id for u in units})
 
         return Response(
             BillSerializer(bill, context={"request": request}).data,
@@ -162,8 +187,7 @@ class ReturnViewSet(viewsets.ModelViewSet):
     permission_classes = [IsSuperuserOrStaff]
     serializer_class = ReturnSerializer
     http_method_names = ["get", "post"]  # returns are immutable once created
-    filter_backends = [SearchFilter]
-    search_fields = ["customer_name", "customer_phone", "id", "bill__id"]
+    filter_backends = [CustomerOrNumberSearch]
 
     def get_queryset(self):
         return Return.objects.select_related("bill").prefetch_related(
@@ -226,6 +250,7 @@ class ReturnViewSet(viewsets.ModelViewSet):
             StockItem.objects.filter(id__in=[lines[i].stock_item_id for i in item_ids]).update(
                 status=StockItem.IN_STOCK
             )
+            recount(variant_ids={u.variant_id for u in units})
             if mode == Return.CREDIT:
                 CreditEntry.objects.create(customer_id=bill.customer_id, amount=amount, ret=ret)
 
@@ -253,18 +278,22 @@ class DashboardView(APIView):
     def get(self, request):
         today = timezone.localdate()
         start = today - timedelta(days=6)
+        # Datetime ranges (not ``__date``) so the created_at indexes are used.
+        day_start = timezone.make_aware(datetime.combine(today, time.min))
+        day_end = day_start + timedelta(days=1)
+        week_start = day_start - timedelta(days=6)
+        in_today = {"created_at__gte": day_start, "created_at__lt": day_end}
 
-        todays_bills = Bill.objects.filter(created_at__date=today)
-        agg = todays_bills.aggregate(total=Sum("total"), count=Count("id"))
+        agg = Bill.objects.filter(**in_today).aggregate(total=Sum("total"), count=Count("id"))
         sales, count = agg["total"] or Decimal("0"), agg["count"]
-        items_sold = BillItem.objects.filter(bill__created_at__date=today).count()
-        refunds = Return.objects.filter(created_at__date=today).aggregate(s=Sum("amount"))["s"] or Decimal("0")
+        items_sold = BillItem.objects.filter(**{f"bill__{k}": v for k, v in in_today.items()}).count()
+        refunds = Return.objects.filter(**in_today).aggregate(s=Sum("amount"))["s"] or Decimal("0")
 
         per_day = {
             row["day"]: row
-            for row in Bill.objects.filter(created_at__date__gte=start)
+            for row in Bill.objects.filter(created_at__gte=week_start, created_at__lt=day_end)
             .annotate(day=TruncDate("created_at"))
-            .values("day").annotate(total=Sum("total"), count=Count("id"))
+            .values("day").annotate(total=Sum("total"), count=Count("id")).order_by()
         }
         last_7_days = []
         for i in range(7):
@@ -273,15 +302,12 @@ class DashboardView(APIView):
             last_7_days.append({"date": d.isoformat(), "total": str(row.get("total") or Decimal("0")),
                                 "count": row.get("count", 0)})
 
-        low = (
-            ProductVariant.objects.select_related("product", "color", "size")
-            .annotate(n=Count("stock_items", filter=Q(stock_items__status=StockItem.IN_STOCK)))
-            .filter(n__lte=F("low_stock_threshold"))
-        )
+        low = ProductVariant.objects.filter(LOW_STOCK)
         low_stock = [
             {"variant_id": v.id, "product_id": v.product_id, "product_name": v.product.name, "label": v.label,
-             "color_hex": (v.color.hex or None) if v.color else None, "stock": v.n, "threshold": v.low_stock_threshold}
-            for v in low.order_by("n", "product__name")[:8]
+             "color_hex": (v.color.hex or None) if v.color else None, "stock": v.stock_quantity,
+             "threshold": v.low_stock_threshold}
+            for v in low.select_related("product", "color", "size").order_by("stock_quantity", "product__name")[:8]
         ]
 
         recent = [
@@ -293,7 +319,9 @@ class DashboardView(APIView):
             {"id": r.id, "number": r.number, "bill_number": r.bill.number, "customer_name": r.customer_name,
              "amount": str(r.amount), "mode": r.mode, "payment_mode": r.payment_mode,
              "items": r.n_items, "created_at": r.created_at}
-            for r in Return.objects.select_related("bill").annotate(n_items=Count("items"))[:5]
+            for r in Return.objects.select_related("bill").annotate(n_items=Subquery(
+                ReturnItem.objects.filter(ret=OuterRef("pk")).order_by().values("ret").annotate(n=Count("id")).values("n")
+            ))[:5]
         ]
 
         return Response({
