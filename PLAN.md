@@ -451,6 +451,21 @@ Optional later: enable `ufw` (22/80/443), Cloudflare real-IP for logs, swap file
   client only redirects from pages that need a login).
 - [ ] Pick the product name. [ ] Commit and deploy when approved.
 
+## Phase 19 — First sign-in walkthrough + how-to videos (English + Hindi)  🚧 local only
+- **Backend:** `shopsettings.UserOnboarding` (per shop, per user: language, tour done,
+  checklist dismissed, events) and `/api/onboarding/` (GET/PATCH, any staff). The owner's
+  checklist is computed from data: tax or receipt details set, a product, a label printed,
+  a bill, a second member. Tests in `shopsettings/tests.py`.
+- **Frontend (`src/onboarding/`):** `driver.js` spotlight tour (owner 8 steps; staff tour is
+  the same list minus what their role can't see), language switch on the welcome step,
+  `SetupChecklist` on the dashboard with "Do it" and "Watch how", `/help` page with the video
+  library, user menu items (help, tour again, English / हिंदी). Hindi text needs a review by a
+  fluent speaker.
+- **Videos (`tools/videos/`):** 6 scenes recorded from the real app on the throwaway shop
+  `walkthrough` (`manage.py reset_video_shop`), narrated by macOS voices Rishi (en) and Lekha
+  (hi), assembled with ffmpeg into `frontend/public/videos/` (gitignored; `npm run record`).
+- [ ] Hindi review. [ ] Commit and deploy when approved (record videos before deploying).
+
 ## Local development database (Docker)  ✅
 - `docker-compose.yml` runs `postgres:17-alpine` (`shop-db-1`, volume `shop_pgdata`,
   port 5432); it reads `DB_NAME/DB_USER/DB_PASSWORD` from `.env`, which now points at

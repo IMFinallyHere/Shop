@@ -36,7 +36,7 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
 
         <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
           {nav.map(({ section, items }) => (
-            <div key={section}>
+            <div key={section} data-tour={`nav-${section.toLowerCase()}`}>
               <div className={clsx('mb-1 px-2.5 text-[11px] font-medium uppercase tracking-wider text-zinc-400', collapsed && 'lg:invisible lg:h-0 lg:mb-0')}>
                 {section}
               </div>

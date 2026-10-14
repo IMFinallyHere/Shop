@@ -1,11 +1,13 @@
 from django.db.models import Max
+from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from tenant_users.permissions.models import UserTenantPermissions
 
 from accounts.permissions import ANY_STAFF, ShopPermission
-from .models import Color, PaymentMethod, ShopSettings, Size, ensure_payment_methods, ensure_sizes
-from .serializers import ColorSerializer, PaymentMethodSerializer, ShopSettingsSerializer, SizeSerializer
+from .models import Color, PaymentMethod, ShopSettings, Size, UserOnboarding, ensure_payment_methods, ensure_sizes
+from .serializers import ColorSerializer, OnboardingUpdateSerializer, PaymentMethodSerializer, ShopSettingsSerializer, SizeSerializer
 
 
 class ShopSettingsView(APIView):
@@ -86,3 +88,64 @@ class ColorViewSet(_VariantOptionViewSet):
     perm_model = "shopsettings.color"
     serializer_class = ColorSerializer
     model = Color
+
+
+def _setup_checklist(onboarding):
+    """The owner's first-run steps, each done when the shop's data says so."""
+    from billing.models import Bill  # tenant apps; imported lazily like elsewhere
+    from inventory.models import Product
+
+    settings = ShopSettings.load()
+    shop_details = settings.default_tax_rate > 0 or any(
+        getattr(settings, f) for f in ("receipt_address", "receipt_phone", "receipt_gstin")
+    )
+    return [
+        {"key": "shop_details", "done": bool(shop_details)},
+        {"key": "first_product", "done": Product.objects.exists()},
+        {"key": "first_label", "done": "label_printed" in onboarding.events},
+        {"key": "first_bill", "done": Bill.objects.exists()},
+        {"key": "first_staff", "done": UserTenantPermissions.objects.count() > 1},
+    ]
+
+
+class OnboardingView(APIView):
+    """First-run tour, setup checklist and language for the signed-in member."""
+
+    permission_classes = [ShopPermission]
+    perms = {"GET": ANY_STAFF, "PATCH": ANY_STAFF}
+
+    def _state(self, request):
+        obj, _ = UserOnboarding.objects.get_or_create(user_id=request.user.pk)
+        return obj
+
+    def _payload(self, request, obj):
+        data = {
+            "language": obj.language,
+            "tour_done": obj.tour_done_at is not None,
+            "checklist_dismissed": obj.checklist_dismissed_at is not None,
+            "checklist": None,
+        }
+        # Setting the shop up is the owner's job; staff only get the tour.
+        if request.user.is_superuser:
+            data["checklist"] = _setup_checklist(obj)
+        return data
+
+    def get(self, request):
+        return Response(self._payload(request, self._state(request)))
+
+    def patch(self, request):
+        obj = self._state(request)
+        serializer = OnboardingUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        d = serializer.validated_data
+        now = timezone.now()
+        if "language" in d:
+            obj.language = d["language"]
+        if "tour_done" in d:
+            obj.tour_done_at = now if d["tour_done"] else None
+        if "checklist_dismissed" in d:
+            obj.checklist_dismissed_at = now if d["checklist_dismissed"] else None
+        if d.get("add_event") and d["add_event"] not in obj.events:
+            obj.events = [*obj.events, d["add_event"]]
+        obj.save()
+        return Response(self._payload(request, obj))

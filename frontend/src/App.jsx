@@ -26,6 +26,7 @@ const UsersPage = lazy(() => import('./pages/UsersPage'))
 const GroupsPage = lazy(() => import('./pages/GroupsPage'))
 const PermissionsPage = lazy(() => import('./pages/PermissionsPage'))
 const SearchPage = lazy(() => import('./pages/SearchPage'))
+const HelpPage = lazy(() => import('./pages/HelpPage'))
 const StockUnitPage = lazy(() => import('./pages/StockUnitPage'))
 const CustomerDetailPage = lazy(() => import('./pages/CustomerDetailPage'))
 
@@ -68,6 +69,7 @@ function AppRoutes() {
             <Route path="/customers" element={<CustomersPage />} />
             <Route path="/customers/:id" element={<CustomerDetailPage />} />
             <Route path="/search" element={<SearchPage />} />
+            <Route path="/help" element={<HelpPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/users" element={<UsersPage />} />
             <Route path="/groups" element={<GroupsPage />} />

@@ -11,6 +11,8 @@ import EmptyState from '../components/ui/EmptyState'
 import ErrorAlert from '../components/common/ErrorAlert'
 import SalesChart from '../components/dashboard/SalesChart'
 import { formatDateTime, money, moneyShort } from '../utils/format'
+import SetupChecklist from '../onboarding/SetupChecklist'
+import { useOnboarding } from '../onboarding/OnboardingContext'
 
 const greeting = () => {
   const h = new Date().getHours()
@@ -19,6 +21,9 @@ const greeting = () => {
 
 export default function DashboardPage() {
   const { user } = useAuth()
+  const { refresh: refreshOnboarding } = useOnboarding()
+  // Checklist steps tick off from the shop's data; re-check on every visit.
+  useEffect(() => { refreshOnboarding() }, [refreshOnboarding])
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
 
@@ -44,10 +49,11 @@ export default function DashboardPage() {
         <div className="flex flex-wrap gap-2">
           <Button as={Link} to="/returns" icon={Undo2}>Return</Button>
           <Button as={Link} to="/products" icon={PackagePlus}>Add stock</Button>
-          <Button as={Link} to="/pos" variant="primary" icon={ScanBarcode}>New bill</Button>
+          <Button as={Link} to="/pos" variant="primary" icon={ScanBarcode} data-tour="new-bill">New bill</Button>
         </div>
       </div>
 
+      <SetupChecklist />
       <ErrorAlert message={error} />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">

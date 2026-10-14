@@ -4,7 +4,7 @@ from decimal import Decimal
 from django.core.management import call_command
 from django.db import connection
 from django.test import TestCase
-from django_tenants.utils import get_public_schema_name, schema_context
+from django_tenants.utils import get_public_schema_name, schema_context, tenant_context
 from rest_framework.test import APIClient
 from tenant_users.tenants.tasks import provision_tenant
 from tenant_users.tenants.utils import create_public_tenant
@@ -104,3 +104,44 @@ class ShopSettingsTestCase(TestCase):
         self.assertTrue(resp.data["auto_print_after_bill"])
         for bad in ({"label_width_mm": 5}, {"label_height_mm": 500}, {"label_copies": 0}, {"receipt_width_mm": 100}):
             self.assertEqual(a.put("/api/shop-settings/", bad, format="json", HTTP_HOST="acme.localhost").status_code, 400, bad)
+
+    # --- first-run onboarding --------------------------------------------------
+
+    def test_onboarding_checklist_follows_the_shops_data(self):
+        from inventory.models import Product
+        h = {"HTTP_HOST": "bella.localhost"}
+        owner = self.client_for("bella.localhost", "bella@test.com")
+        steps = lambda: {c["key"]: c["done"] for c in owner.get("/api/onboarding/", **h).data["checklist"]}
+        first = owner.get("/api/onboarding/", **h).data
+        self.assertEqual((first["language"], first["tour_done"], first["checklist_dismissed"]), ("en", False, False))
+        self.assertFalse(any(steps().values()))
+
+        owner.put("/api/shop-settings/", {"receipt_gstin": "27AAKFA4721M1Z3"}, format="json", **h)
+        with tenant_context(self.bella):
+            Product.objects.create(name="Cotton Kurta")
+        owner.patch("/api/onboarding/", {"add_event": "label_printed"}, format="json", **h)
+        with schema_context(get_public_schema_name()):
+            staff = User.objects.create_user(email="bella-staff@test.com", password=PW)
+        self.bella.add_user(staff, is_staff=True)
+        self.assertEqual(steps(), {"shop_details": True, "first_product": True, "first_label": True,
+                                   "first_bill": False, "first_staff": True})
+
+    def test_onboarding_tour_and_language_are_per_user_and_staff_get_no_checklist(self):
+        h = {"HTTP_HOST": "acme.localhost"}
+        with schema_context(get_public_schema_name()):
+            staff = User.objects.create_user(email="acme-staff@test.com", password=PW)
+        self.acme.add_user(staff, is_staff=True)
+        owner = self.client_for("acme.localhost", "acme@test.com")
+        member = self.client_for("acme.localhost", "acme-staff@test.com")
+
+        done = owner.patch("/api/onboarding/", {"tour_done": True, "language": "hi", "checklist_dismissed": True},
+                           format="json", **h).data
+        self.assertEqual((done["tour_done"], done["language"], done["checklist_dismissed"]), (True, "hi", True))
+        self.assertEqual(owner.patch("/api/onboarding/", {"language": "fr"}, format="json", **h).status_code, 400)
+        self.assertEqual(owner.patch("/api/onboarding/", {"add_event": "anything"}, format="json", **h).status_code, 400)
+
+        mine = member.get("/api/onboarding/", **h).data
+        self.assertEqual((mine["tour_done"], mine["language"], mine["checklist"]), (False, "en", None))
+        # The same owner in another shop starts fresh there.
+        self.assertFalse(self.client_for("bella.localhost", "bella@test.com").get(
+            "/api/onboarding/", HTTP_HOST="bella.localhost").data["tour_done"])

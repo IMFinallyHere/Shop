@@ -1,0 +1,11 @@
+{
+  "name": "shop-howto-videos",
+  "private": true,
+  "description": "Records the in-app how-to videos from the real app (see README.md).",
+  "scripts": {
+    "record": "node record.js"
+  },
+  "dependencies": {
+    "playwright-core": "^1.64.0"
+  }
+}

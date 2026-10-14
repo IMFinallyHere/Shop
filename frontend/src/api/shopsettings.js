@@ -18,3 +18,7 @@ export const getColors = (params) => api.get('/colors/', { params })
 export const createColor = (data) => api.post('/colors/', data)
 export const updateColor = (id, data) => api.patch(`/colors/${id}/`, data)
 export const deleteColor = (id) => api.delete(`/colors/${id}/`)
+
+// First-run tour, setup checklist and language for the signed-in member of this shop.
+export const getOnboarding = () => api.get('/onboarding/')
+export const updateOnboarding = (data) => api.patch('/onboarding/', data)

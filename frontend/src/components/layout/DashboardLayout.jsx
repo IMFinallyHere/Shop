@@ -9,6 +9,7 @@ import EmptyState from '../ui/EmptyState'
 import { NAV, pagePerm } from './nav'
 import { useAuth } from '../../contexts/AuthContext'
 import { can } from '../../utils/permissions'
+import { OnboardingProvider } from '../../onboarding/OnboardingContext'
 
 const COLLAPSE_KEY = 'sidebar_collapsed'
 const readCollapsed = () => { try { return localStorage.getItem(COLLAPSE_KEY) === '1' } catch { return false } }
@@ -29,6 +30,7 @@ export default function DashboardLayout() {
   })
 
   return (
+    <OnboardingProvider>
     <div className="flex h-screen overflow-hidden bg-zinc-50">
       <Sidebar collapsed={collapsed} onToggleCollapsed={toggleCollapsed} mobileOpen={mobileOpen} onCloseMobile={() => setMobileOpen(false)} />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -42,5 +44,6 @@ export default function DashboardLayout() {
         </main>
       </div>
     </div>
+    </OnboardingProvider>
   )
 }

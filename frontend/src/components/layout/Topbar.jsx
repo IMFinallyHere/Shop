@@ -19,7 +19,7 @@ export default function Topbar({ onOpenMobile }) {
       <div className="flex-1 sm:hidden" />
       {/* Pages with their own New bill action don't need a second one. */}
       {can(user, 'billing.add_bill') && !['/pos', '/dashboard', '/sales'].includes(pathname) && (
-        <Button as={Link} to="/pos" variant="primary" size="sm" icon={ScanBarcode}>
+        <Button as={Link} to="/pos" variant="primary" size="sm" icon={ScanBarcode} data-tour="new-bill">
           <span className="hidden sm:inline">New bill</span>
         </Button>
       )}

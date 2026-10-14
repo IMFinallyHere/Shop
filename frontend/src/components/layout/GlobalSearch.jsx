@@ -95,7 +95,7 @@ export default function GlobalSearch() {
             <ArrowLeft size={20} />
           </button>
         )}
-        <div className="relative w-full max-w-xl">
+        <div className="relative w-full max-w-xl" data-tour="search">
           <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
           <input
             ref={inputRef}

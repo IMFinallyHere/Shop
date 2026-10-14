@@ -24,7 +24,7 @@ const pageCss = (width, height) => {
 // `page` = { width, height } in mm sets the paper size; height 'auto' measures the content
 // just before printing (continuous receipt rolls). `autoPrint` opens the dialog once ready.
 // `css` is for any extra rules the caller needs.
-export default function PrintSheet({ title, subtitle, css, page, autoPrint = false, onClose, children, actions }) {
+export default function PrintSheet({ title, subtitle, css, page, autoPrint = false, onPrint, onClose, children, actions }) {
   const pageW = page?.width
   const pageH = page?.height
   const rootRef = useRef(null)
@@ -66,7 +66,7 @@ export default function PrintSheet({ title, subtitle, css, page, autoPrint = fal
         <div className="flex gap-2">
           {actions}
           <Button onClick={onClose} icon={X}>Close</Button>
-          <Button variant="primary" onClick={() => window.print()} icon={Printer} autoFocus>Print</Button>
+          <Button variant="primary" onClick={() => { onPrint?.(); window.print() }} icon={Printer} autoFocus>Print</Button>
         </div>
       </div>
       <div ref={rootRef} className="print-root">{children}</div>

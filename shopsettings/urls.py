@@ -10,4 +10,5 @@ router.register("colors", views.ColorViewSet, basename="color")
 
 urlpatterns = [
     path("shop-settings/", views.ShopSettingsView.as_view(), name="shop-settings"),
+    path("onboarding/", views.OnboardingView.as_view(), name="onboarding"),
 ] + router.urls

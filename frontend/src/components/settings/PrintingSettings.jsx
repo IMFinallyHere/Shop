@@ -8,6 +8,7 @@ import Switch from '../ui/Switch'
 import SegmentedControl from '../ui/SegmentedControl'
 import { Field, Input } from '../ui/Field'
 import { useToast } from '../ui/Toast'
+import { useAuth } from '../../contexts/AuthContext'
 import ThermalLabel from '../inventory/ThermalLabel'
 import PrintBarcodes from '../inventory/PrintBarcodes'
 import BillReceipt from '../billing/BillReceipt'
@@ -17,7 +18,8 @@ const LABEL_PRESETS = [[50, 25], [38, 25], [40, 30], [50, 30], [75, 50], [100, 5
 const RECEIPT_WIDTHS = [{ value: 58, label: '58 mm' }, { value: 80, label: '80 mm' }, { value: 210, label: 'A4' }]
 
 const SAMPLE_ITEM = { code: 'A1B2C3D4E5F6', product_name: 'Cotton Kurta', color_name: 'Maroon', size_name: 'XL', price: '1299.00' }
-const sampleBill = () => ({
+const sampleBill = (shopName) => ({
+  shop_name: shopName,
   number: 'INV-00042', created_at: new Date().toISOString(), customer_name: 'Test Customer', customer_phone: '9876543210',
   items: [
     { id: 1, product_name: 'Cotton Kurta', code: 'A1B2C3D4E5F6', unit_price: '1299.00' },
@@ -45,6 +47,7 @@ export default function PrintingSettings({ initial, onSaved, onError }) {
   const [testLabel, setTestLabel] = useState(false)
   const [testReceipt, setTestReceipt] = useState(null)
   const toast = useToast()
+  const { user } = useAuth()
 
   const set = (k) => (v) => setForm(f => ({ ...f, [k]: v }))
   const setNum = (k) => (e) => set(k)(e.target.value === '' ? '' : Number(e.target.value))
@@ -123,7 +126,7 @@ export default function PrintingSettings({ initial, onSaved, onError }) {
             <Toggle label="Open print dialog right after checkout" checked={form.auto_print_after_bill} onChange={set('auto_print_after_bill')} />
           </div>
           <div className="mt-3">
-            <Button size="sm" icon={Printer} onClick={() => withForm(() => setTestReceipt(sampleBill()))}>Print test receipt</Button>
+            <Button size="sm" icon={Printer} onClick={() => withForm(() => setTestReceipt(sampleBill(user?.shop_name)))}>Print test receipt</Button>
           </div>
         </Section>
 

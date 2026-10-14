@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
-import { ChevronDown, KeyRound, LogOut } from 'lucide-react'
+import { ChevronDown, Compass, KeyRound, LifeBuoy, LogOut } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { changePassword } from '../../api/users'
 import Modal from '../common/Modal'
@@ -11,9 +11,12 @@ import Button from '../ui/Button'
 import Badge from '../ui/Badge'
 import { useToast } from '../ui/Toast'
 import { displayName, initials as toInitials } from '../../utils/format'
+import { useOnboarding } from '../../onboarding/OnboardingContext'
+import { LANGUAGES } from '../../onboarding/strings'
 
 export default function UserMenu() {
   const { user, logout } = useAuth()
+  const { ready, t, language, setLanguage, runTour } = useOnboarding()
   const navigate = useNavigate()
   const toast = useToast()
   const [open, setOpen] = useState(false)
@@ -53,7 +56,7 @@ export default function UserMenu() {
   }
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative" data-tour="user-menu">
       <button onClick={() => setOpen(o => !o)} className={clsx('flex items-center gap-2 rounded-lg py-1 pl-1 pr-2 hover:bg-zinc-100', open && 'bg-zinc-100')}>
         <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-100 text-xs font-semibold text-brand-700">{initials || '?'}</span>
         <span className="hidden max-w-[160px] truncate text-sm font-medium text-zinc-700 sm:block">{name}</span>
@@ -68,6 +71,26 @@ export default function UserMenu() {
             {role && <Badge tone="brand" className="mt-2">{role}</Badge>}
           </div>
           <div className="my-1 border-t border-zinc-100" />
+          {ready && (<>
+            <button onClick={() => { setOpen(false); navigate('/help') }} className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-100">
+              <LifeBuoy size={15} className="text-zinc-400" /> {t('menu.help')}
+            </button>
+            <button onClick={() => { setOpen(false); runTour() }} className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-100">
+              <Compass size={15} className="text-zinc-400" /> {t('menu.tour')}
+            </button>
+            <div className="flex items-center justify-between gap-2 px-3 py-2 text-sm text-zinc-700">
+              <span>{t('menu.language')}</span>
+              <span className="inline-flex rounded-md bg-zinc-100 p-0.5" role="radiogroup" aria-label={t('menu.language')}>
+                {LANGUAGES.map(l => (
+                  <button key={l.value} role="radio" aria-checked={language === l.value} onClick={() => setLanguage(l.value)}
+                    className={clsx('rounded px-2 py-0.5 text-xs font-medium', language === l.value ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-800')}>
+                    {l.label}
+                  </button>
+                ))}
+              </span>
+            </div>
+            <div className="my-1 border-t border-zinc-100" />
+          </>)}
           <button onClick={openPassword} className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-100">
             <KeyRound size={15} className="text-zinc-400" /> Change password
           </button>

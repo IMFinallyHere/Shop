@@ -54,3 +54,10 @@ class ColorSerializer(_NamedOptionSerializer):
         if value and not re.fullmatch(r"#[0-9a-fA-F]{6}", value):
             raise serializers.ValidationError("Use a hex color like #1a2b3c.")
         return value.lower()
+
+
+class OnboardingUpdateSerializer(serializers.Serializer):
+    language = serializers.ChoiceField(choices=["en", "hi"], required=False)
+    tour_done = serializers.BooleanField(required=False)
+    checklist_dismissed = serializers.BooleanField(required=False)
+    add_event = serializers.ChoiceField(choices=["label_printed"], required=False)

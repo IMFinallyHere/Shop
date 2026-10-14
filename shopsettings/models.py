@@ -96,3 +96,22 @@ def ensure_sizes():
     """Seed common clothing sizes the first time a shop touches its size list."""
     if not Size.objects.exists():
         Size.objects.bulk_create([Size(name=n, position=i) for i, n in enumerate(DEFAULT_SIZES)])
+
+
+class UserOnboarding(models.Model):
+    """First-run state for one member of this shop: tour, checklist and language.
+
+    `user_id` points at the global account in the public schema (no FK across schemas).
+    """
+
+    LANGUAGES = [("en", "English"), ("hi", "Hindi")]
+
+    user_id = models.PositiveIntegerField(unique=True)
+    language = models.CharField(max_length=2, choices=LANGUAGES, default="en")
+    tour_done_at = models.DateTimeField(null=True, blank=True)
+    checklist_dismissed_at = models.DateTimeField(null=True, blank=True)
+    # Things the checklist can't see in the data, e.g. "label_printed".
+    events = models.JSONField(default=list, blank=True)
+
+    def __str__(self):
+        return f"UserOnboarding(user={self.user_id}, lang={self.language})"
