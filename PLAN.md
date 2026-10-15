@@ -466,6 +466,19 @@ Optional later: enable `ufw` (22/80/443), Cloudflare real-IP for logs, swap file
   (hi), assembled with ffmpeg into `frontend/public/videos/` (gitignored; `npm run record`).
 - [ ] Hindi review. [ ] Commit and deploy when approved (record videos before deploying).
 
+## Phase 20 — Threadflo on threadflo.shop  ✅ live 2026-10-15
+- Product named **Threadflo** (`frontend/src/brand.js`, tab title). Main site
+  `threadflo.shop`, shops `<name>.threadflo.shop`, `www` → main site. Reserved shop names
+  (www, admin, api, mail, …) refused at signup.
+- DNS at **GoDaddy** (A/AAAA for `@` and `*`). Wildcard cert via DNS-01 with GoDaddy's API:
+  `deploy/certbot-godaddy-hook.sh` → `/etc/letsencrypt/godaddy-hook.sh`, key
+  `/root/.secrets/godaddy.ini`; renewal dry run passes (expires 2027-01-13, auto-renews).
+- Moved: server `.env` (ALLOWED_HOSTS, TENANT_USERS_DOMAIN), Domain rows (public →
+  threadflo.shop, perfect-collection → perfect-collection.threadflo.shop), nginx. Backup
+  before the move: `/opt/shop/backups/shop-before-threadflo.dump`.
+- Old `shop.gokuldelicacy.in` removed entirely (nginx, cert, Cloudflare token + plugin).
+- Deployed `55f5dd8`, which includes the website, onboarding/videos and the review fixes.
+
 ## Local development database (Docker)  ✅
 - `docker-compose.yml` runs `postgres:17-alpine` (`shop-db-1`, volume `shop_pgdata`,
   port 5432); it reads `DB_NAME/DB_USER/DB_PASSWORD` from `.env`, which now points at
