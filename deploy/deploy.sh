@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# Deploy the committed HEAD to production from this laptop:
+# Deploy the committed HEAD to production (from a laptop or GitHub Actions):
 #   build the frontend → upload a new release → install deps → migrate every schema
 #   → switch /opt/shop/app to it → restart the shop service → health check.
-# Only the `shop` service is restarted; nothing else on the server is touched.
+# Runs as the `shop` user, which owns /opt/shop and may only restart shop.service
+# (sudoers), so a deploy can't touch anything else on the server. How-to videos live
+# in /opt/shop/media/videos and are uploaded separately (deploy/upload-videos.sh).
 #
 # Usage: deploy/deploy.sh            Roll back: deploy/deploy.sh --rollback
 set -euo pipefail
 
-HOST=${DEPLOY_HOST:-root@169.58.71.221}
+HOST=${DEPLOY_HOST:-shop@169.58.71.221}
 DOMAIN=${DEPLOY_DOMAIN:-threadflo.shop}
 cd "$(dirname "$0")/.."
 
@@ -18,7 +20,7 @@ cur=$(readlink -f /opt/shop/app)
 prev=$(ls -1dt /opt/shop/releases/* | grep -vx "$cur" | head -1)
 [[ -n "$prev" ]] || { echo "No earlier release to roll back to." >&2; exit 1; }
 ln -sfn "$prev" /opt/shop/app.new && mv -T /opt/shop/app.new /opt/shop/app
-systemctl restart shop
+sudo systemctl restart shop
 echo "Rolled back to $prev (database migrations are not reverted)."
 EOF
   exit
@@ -41,19 +43,19 @@ echo "==> Uploading"
 ssh "$HOST" "mkdir -p '$REL'"
 git archive --format=tar HEAD | ssh "$HOST" "tar -x -C '$REL'"
 # COPYFILE_DISABLE keeps macOS metadata (._* files) out of the archive.
-COPYFILE_DISABLE=1 tar -C frontend -cf - dist | ssh "$HOST" "tar -x -C '$REL/frontend'"
+# Videos are served from /opt/shop/media/videos, not shipped with every release.
+COPYFILE_DISABLE=1 tar -C frontend --exclude dist/videos -cf - dist | ssh "$HOST" "tar -x -C '$REL/frontend'"
 
 echo "==> Installing, migrating, switching"
 ssh "$HOST" REL="$REL" bash -s <<'EOF'
 set -euo pipefail
 ln -sfn /opt/shop/shared/.env "$REL/.env"
-chown -R shop:shop "$REL"
 chmod -R u=rwX,go=rX "$REL"
-sudo -u shop /opt/shop/venv/bin/pip install --quiet --no-cache-dir --disable-pip-version-check -r "$REL/requirements.txt"
+/opt/shop/venv/bin/pip install --quiet --no-cache-dir --disable-pip-version-check -r "$REL/requirements.txt"
 cd "$REL"
-sudo -u shop /opt/shop/venv/bin/python manage.py migrate_schemas --noinput
+/opt/shop/venv/bin/python manage.py migrate_schemas --noinput
 ln -sfn "$REL" /opt/shop/app.new && mv -T /opt/shop/app.new /opt/shop/app
-systemctl restart shop
+sudo systemctl restart shop
 # Keep the five newest releases for rollback.
 ls -1dt /opt/shop/releases/* | tail -n +6 | xargs -r rm -rf
 EOF

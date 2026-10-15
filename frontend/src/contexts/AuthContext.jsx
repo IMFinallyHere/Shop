@@ -3,29 +3,31 @@ import { getMe, login as apiLogin, logout as apiLogout } from '../api/auth'
 
 const AuthContext = createContext(null)
 
+// Tokens handed off from the shop picker arrive in the URL hash (cross-origin): store them
+// and clean the address bar. Safe to run twice (the hash is gone the second time).
+function takeHandoffTokens() {
+  const hash = window.location.hash
+  if (!hash.includes('access=')) return
+  const params = new URLSearchParams(hash.slice(1))
+  const access = params.get('access')
+  const refresh = params.get('refresh')
+  if (access) {
+    localStorage.setItem('access_token', access)
+    if (refresh) localStorage.setItem('refresh_token', refresh)
+    window.history.replaceState(null, '', window.location.pathname + window.location.search)
+  }
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
-  const [isLoading, setIsLoading] = useState(true)
+  // Only "loading" when there is a token to check; decided before the first render.
+  const [isLoading, setIsLoading] = useState(() => {
+    takeHandoffTokens()
+    return !!localStorage.getItem('access_token')
+  })
 
   useEffect(() => {
-    // Tokens handed off from the shop picker arrive in the URL hash (cross-origin).
-    const hash = window.location.hash
-    if (hash.includes('access=')) {
-      const params = new URLSearchParams(hash.slice(1))
-      const access = params.get('access')
-      const refresh = params.get('refresh')
-      if (access) {
-        localStorage.setItem('access_token', access)
-        if (refresh) localStorage.setItem('refresh_token', refresh)
-        window.history.replaceState(null, '', window.location.pathname + window.location.search)
-      }
-    }
-
-    const token = localStorage.getItem('access_token')
-    if (!token) {
-      setIsLoading(false)
-      return
-    }
+    if (!localStorage.getItem('access_token')) return
     getMe()
       .then(res => setUser(res.data))
       .catch(() => {
@@ -63,6 +65,7 @@ export function AuthProvider({ children }) {
   )
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
   return useContext(AuthContext)
 }
