@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { BRAND, SITE_DOMAIN } from '../brand'
@@ -29,22 +29,22 @@ const STEPS = [
   {
     title: 'Add stock',
     body: 'Enter a product once with its sizes, colours and price. Each piece gets its own barcode, so a saree in maroon and the same saree in navy are never mixed up.',
-    shot: productsShot, alt: 'Products list with sizes, colours, supplier and stock for each', kind: 'screen', path: '/products',
+    shot: productsShot, alt: 'Products list with sizes, colours, supplier and stock for each', kind: 'screen', path: '/products', focus: '30% top',
   },
   {
     title: 'Print the tags',
     body: 'Labels come out at your sticker size on any thermal printer: name, colour and size, price and barcode, one sticker per piece.',
-    shot: labelsShot, alt: 'Label settings with a true-size preview of a 50 × 25 mm tag', kind: 'paper',
+    shot: labelsShot, alt: 'Label settings with a true-size preview of a 50 × 25 mm tag', kind: 'paper', path: '/settings?tab=printing',
   },
   {
     title: 'Scan at the counter',
     body: 'Scan each piece, pick cash, UPI or card, and charge. A returning customer’s name fills in from their phone number.',
-    shot: posShot, alt: 'Billing counter with three scanned pieces and a returning customer', kind: 'screen', path: '/pos',
+    shot: posShot, alt: 'Billing counter with three scanned pieces and a returning customer', kind: 'screen', path: '/pos', focus: '80% top',
   },
   {
     title: 'Hand over the receipt',
     body: 'A GST receipt with your address and GSTIN on a 58 or 80 mm roll, or A4. Stock updates the moment the bill is saved.',
-    shot: receiptShot, alt: 'Printed tax invoice from Asha Boutique', kind: 'paper',
+    shot: receiptShot, alt: 'Printed tax invoice from Asha Boutique', kind: 'paper', path: '/sales',
   },
 ]
 
@@ -81,69 +81,152 @@ function RisingHeadline({ text, className, start = 0 }) {
   )
 }
 
-function Frame({ shot, alt, kind, path }) {
-  if (kind === 'paper') {
-    return (
-      <div className="flex h-full items-center justify-center rounded-3xl bg-white p-6 ring-1 ring-dye-900/5 sm:p-10">
-        <img src={shot} alt={alt} className="max-h-[30rem] w-auto rounded-xl shadow-[0_24px_50px_-20px_rgba(18,15,51,.4)]" />
-      </div>
-    )
-  }
+// A full app screen in a browser frame (the dashboard section).
+function Frame({ shot, alt, path }) {
   return (
     <figure className="overflow-hidden rounded-3xl bg-white shadow-[0_40px_80px_-40px_rgba(18,15,51,.45)] ring-1 ring-dye-900/10">
       <div className="flex items-center border-b border-zinc-200/80 bg-zinc-50 px-4 py-2.5">
         {/* The address bar shows the shop's own web address. */}
         <span className="mx-auto truncate rounded-full bg-white px-4 py-1 text-xs text-zinc-500 ring-1 ring-zinc-200">{DEMO_HOST}{path}</span>
       </div>
-      <img src={shot} alt={alt} className="block w-full" loading="lazy" />
+      <img src={shot} alt={alt} loading="lazy" className="block aspect-[1/0.88] w-full object-cover object-[28%_top] sm:aspect-auto" />
     </figure>
   )
 }
 
-// Steps advance on their own until the visitor picks one.
-function Steps() {
+// One screen in the "how it works" stack: every card is the same size so the stack lines
+// up; the address bar on top is what peeks out from behind the front card.
+function StepCard({ shot, alt, kind, path, focus }) {
+  return (
+    <div className="flex h-full flex-col overflow-hidden rounded-3xl bg-white shadow-[0_40px_80px_-40px_rgba(18,15,51,.45)] ring-1 ring-dye-900/10">
+      <div className="flex shrink-0 items-center border-b border-zinc-200/80 bg-zinc-50 px-4 py-2.5">
+        <span className="mx-auto truncate rounded-full bg-white px-4 py-1 text-xs text-zinc-500 ring-1 ring-zinc-200">{DEMO_HOST}{path}</span>
+      </div>
+      {kind === 'paper' ? (
+        <div className="flex min-h-0 flex-1 items-center justify-center bg-mist/60 p-6 sm:p-10">
+          <img src={shot} alt={alt} className="max-h-full w-auto max-w-full rounded-xl object-contain shadow-[0_24px_50px_-20px_rgba(18,15,51,.4)]" />
+        </div>
+      ) : (
+        <img src={shot} alt={alt} className="min-h-0 w-full flex-1 object-cover" style={{ objectPosition: focus ?? 'left top' }} />
+      )}
+    </div>
+  )
+}
+
+// Where each card sits relative to the one in front: two peek out behind (higher,
+// smaller, fainter) and the previous one slides off towards the viewer as it fades.
+const STACK = [
+  { transform: 'translateY(0) scale(1)', opacity: 1, zIndex: 30, filter: 'none' },
+  { transform: 'translateY(-6.5%) scale(.94)', opacity: 1, zIndex: 20, filter: 'brightness(.96)' },
+  { transform: 'translateY(-12.5%) scale(.88)', opacity: 1, zIndex: 10, filter: 'brightness(.92)' },
+  { transform: 'translateY(7%) scale(1.04)', opacity: 0, zIndex: 40, filter: 'none' },
+]
+
+// Steps advance on their own; picking one restarts the timer from it. The progress bar drives the
+// change (its animation ending moves to the next step), so pausing it on hover or while
+// the section is off screen can never leave the two out of step.
+function Steps({ header }) {
   const [active, setActive] = useState(0)
-  const [auto, setAuto] = useState(!prefersReducedMotion())
-  const [paused, setPaused] = useState(false)
+  const [auto] = useState(!prefersReducedMotion())
+  const [restart, setRestart] = useState(0)
+  const [hovered, setHovered] = useState(false)
+  const [inView, setInView] = useState(false)
   const ref = useReveal(0.3)
 
   useEffect(() => {
-    if (!auto || paused) return
-    const t = setTimeout(() => setActive(a => (a + 1) % STEPS.length), STEP_MS)
-    return () => clearTimeout(t)
-  }, [active, auto, paused])
+    const el = ref.current
+    if (!el || !('IntersectionObserver' in window)) { setInView(true); return }
+    // Start the timer only once the section has finished appearing (.lp-reveal, ~0.9s),
+    // so arriving from the "How it works" link doesn't stack two animations.
+    let timer
+    const io = new IntersectionObserver(([e]) => {
+      clearTimeout(timer)
+      if (e.isIntersecting) timer = setTimeout(() => setInView(true), 900)
+      else setInView(false)
+    }, { threshold: 0.35 })
+    io.observe(el)
+    return () => { io.disconnect(); clearTimeout(timer) }
+  }, [ref])
 
+  // Picking a step (click, tap or swipe) jumps there and the timer starts again from it.
+  const go = (i) => { setActive(i); setRestart(r => r + 1) }
+  const running = !hovered && inView
+  const n = STEPS.length
   const step = STEPS[active]
+  // Only the visible bar (desktop list or phone stepper) runs; a hidden one never ends.
+  const progress = (extra) => auto && (
+    <span key={`${active}.${restart}`} className={`lp-progress absolute left-0 h-0.5 w-full bg-marigold-500 ${extra}`}
+      style={{ animationDuration: `${STEP_MS}ms`, animationPlayState: running ? 'running' : 'paused' }}
+      onAnimationEnd={() => setActive(a => (a + 1) % n)} aria-hidden="true" />
+  )
+  // Swipe the stack on phones.
+  const touch = useRef(null)
+  const onTouchStart = (e) => { touch.current = e.touches[0].clientX }
+  const onTouchEnd = (e) => {
+    const dx = e.changedTouches[0].clientX - (touch.current ?? 0)
+    if (Math.abs(dx) > 40) go((active + (dx < 0 ? 1 : n - 1)) % n)
+  }
+
   return (
-    <div ref={ref} className="lp-reveal grid gap-10 lg:grid-cols-[minmax(0,23rem)_minmax(0,1fr)] lg:gap-14"
-      onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
-      <ol className="space-y-2" role="tablist" aria-label="How it works">
+    <div ref={ref} className="lp-reveal grid gap-10 lg:grid-cols-[minmax(0,23rem)_minmax(0,1fr)] lg:items-center lg:gap-14"
+      onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
+      <div>
+      {header}
+      {/* Phones: a compact stepper, the active step's text, then the stack. */}
+      <div className="mt-8 lg:hidden">
+        <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="How it works">
+          {STEPS.map((s, i) => (
+            <button key={s.title} type="button" role="tab" aria-selected={i === active} aria-label={s.title} onClick={() => go(i)}
+              className={`flex h-9 min-w-9 items-center justify-center rounded-full px-3 text-sm font-bold transition-all duration-300 ${i === active ? 'bg-dye-900 text-white' : 'bg-white text-zinc-500 ring-1 ring-zinc-200'}`}>
+              {i + 1}{i === active && <span className="lp-swap ml-2 font-display font-semibold">{s.title}</span>}
+            </button>
+          ))}
+        </div>
+        <div className="relative mt-4 h-0.5 overflow-hidden rounded-full bg-zinc-200">{progress('top-0')}</div>
+        <p key={active} className="lp-swap mt-4 text-[15px] leading-relaxed text-zinc-600">{step.body}</p>
+      </div>
+
+      <ol className="mt-8 hidden space-y-1.5 lg:block" role="tablist" aria-label="How it works">
         {STEPS.map((s, i) => (
           <li key={s.title}>
             <button
-              type="button" role="tab" aria-selected={i === active} aria-controls="step-panel"
-              onClick={() => { setActive(i); setAuto(false) }}
+              type="button" role="tab" id={`step-tab-${i}`} aria-selected={i === active} aria-controls="step-panel"
+              onClick={() => go(i)}
               className={`group relative w-full overflow-hidden rounded-2xl px-5 py-4 text-left transition-all duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-dye-700 ${i === active ? 'bg-white shadow-[0_12px_30px_-16px_rgba(18,15,51,.35)]' : 'hover:bg-white/70'}`}
             >
               <span className="flex items-center gap-3">
                 <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-display text-sm font-bold transition-colors duration-300 ${i === active ? 'bg-dye-900 text-white' : 'bg-white text-zinc-500 ring-1 ring-zinc-200'}`}>{i + 1}</span>
                 <span className="font-display text-lg font-semibold tracking-tight text-dye-950">{s.title}</span>
               </span>
-              <span className={`grid transition-[grid-template-rows] duration-500 ${i === active ? 'grid-rows-[1fr]' : 'grid-rows-[0fr] max-lg:grid-rows-[1fr]'}`}>
+              <span className={`grid transition-[grid-template-rows] duration-500 ${i === active ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
                 <span className="overflow-hidden">
                   <span className="mt-2 block pl-11 text-sm leading-relaxed text-zinc-600">{s.body}</span>
                 </span>
               </span>
-              {i === active && auto && (
-                <span key={active} className="lp-progress absolute bottom-0 left-0 h-0.5 w-full bg-marigold-500"
-                  style={{ animationDuration: `${STEP_MS}ms`, animationPlayState: paused ? 'paused' : 'running' }} aria-hidden="true" />
-              )}
+              {i === active && progress('bottom-0')}
             </button>
           </li>
         ))}
       </ol>
-      <div id="step-panel" role="tabpanel" aria-label={step.title} key={active} className="lp-pop min-h-[18rem]">
-        <Frame {...step} />
+      </div>
+
+      <div id="step-panel" role="tabpanel" aria-label={step.title} className="relative pt-[11%] sm:pt-[8.25%]">
+        <div className="relative aspect-[1/0.88] sm:aspect-[1440/946]" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+          {STEPS.map((s, i) => {
+            const offset = (i - active + n) % n
+            const pos = STACK[Math.min(offset, STACK.length - 1)]
+            const behind = offset === 1 || offset === 2
+            return (
+              <div key={s.title} aria-hidden={offset !== 0}
+                className={`absolute inset-0 origin-top transition-[transform,opacity,filter] duration-700 ease-[cubic-bezier(.2,.75,.25,1)] motion-reduce:transition-none ${behind ? 'cursor-pointer' : ''}`}
+                style={{ ...pos, pointerEvents: offset === 0 || behind ? 'auto' : 'none' }}
+                onClick={behind ? () => go(i) : undefined}
+                title={behind ? s.title : undefined}>
+                <StepCard {...s} />
+              </div>
+            )
+          })}
+        </div>
       </div>
     </div>
   )
@@ -270,15 +353,14 @@ export default function LandingPage() {
 
       <main id="main">
         {/* How it works: a real sequence, so the steps are numbered. */}
-        <section id="how" className="bg-mist py-20 sm:py-28" aria-labelledby="how-title">
-          <div className="mx-auto max-w-6xl px-5 sm:px-8">
-            <Reveal>
+        <section id="how" className="bg-mist py-16 sm:py-20 lg:flex lg:min-h-screen lg:items-center lg:py-12" aria-labelledby="how-title">
+          <div className="mx-auto w-full max-w-6xl px-5 sm:px-8">
+            <Steps header={<>
               <h2 id="how-title" className={h2}>From rack to receipt</h2>
-              <p className="mt-4 max-w-2xl text-lg leading-relaxed text-zinc-600">
+              <p className="mt-4 max-w-xl text-lg leading-relaxed text-zinc-600">
                 The four things a clothing shop does all day. Every screen here is the real app, running a demo shop.
               </p>
-            </Reveal>
-            <div className="mt-12"><Steps /></div>
+            </>} />
           </div>
         </section>
 
@@ -291,7 +373,7 @@ export default function LandingPage() {
                 Today’s sales, the last seven days, which sizes are running out and the latest bills, on one screen before the first customer walks in.
               </p>
             </Reveal>
-            <Reveal zoom className="mt-12"><Frame shot={dashboardShot} alt="Dashboard with today's sales, a seven-day chart, recent bills and low stock" kind="screen" path="/dashboard" /></Reveal>
+            <Reveal zoom className="mt-12"><Frame shot={dashboardShot} alt="Dashboard with today's sales, a seven-day chart, recent bills and low stock" path="/dashboard" /></Reveal>
           </div>
         </section>
 
@@ -312,7 +394,7 @@ export default function LandingPage() {
             </dl>
             <Reveal as="figure" zoom className="mt-12">
               <img src={customerShot} alt="A customer's page: bills, total spent, refunds and store credit" loading="lazy"
-                className="w-full rounded-3xl shadow-[0_40px_80px_-40px_rgba(18,15,51,.45)] ring-1 ring-dye-900/10" />
+                className="aspect-[4/3] w-full rounded-3xl object-cover object-left-top shadow-[0_40px_80px_-40px_rgba(18,15,51,.45)] ring-1 ring-dye-900/10 sm:aspect-auto" />
               <figcaption className="mt-4 text-sm text-zinc-500">Every customer’s bills, spend, refunds and store credit, found by their phone number.</figcaption>
             </Reveal>
           </div>
