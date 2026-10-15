@@ -408,7 +408,7 @@ of theirs is edited, restarted or shared (own user, folder, DB, port, nginx file
 **Done 2026-10-14:** Postgres 17.11, `shop` user/db (+pg_trgm), wildcard cert (expires
 2027-01-12, renew dry-run OK), `shop.service` (gunicorn `--no-control-socket`: the sandbox
 makes its default socket dir read-only), public tenant `shop.gokuldelicacy.in` with platform
-admin `smallemail00@gmail.com`, nginx site, nightly backup cron. amazon-review untouched
+admin (the owner's email), nginx site, nightly backup cron. amazon-review untouched
 (not restarted; `/` 404 and `/docs` 401 before and after). **Decided:** production starts with an empty DB. `*.shop` grey record added and resolving (2026-10-14).
 Optional later: enable `ufw` (22/80/443), Cloudflare real-IP for logs, swap file.
 
@@ -478,6 +478,17 @@ Optional later: enable `ufw` (22/80/443), Cloudflare real-IP for logs, swap file
   before the move: `/opt/shop/backups/shop-before-threadflo.dump`.
 - Old `shop.gokuldelicacy.in` removed entirely (nginx, cert, Cloudflare token + plugin).
 - Deployed `55f5dd8`, which includes the website, onboarding/videos and the review fixes.
+
+## Phase 21 — GitHub Actions: checks + auto-deploy  ✅ 2026-10-15
+- `.github/workflows/ci.yml`: every push / PR runs backend tests (Postgres 17, Python 3.12)
+  and frontend lint + build; pushes to `main` that pass deploy with `deploy/deploy.sh`.
+- Deploys log in as the server's **shop** user (owns `/opt/shop`; sudoers lets it run only
+  `systemctl restart shop`), never root. Keys in `/opt/shop/.ssh/authorized_keys`: the
+  laptop's and a GitHub-only deploy key (no forwarding/pty).
+- GitHub environment **production** (deploys from `main` only) holds `DEPLOY_SSH_KEY` and
+  `DEPLOY_KNOWN_HOSTS`.
+- Videos moved out of releases: `/opt/shop/media/videos` (nginx `/videos/`, 7-day cache,
+  captions as text/vtt); `deploy/upload-videos.sh` after re-recording.
 
 ## Local development database (Docker)  ✅
 - `docker-compose.yml` runs `postgres:17-alpine` (`shop-db-1`, volume `shop_pgdata`,
