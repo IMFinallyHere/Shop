@@ -151,5 +151,6 @@ export const CHECKLIST = {
 // `{name}` placeholders; driver.js fills its own `{{current}}`/`{{total}}`.
 export function translate(lang, key, vars = {}) {
   const text = STRINGS[lang]?.[key] ?? STRINGS.en[key] ?? key
-  return text.replace(/(?<!\{)\{(\w+)\}(?!\})/g, (_, k) => (k in vars ? vars[k] : `{${k}}`))
+  // `{{…}}` is left for driver.js; written without lookbehind so older Safari can parse it.
+  return text.replace(/\{\{\w+\}\}|\{(\w+)\}/g, (m, k) => (k === undefined ? m : k in vars ? vars[k] : m))
 }

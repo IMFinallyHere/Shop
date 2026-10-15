@@ -119,10 +119,12 @@ class ShopSettingsTestCase(TestCase):
         owner.put("/api/shop-settings/", {"receipt_gstin": "27AAKFA4721M1Z3"}, format="json", **h)
         with tenant_context(self.bella):
             Product.objects.create(name="Cotton Kurta")
-        owner.patch("/api/onboarding/", {"add_event": "label_printed"}, format="json", **h)
         with schema_context(get_public_schema_name()):
             staff = User.objects.create_user(email="bella-staff@test.com", password=PW)
         self.bella.add_user(staff, is_staff=True)
+        # Tags printed by staff tick the owner's "Print a tag" too.
+        self.client_for("bella.localhost", "bella-staff@test.com").patch(
+            "/api/onboarding/", {"add_event": "label_printed"}, format="json", **h)
         self.assertEqual(steps(), {"shop_details": True, "first_product": True, "first_label": True,
                                    "first_bill": False, "first_staff": True})
 

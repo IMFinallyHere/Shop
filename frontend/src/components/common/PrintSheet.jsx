@@ -28,6 +28,8 @@ export default function PrintSheet({ title, subtitle, css, page, autoPrint = fal
   const pageW = page?.width
   const pageH = page?.height
   const rootRef = useRef(null)
+  const onPrintRef = useRef(onPrint)
+  useEffect(() => { onPrintRef.current = onPrint }, [onPrint])
   const styleRef = useRef(null)
 
   useEffect(() => {
@@ -38,7 +40,8 @@ export default function PrintSheet({ title, subtitle, css, page, autoPrint = fal
 
   // Re-measure on every print (button or Ctrl+P) so 'auto' height fits the current content.
   useEffect(() => {
-    const update = () => {
+    const update = (e) => {
+      if (e?.type === 'beforeprint') onPrintRef.current?.()
       const h = pageH !== 'auto' ? pageH
         : rootRef.current ? Math.ceil(rootRef.current.scrollHeight / PX_PER_MM) + 4 : 297
       if (styleRef.current) styleRef.current.textContent = pageCss(pageW, h)
@@ -66,7 +69,7 @@ export default function PrintSheet({ title, subtitle, css, page, autoPrint = fal
         <div className="flex gap-2">
           {actions}
           <Button onClick={onClose} icon={X}>Close</Button>
-          <Button variant="primary" onClick={() => { onPrint?.(); window.print() }} icon={Printer} autoFocus>Print</Button>
+          <Button variant="primary" onClick={() => window.print()} icon={Printer} autoFocus>Print</Button>
         </div>
       </div>
       <div ref={rootRef} className="print-root">{children}</div>

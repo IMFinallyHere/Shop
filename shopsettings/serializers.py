@@ -2,7 +2,7 @@ from rest_framework import serializers
 
 import re
 
-from .models import Color, PaymentMethod, ShopSettings, Size
+from .models import Color, PaymentMethod, ShopSettings, Size, UserOnboarding
 
 
 class ShopSettingsSerializer(serializers.ModelSerializer):
@@ -57,7 +57,7 @@ class ColorSerializer(_NamedOptionSerializer):
 
 
 class OnboardingUpdateSerializer(serializers.Serializer):
-    language = serializers.ChoiceField(choices=["en", "hi"], required=False)
+    language = serializers.ChoiceField(choices=UserOnboarding.LANGUAGES, required=False)
     tour_done = serializers.BooleanField(required=False)
     checklist_dismissed = serializers.BooleanField(required=False)
     add_event = serializers.ChoiceField(choices=["label_printed"], required=False)

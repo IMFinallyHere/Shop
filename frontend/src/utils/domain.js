@@ -12,10 +12,13 @@ export const homePath = () => (isMainDomain() ? '/shops' : '/dashboard')
 
 // Build the absolute URL of a shop, carrying the JWT across the origin boundary
 // (different subdomain = different origin = separate localStorage) via the URL hash.
+// A page on a shop's own address, keeping the current protocol and port (dev uses :5173).
+export const shopUrl = (domain, path = '/') =>
+  `${window.location.protocol}//${domain}${window.location.port ? `:${window.location.port}` : ''}${path}`
+
 export const shopUrlWithTokens = (domain) => {
-  const port = window.location.port ? `:${window.location.port}` : ''
   const access = localStorage.getItem('access_token')
   const refresh = localStorage.getItem('refresh_token')
   const frag = `#access=${encodeURIComponent(access)}&refresh=${encodeURIComponent(refresh)}`
-  return `${window.location.protocol}//${domain}${port}/dashboard${frag}`
+  return shopUrl(domain, `/dashboard${frag}`)
 }

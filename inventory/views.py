@@ -9,7 +9,7 @@ from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.response import Response
 
-from accounts.permissions import ShopPermission
+from accounts.permissions import ANY_STAFF, ShopPermission
 from shopsettings.models import Color, Size
 from .models import LOW_STOCK, Category, Product, ProductVariant, Seller, StockBatch, StockItem, generate_stock_code
 from .serializers import (
@@ -57,6 +57,7 @@ STOCK_ITEM_RELATED = ("batch", "variant__product__category", "variant__color", "
 class CategoryViewSet(AllRowsMixin, viewsets.ModelViewSet):
     permission_classes = [ShopPermission]
     perm_model = "inventory.category"
+    perms = {"list": ANY_STAFF, "retrieve": ANY_STAFF}  # names label products everywhere
     serializer_class = CategorySerializer
     filter_backends = [SearchFilter]
     search_fields = ["name"]
@@ -68,6 +69,7 @@ class CategoryViewSet(AllRowsMixin, viewsets.ModelViewSet):
 class SellerViewSet(AllRowsMixin, viewsets.ModelViewSet):
     permission_classes = [ShopPermission]
     perm_model = "inventory.seller"
+    perms = {"list": ANY_STAFF, "retrieve": ANY_STAFF}
     serializer_class = SellerSerializer
     filter_backends = [SearchFilter]
     search_fields = ["name", "phone", "email"]

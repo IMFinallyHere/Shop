@@ -7,7 +7,7 @@ export const money = (v) => (v == null || v === '' ? '—'
 export const moneyShort = (v) => {
   if (v == null || v === '') return '—'
   const n = Number(v)
-  const places = Number.isInteger(n) ? 0 : 2
+  const places = Math.round(n * 100) % 100 === 0 ? 0 : 2
   return `₹${n.toLocaleString('en-IN', { minimumFractionDigits: places, maximumFractionDigits: places })}`
 }
 

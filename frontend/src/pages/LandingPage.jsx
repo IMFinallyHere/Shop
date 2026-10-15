@@ -20,8 +20,9 @@ const FONT_URL = 'https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:o
 const DEMO_HOST = `asha-boutique.${SITE_DOMAIN}`
 const STEP_MS = 6000
 
-// Same rule as the server's slugify: what the shop's web address will be.
-const slugify = (s) => s.toLowerCase().normalize('NFKD').replace(/[^\w\s-]/g, '').trim().replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '')
+// Django's slugify, so the preview matches the address the server creates.
+const slugify = (s) => s.normalize('NFKD').replace(/[\u0080-\uFFFF]/g, '').toLowerCase()
+  .replace(/[^\w\s-]/g, '').replace(/[-\s]+/g, '-').replace(/^[-_]+|[-_]+$/g, '')
 
 const SHOP_TYPES = ['Saree stores', 'Boutiques', 'Kurti and suit shops', 'Menswear', 'Kidswear', 'Ethnic wear', 'Lehenga studios', 'Uniform shops', 'Hosiery', 'Footwear and accessories']
 
@@ -169,7 +170,8 @@ function Steps({ header }) {
 
   return (
     <div ref={ref} className="lp-reveal grid gap-10 lg:grid-cols-[minmax(0,23rem)_minmax(0,1fr)] lg:items-center lg:gap-14"
-      onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
+      onPointerEnter={(e) => e.pointerType === 'mouse' && setHovered(true)}
+      onPointerLeave={(e) => e.pointerType === 'mouse' && setHovered(false)}>
       <div>
       {header}
       {/* Phones: a compact stepper, the active step's text, then the stack. */}

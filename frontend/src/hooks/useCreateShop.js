@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { signup } from '../api/auth'
 import { useAuth } from '../contexts/AuthContext'
-import { shopUrlWithTokens } from '../utils/domain'
+import { shopUrl, shopUrlWithTokens } from '../utils/domain'
 
 const FIELDS = ['shop_name', 'email', 'password', 'first_name', 'last_name']
 
@@ -42,8 +42,7 @@ export default function useCreateShop() {
       window.location.assign(shopUrlWithTokens(data.domain))
     } catch {
       // The shop exists; if signing in here fails, sign in on the shop itself.
-      const port = window.location.port ? `:${window.location.port}` : ''
-      window.location.assign(`${window.location.protocol}//${data.domain}${port}/login`)
+      window.location.assign(shopUrl(data.domain, '/login'))
     }
   }
 

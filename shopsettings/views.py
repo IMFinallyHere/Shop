@@ -1,4 +1,5 @@
 from django.db.models import Max
+from django.db import transaction
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.response import Response
@@ -90,7 +91,7 @@ class ColorViewSet(_VariantOptionViewSet):
     model = Color
 
 
-def _setup_checklist(onboarding):
+def _setup_checklist():
     """The owner's first-run steps, each done when the shop's data says so."""
     from billing.models import Bill  # tenant apps; imported lazily like elsewhere
     from inventory.models import Product
@@ -102,7 +103,8 @@ def _setup_checklist(onboarding):
     return [
         {"key": "shop_details", "done": bool(shop_details)},
         {"key": "first_product", "done": Product.objects.exists()},
-        {"key": "first_label", "done": "label_printed" in onboarding.events},
+        # Anyone in the shop printing tags counts, not just the owner.
+        {"key": "first_label", "done": UserOnboarding.objects.filter(events__contains=["label_printed"]).exists()},
         {"key": "first_bill", "done": Bill.objects.exists()},
         {"key": "first_staff", "done": UserTenantPermissions.objects.count() > 1},
     ]
@@ -127,25 +129,35 @@ class OnboardingView(APIView):
         }
         # Setting the shop up is the owner's job; staff only get the tour.
         if request.user.is_superuser:
-            data["checklist"] = _setup_checklist(obj)
+            data["checklist"] = _setup_checklist()
         return data
 
     def get(self, request):
         return Response(self._payload(request, self._state(request)))
 
     def patch(self, request):
-        obj = self._state(request)
         serializer = OnboardingUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         d = serializer.validated_data
         now = timezone.now()
-        if "language" in d:
-            obj.language = d["language"]
-        if "tour_done" in d:
-            obj.tour_done_at = now if d["tour_done"] else None
-        if "checklist_dismissed" in d:
-            obj.checklist_dismissed_at = now if d["checklist_dismissed"] else None
-        if d.get("add_event") and d["add_event"] not in obj.events:
-            obj.events = [*obj.events, d["add_event"]]
-        obj.save()
+        # Two quick PATCHes (pick Hindi, then close the tour) must not undo each other:
+        # lock the row and save only the fields this request changes.
+        with transaction.atomic():
+            self._state(request)
+            obj = UserOnboarding.objects.select_for_update().get(user_id=request.user.pk)
+            changed = []
+            if "language" in d:
+                obj.language = d["language"]
+                changed.append("language")
+            if "tour_done" in d:
+                obj.tour_done_at = now if d["tour_done"] else None
+                changed.append("tour_done_at")
+            if "checklist_dismissed" in d:
+                obj.checklist_dismissed_at = now if d["checklist_dismissed"] else None
+                changed.append("checklist_dismissed_at")
+            if d.get("add_event") and d["add_event"] not in obj.events:
+                obj.events = [*obj.events, d["add_event"]]
+                changed.append("events")
+            if changed:
+                obj.save(update_fields=changed)
         return Response(self._payload(request, obj))

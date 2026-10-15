@@ -182,6 +182,9 @@ class MultiTenancyTestCase(TestCase):
         self.assertEqual(cashier.get("/api/products/", **h).status_code, 200)
         self.assertEqual(cashier.get("/api/dashboard/", **h).status_code, 200)
         self.assertEqual(cashier.post("/api/products/", {"name": "X"}, format="json", **h).status_code, 403)
+        # Category and seller names label products, so cashiers can read them but not change them.
+        self.assertEqual(cashier.get("/api/categories/?all=1", **h).status_code, 200)
+        self.assertEqual(cashier.post("/api/categories/", {"name": "X"}, format="json", **h).status_code, 403)
         self.assertEqual(cashier.put("/api/shop-settings/", {"default_tax_rate": "5"}, format="json", **h).status_code, 403)
         # Users, groups and permissions are the owner's alone, whatever the groups say.
         for url in ("/api/users/", "/api/groups/", "/api/permissions/"):

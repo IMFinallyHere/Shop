@@ -35,9 +35,11 @@ export default function LiveCounter() {
     })
     const end = 600 + ITEMS.length * 1900
     steps.push([end + 200, () => setPhase('charge')], [end + 1300, () => setPhase('paid')])
-    const timers = steps.map(([t, fn]) => setTimeout(fn, t))
-    const loop = setInterval(() => steps.forEach(([t, fn]) => timers.push(setTimeout(fn, t))), end + 4200)
-    return () => { timers.forEach(clearTimeout); clearInterval(loop) }
+    // One cycle's timers at a time; the last one schedules the next cycle.
+    let timers = []
+    const cycle = () => { timers = [...steps.map(([t, fn]) => setTimeout(fn, t)), setTimeout(cycle, end + 4200)] }
+    cycle()
+    return () => timers.forEach(clearTimeout)
   }, [reduced])
 
   return (

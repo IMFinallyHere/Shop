@@ -46,8 +46,19 @@ export function OnboardingProvider({ children }) {
   const language = state?.language ?? 'en'
   const t = useCallback((key, vars) => translate(language, key, vars), [language])
 
-  const refresh = useCallback(() => getOnboarding().then(r => setState(r.data)).catch(() => {}), [])
-  const update = useCallback((data) => updateOnboarding(data).then(r => setState(r.data)).catch(() => {}), [])
+  // Only the newest reply is applied (quick English/Hindi toggles can arrive out of
+  // order), and a refresh already in flight is reused instead of sent twice.
+  const seq = useRef(0)
+  const inflight = useRef(null)
+  const apply = useCallback((request) => {
+    const mine = ++seq.current
+    return request.then(r => { if (mine === seq.current) setState(r.data) }).catch(() => {})
+  }, [])
+  const refresh = useCallback(() => {
+    inflight.current ??= apply(getOnboarding()).finally(() => { inflight.current = null })
+    return inflight.current
+  }, [apply])
+  const update = useCallback((data) => apply(updateOnboarding(data)), [apply])
 
   useEffect(() => { if (member) refresh() }, [member, refresh])
 
@@ -73,9 +84,9 @@ export function OnboardingProvider({ children }) {
   useEffect(() => {
     if (!state || state.tour_done || started.current) return
     // Marked inside the timer: a cancelled timer (e.g. re-render) must not count as started.
-    const timer = setTimeout(() => { started.current = true; runTour(state.language) }, 700)
+    const timer = setTimeout(() => { started.current = true; update({ tour_done: true }); runTour(state.language) }, 700)
     return () => clearTimeout(timer)
-  }, [state, runTour])
+  }, [state, runTour, update])
 
   const value = useMemo(() => ({
     ready: !!state,
