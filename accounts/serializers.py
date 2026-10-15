@@ -175,6 +175,16 @@ class MeSerializer(serializers.Serializer):
         return sorted(obj.get_all_permissions())
 
 
+# Shop names become <name>.<main domain>; these addresses are kept for the site itself.
+RESERVED_SLUGS = {
+    'www', 'admin', 'api', 'app', 'apps', 'mail', 'email', 'webmail', 'smtp', 'imap', 'pop', 'ftp',
+    'ns', 'ns1', 'ns2', 'dns', 'static', 'assets', 'cdn', 'media', 'files', 'help', 'support', 'docs',
+    'blog', 'status', 'login', 'signup', 'register', 'account', 'accounts', 'billing', 'dashboard',
+    'shop', 'shops', 'store', 'threadflo', 'test', 'demo', 'dev', 'staging', 'public', 'root',
+    'auth', 'acme-challenge', 'autodiscover', 'autoconfig',
+}
+
+
 class SignupSerializer(serializers.Serializer):
     """Self-serve signup: creates the owner account and provisions a new shop schema."""
 
@@ -188,6 +198,8 @@ class SignupSerializer(serializers.Serializer):
         slug = slugify(value)
         if not slug:
             raise serializers.ValidationError('Shop name must contain letters or numbers.')
+        if slug in RESERVED_SLUGS:
+            raise serializers.ValidationError('That name is reserved. Try adding your area or a word, e.g. "Asha Boutique Jaipur".')
         if Tenant.objects.filter(schema_name=slug).exists():
             raise serializers.ValidationError('A shop with a similar name already exists.')
         self._slug = slug

@@ -7,14 +7,14 @@ edited or restarted.
 
 | Piece | Where |
 |---|---|
-| Domains | `shop.gokuldelicacy.in` + `*.shop.gokuldelicacy.in`, both DNS only (grey) in Cloudflare |
+| Domains | `threadflo.shop` (website, signup, admin) + `*.threadflo.shop` (one per shop); DNS at GoDaddy: `A`/`AAAA` for `@` and `*` |
 | Code | `/opt/shop/releases/<time>-<sha>`, current one symlinked at `/opt/shop/app` |
 | Python venv | `/opt/shop/venv` |
 | Settings | `/opt/shop/shared/.env` (from `env.production.example`, mode 600) |
 | API | `shop.service` → gunicorn on 127.0.0.1:8001 |
 | Database | PostgreSQL 17, localhost only, database and role `shop` |
 | Web | `/etc/nginx/sites-available/shop` (from `nginx-shop.conf`) + `/etc/nginx/snippets/shop-proxy.conf`; request limits and CSP live there |
-| TLS | Let's Encrypt `shop.gokuldelicacy.in` + wildcard, DNS-01 via `/root/.secrets/cloudflare.ini` |
+| TLS | Let's Encrypt `threadflo.shop` + `*.threadflo.shop`, DNS-01 through GoDaddy's API: hook `/etc/letsencrypt/godaddy-hook.sh` (from `certbot-godaddy-hook.sh`), key in `/root/.secrets/godaddy.ini` (600) |
 | Backups | `/opt/shop/backups`, nightly `pg_dump`, 14 kept |
 
 ## Every deploy
@@ -29,7 +29,7 @@ deploy/deploy.sh --rollback  # back to the previous release (migrations stay app
 ```bash
 # 1. Packages. PostgreSQL 17 from the PGDG repo, the same major version as dev.
 apt-get update
-apt-get install -y postgresql-common python3.12-venv python3-certbot-dns-cloudflare
+apt-get install -y postgresql-common python3.12-venv dnsutils
 /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
 apt-get install -y postgresql-17
 
@@ -49,11 +49,14 @@ sudo -u postgres psql -d shop -c "CREATE EXTENSION IF NOT EXISTS pg_trgm"
 # 4. Settings: env.production.example → /opt/shop/shared/.env with SECRET_KEY and DB_PASSWORD=$DBPW.
 chown shop:shop /opt/shop/shared/.env && chmod 600 /opt/shop/shared/.env
 
-# 5. Certificate. DNS-01 only, so nginx and the amazon-review cert are not touched.
-certbot certonly --dns-cloudflare --dns-cloudflare-credentials /root/.secrets/cloudflare.ini \
-  --dns-cloudflare-propagation-seconds 30 \
-  -d shop.gokuldelicacy.in -d '*.shop.gokuldelicacy.in' \
-  --deploy-hook "systemctl reload nginx" --non-interactive --agree-tos -m <email>
+# 5. Certificate (wildcard, via GoDaddy DNS). Key file: GD_Key=... and GD_Secret=... lines.
+#    Renewals reuse the hooks automatically (certbot.timer).
+install -m 700 deploy/certbot-godaddy-hook.sh /etc/letsencrypt/godaddy-hook.sh
+certbot certonly --manual --preferred-challenges dns \
+  --manual-auth-hook "/etc/letsencrypt/godaddy-hook.sh auth" \
+  --manual-cleanup-hook "/etc/letsencrypt/godaddy-hook.sh cleanup" \
+  --deploy-hook "systemctl reload nginx" \
+  -d threadflo.shop -d '*.threadflo.shop' --non-interactive --agree-tos -m <email>
 
 # 6. Service (from the laptop: scp deploy/shop.service root@server:/etc/systemd/system/).
 systemctl daemon-reload && systemctl enable shop
@@ -68,7 +71,7 @@ cd /opt/shop/app
 # The CLI command can't make the owner a platform admin, so use the helper directly:
 sudo -u shop /opt/shop/venv/bin/python manage.py shell -c "
 from tenant_users.tenants.utils import create_public_tenant; import secrets
-create_public_tenant(domain_url='shop.gokuldelicacy.in', owner_email='<admin email>',
+create_public_tenant(domain_url='threadflo.shop', owner_email='<admin email>',
                      is_superuser=True, is_staff=True, password=secrets.token_urlsafe(32))"
 # Set the admin's password (in a real terminal, not a non-interactive one):
 #   ssh -t root@server 'cd /opt/shop/app && sudo -u shop /opt/shop/venv/bin/python manage.py changepassword <email>'

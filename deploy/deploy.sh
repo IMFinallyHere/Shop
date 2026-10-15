@@ -8,7 +8,7 @@
 set -euo pipefail
 
 HOST=${DEPLOY_HOST:-root@169.58.71.221}
-DOMAIN=${DEPLOY_DOMAIN:-shop.gokuldelicacy.in}
+DOMAIN=${DEPLOY_DOMAIN:-threadflo.shop}
 cd "$(dirname "$0")/.."
 
 if [[ "${1:-}" == "--rollback" ]]; then

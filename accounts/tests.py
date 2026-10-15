@@ -111,6 +111,13 @@ class MultiTenancyTestCase(TestCase):
         self.assertTrue(login.data["user"]["is_superuser"])
         self.assertEqual(resp.data["domain"], f"{slug}.localhost")
 
+    def test_signup_refuses_reserved_names(self):
+        for name in ("www", "Admin", "API"):
+            resp = APIClient().post("/api/auth/signup/", {"shop_name": name, "email": f"r-{name}@test.com", "password": PW},
+                                    format="json", HTTP_HOST="localhost")
+            self.assertEqual(resp.status_code, 400, name)
+            self.assertIn("reserved", str(resp.data["shop_name"]))
+
     def test_signup_rejected_on_a_shop_subdomain(self):
         resp = APIClient().post(
             "/api/auth/signup/",
