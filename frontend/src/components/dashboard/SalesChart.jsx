@@ -20,7 +20,9 @@ export default function SalesChart({ days }) {
   const pct = (d) => (Number(d.total) / max) * 100
 
   return (
-    <div className="flex h-[200px] flex-col">
+    // `relative` keeps the sr-only table (absolutely positioned) inside the chart; without
+    // it the table is placed against the page and stretches the whole document.
+    <div className="relative flex h-[200px] flex-col">
       <div className="flex flex-1">
         {/* y-axis: 0 and max, recessive */}
         <div className="relative w-14 shrink-0 text-right text-[11px] tabular-nums text-zinc-400">

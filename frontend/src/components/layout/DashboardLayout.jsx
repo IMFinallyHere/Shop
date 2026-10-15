@@ -35,7 +35,7 @@ export default function DashboardLayout() {
       <Sidebar collapsed={collapsed} onToggleCollapsed={toggleCollapsed} mobileOpen={mobileOpen} onCloseMobile={() => setMobileOpen(false)} />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Topbar onOpenMobile={() => setMobileOpen(true)} />
-        <main className="flex-1 overflow-y-auto">
+        <main className="relative flex-1 overflow-y-auto">
           <div className={clsx('mx-auto px-4 py-6 sm:px-6 lg:py-8', fullBleed ? 'max-w-[1400px]' : 'max-w-6xl')}>
             {allowed ? <Suspense fallback={<Spinner className="py-24" />}><Outlet /></Suspense>
               : pathname === '/dashboard' && firstAllowed ? <Navigate to={firstAllowed} replace />
