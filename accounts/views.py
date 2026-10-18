@@ -29,6 +29,8 @@ from .serializers import (
     TenantUserCreateSerializer,
     TenantUserSerializer,
     TenantUserUpdateSerializer,
+    subdomain_problem,
+    suggest_subdomain,
 )
 
 
@@ -159,6 +161,21 @@ class SignupView(APIView):
         serializer.is_valid(raise_exception=True)
         result = serializer.save()
         return Response(result, status=status.HTTP_201_CREATED)
+
+
+class SubdomainCheckView(APIView):
+    """Public: is a shop address free? ``?subdomain=`` or, for the default suggestion, ``?shop_name=``."""
+
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "subdomain_check"
+
+    def get(self, request):
+        subdomain = request.query_params.get('subdomain', '').strip().lower()
+        if not subdomain:
+            subdomain = suggest_subdomain(request.query_params.get('shop_name', ''))
+        problem = subdomain_problem(subdomain)
+        return Response({'subdomain': subdomain, 'available': problem is None, 'reason': problem or ''})
 
 
 class UserViewSet(viewsets.ModelViewSet):

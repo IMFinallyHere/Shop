@@ -12,3 +12,6 @@ export const logout = (refresh) =>
 
 export const getMe = () =>
   api.get('/auth/me/')
+
+export const checkSubdomain = (subdomain) =>
+  axios.get('/api/auth/subdomain-check/', { params: { subdomain } })

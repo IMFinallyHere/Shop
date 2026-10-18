@@ -115,13 +115,14 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "login": config("THROTTLE_LOGIN", default="10/min"),
         "signup": config("THROTTLE_SIGNUP", default="5/hour"),
+        "subdomain_check": config("THROTTLE_SUBDOMAIN_CHECK", default="60/min"),
     },
     # Behind nginx: the client's IP is the last X-Forwarded-For hop it adds.
     "NUM_PROXIES": config("NUM_PROXIES", cast=int, default=0),
 }
 # The test suite logs in far more often than any real client.
 if "test" in sys.argv:
-    REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"] = {"login": "10000/min", "signup": "10000/min"}
+    REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"] = {"login": "10000/min", "signup": "10000/min", "subdomain_check": "10000/min"}
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),

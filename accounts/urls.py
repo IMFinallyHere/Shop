@@ -11,6 +11,7 @@ router.register('permissions', views.PermissionViewSet, basename='permission')
 
 urlpatterns = [
     path('auth/signup/', views.SignupView.as_view(), name='signup'),
+    path('auth/subdomain-check/', views.SubdomainCheckView.as_view(), name='subdomain-check'),
     path('auth/login/', views.LoginView.as_view(), name='login'),
     path('auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('auth/logout/', views.LogoutView.as_view(), name='logout'),

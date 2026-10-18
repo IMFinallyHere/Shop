@@ -116,7 +116,35 @@ class MultiTenancyTestCase(TestCase):
             resp = APIClient().post("/api/auth/signup/", {"shop_name": name, "email": f"r-{name}@test.com", "password": PW},
                                     format="json", HTTP_HOST="localhost")
             self.assertEqual(resp.status_code, 400, name)
-            self.assertIn("reserved", str(resp.data["shop_name"]))
+            self.assertIn("reserved", str(resp.data["subdomain"]))
+
+    def test_signup_uses_the_chosen_subdomain(self):
+        resp = APIClient().post(
+            "/api/auth/signup/",
+            {"shop_name": "Acme Cloth", "subdomain": "acme-jaipur", "email": "dup@test.com", "password": PW},
+            format="json", HTTP_HOST="localhost",
+        )
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data["domain"], "acme-jaipur.localhost")
+        self.assertEqual(Tenant.objects.get(schema_name="acme-jaipur").name, "Acme Cloth")
+
+    def test_signup_refuses_a_taken_or_malformed_subdomain(self):
+        for sub, reason in (("acme", "taken"), ("Bad_Name!", "lowercase"), ("ab", "at least")):
+            resp = APIClient().post(
+                "/api/auth/signup/",
+                {"shop_name": "Another Shop", "subdomain": sub, "email": f"x{len(sub)}@test.com", "password": PW},
+                format="json", HTTP_HOST="localhost",
+            )
+            self.assertEqual(resp.status_code, 400, sub)
+            self.assertIn(reason, str(resp.data["subdomain"]), sub)
+
+    def test_subdomain_check(self):
+        check = lambda **q: APIClient().get("/api/auth/subdomain-check/", q, HTTP_HOST="localhost").data
+        taken = check(shop_name="Acme")
+        self.assertEqual((taken["subdomain"], taken["available"]), ("acme", False))
+        self.assertIn("taken", taken["reason"])
+        self.assertEqual(check(subdomain="acme-jaipur"), {"subdomain": "acme-jaipur", "available": True, "reason": ""})
+        self.assertEqual(check(shop_name="Asha Boutique!")["subdomain"], "asha-boutique")
 
     def test_signup_rejected_on_a_shop_subdomain(self):
         resp = APIClient().post(

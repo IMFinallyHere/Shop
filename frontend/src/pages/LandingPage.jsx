@@ -1,9 +1,10 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Loader2 } from 'lucide-react'
+import { Check, Loader2 } from 'lucide-react'
 import { BRAND, SITE_DOMAIN } from '../brand'
 import { useAuth } from '../contexts/AuthContext'
 import useCreateShop from '../hooks/useCreateShop'
+import useSubdomain from '../hooks/useSubdomain'
 import LiveCounter from '../components/landing/LiveCounter'
 import { prefersReducedMotion, useReveal } from '../components/landing/motion'
 import '../components/landing/landing.css'
@@ -19,10 +20,6 @@ import customerShot from '../assets/landing/customer.webp'
 const FONT_URL = 'https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&display=swap'
 const DEMO_HOST = `asha-boutique.${SITE_DOMAIN}`
 const STEP_MS = 6000
-
-// Django's slugify, so the preview matches the address the server creates.
-const slugify = (s) => s.normalize('NFKD').replace(/[\u0080-\uFFFF]/g, '').toLowerCase()
-  .replace(/[^\w\s-]/g, '').replace(/[-\s]+/g, '-').replace(/^[-_]+|[-_]+$/g, '')
 
 const SHOP_TYPES = ['Saree stores', 'Boutiques', 'Kurti and suit shops', 'Menswear', 'Kidswear', 'Ethnic wear', 'Lehenga studios', 'Uniform shops', 'Hosiery', 'Footwear and accessories']
 
@@ -239,7 +236,8 @@ function SignupForm() {
   const [form, setForm] = useState({ shop_name: '', first_name: '', last_name: '', email: '', password: '' })
   const id = useId()
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
-  const slug = slugify(form.shop_name)
+  const sub = useSubdomain(form.shop_name)
+  const subError = sub.reason || (!sub.ready && fieldErrors.subdomain)
 
   if (created) {
     return (
@@ -265,12 +263,24 @@ function SignupForm() {
   )
 
   return (
-    <form className="space-y-4" onSubmit={e => { e.preventDefault(); createShop(form) }} noValidate>
+    <form className="space-y-4" onSubmit={e => { e.preventDefault(); if (sub.ready) createShop({ ...form, subdomain: sub.value }) }} noValidate>
       {error && <p className="lp-swap rounded-xl bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">{error}</p>}
       {field('shop_name', 'Shop name', { required: true, placeholder: 'Asha Boutique', autoComplete: 'organization' })}
-      <p className="-mt-2 truncate text-sm text-zinc-500" aria-live="polite">
-        Your shop will open at <span key={slug} className="lp-swap inline-block font-medium text-dye-800">{slug || 'your-shop'}.{SITE_DOMAIN}</span>
-      </p>
+      <div>
+        <label htmlFor={`${id}-subdomain`} className="mb-1.5 block text-sm font-medium text-zinc-700">Shop address</label>
+        <div className="flex">
+          <input id={`${id}-subdomain`} value={sub.value} onChange={e => sub.setValue(e.target.value)} placeholder="asha-boutique"
+            autoCapitalize="none" autoCorrect="off" spellCheck={false} aria-invalid={!!subError} aria-describedby={`${id}-subdomain-status`}
+            className={`${input} min-w-0 rounded-r-none`} />
+          <span className="inline-flex shrink-0 items-center rounded-r-xl border border-l-0 border-zinc-300 bg-zinc-50 px-3 text-[15px] text-zinc-500">.{SITE_DOMAIN}</span>
+        </div>
+        <p id={`${id}-subdomain-status`} className="mt-1.5 text-sm" aria-live="polite">
+          {subError ? <span className="lp-swap text-red-700">{subError}</span>
+            : sub.status === 'checking' ? <span className="text-zinc-500">Checking…</span>
+            : sub.ready ? <span className="inline-flex items-center gap-1 text-emerald-700"><Check size={14} /> Available</span>
+            : <span className="text-zinc-500">Your shop opens at this web address. You can change it.</span>}
+        </p>
+      </div>
       <div className="grid gap-4 sm:grid-cols-2">
         {field('first_name', 'First name', { autoComplete: 'given-name' })}
         {field('last_name', 'Last name', { autoComplete: 'family-name' })}
@@ -278,7 +288,7 @@ function SignupForm() {
       {field('email', 'Email', { type: 'email', required: true, autoComplete: 'email' })}
       {field('password', 'Password', { required: true, autoComplete: 'new-password' })}
       <p className="-mt-2 text-sm text-zinc-500">At least 8 characters. Not all numbers or a common password.</p>
-      <button type="submit" disabled={loading}
+      <button type="submit" disabled={loading || !sub.ready}
         className="flex w-full items-center justify-center gap-2 rounded-xl bg-dye-900 px-5 py-3.5 text-[15px] font-semibold text-white transition-all hover:-translate-y-0.5 hover:bg-dye-800 hover:shadow-[0_12px_24px_-10px_rgba(26,22,80,.6)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dye-700 active:translate-y-0 disabled:opacity-70">
         {loading && <Loader2 size={18} className="animate-spin" />}
         {loading ? 'Creating your shop' : 'Create shop'}

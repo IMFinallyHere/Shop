@@ -3,7 +3,7 @@ import { signup } from '../api/auth'
 import { useAuth } from '../contexts/AuthContext'
 import { shopUrl, shopUrlWithTokens } from '../utils/domain'
 
-const FIELDS = ['shop_name', 'email', 'password', 'first_name', 'last_name']
+const FIELDS = ['shop_name', 'subdomain', 'email', 'password', 'first_name', 'last_name']
 
 // Signup → sign in → open the new shop's dashboard (tokens travel in the URL hash).
 export default function useCreateShop() {

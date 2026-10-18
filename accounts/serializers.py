@@ -1,3 +1,5 @@
+import re
+
 from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth.models import Group, Permission
@@ -185,25 +187,46 @@ RESERVED_SLUGS = {
 }
 
 
+SUBDOMAIN_RE = re.compile(r'^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$')
+SUBDOMAIN_MAX = 40
+
+
+def suggest_subdomain(shop_name):
+    """The default address for a shop name: 'Asha Boutique' -> 'asha-boutique'."""
+    return slugify(shop_name).replace('_', '-').strip('-')[:SUBDOMAIN_MAX].strip('-')
+
+
+def subdomain_problem(subdomain):
+    """Why ``subdomain`` can't be used for a new shop, or None if it's free."""
+    if len(subdomain) < 3:
+        return 'Use at least 3 characters.'
+    if len(subdomain) > SUBDOMAIN_MAX:
+        return f'Use at most {SUBDOMAIN_MAX} characters.'
+    if not SUBDOMAIN_RE.match(subdomain):
+        return 'Use only lowercase letters, numbers and hyphens, starting and ending with a letter or number.'
+    if subdomain in RESERVED_SLUGS:
+        return 'That address is reserved. Try adding your area, e.g. "asha-boutique-jaipur".'
+    with schema_context(get_public_schema_name()):
+        taken = (Tenant.objects.filter(schema_name=subdomain).exists()
+                 or Domain.objects.filter(domain=f'{subdomain}.{settings.TENANT_USERS_DOMAIN}').exists())
+    if taken:
+        return 'That address is taken. Try adding your area, e.g. "asha-boutique-jaipur".'
+    return None
+
+
 class SignupSerializer(serializers.Serializer):
     """Self-serve signup: creates the owner account and provisions a new shop schema."""
 
     shop_name = serializers.CharField(max_length=100)
+    # The shop's address, <subdomain>.<main domain>; defaults to one made from the shop name.
+    subdomain = serializers.CharField(required=False, allow_blank=True, default='')
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True, validators=[validate_password])
     first_name = serializers.CharField(required=False, allow_blank=True, default='')
     last_name = serializers.CharField(required=False, allow_blank=True, default='')
 
-    def validate_shop_name(self, value):
-        slug = slugify(value)
-        if not slug:
-            raise serializers.ValidationError('Shop name must contain letters or numbers.')
-        if slug in RESERVED_SLUGS:
-            raise serializers.ValidationError('That name is reserved. Try adding your area or a word, e.g. "Asha Boutique Jaipur".')
-        if Tenant.objects.filter(schema_name=slug).exists():
-            raise serializers.ValidationError('A shop with a similar name already exists.')
-        self._slug = slug
-        return value
+    def validate_subdomain(self, value):
+        return value.strip().lower()
 
     def validate_email(self, value):
         with schema_context(get_public_schema_name()):
@@ -221,11 +244,16 @@ class SignupSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 {'password': 'This email already has an account. Enter its password.'}
             )
+        subdomain = attrs['subdomain'] or suggest_subdomain(attrs['shop_name'])
+        problem = subdomain_problem(subdomain)
+        if problem:
+            raise serializers.ValidationError({'subdomain': problem})
+        attrs['subdomain'] = subdomain
         return attrs
 
     @transaction.atomic
     def create(self, validated_data):
-        slug = self._slug
+        slug = validated_data['subdomain']
         public = get_public_schema_name()
         with schema_context(public):
             owner = User.objects.filter(email=validated_data['email']).first()
