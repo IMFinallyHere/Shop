@@ -35,7 +35,7 @@ const GARMENTS = {
 }
 
 const pick = (list) => list[Math.floor(Math.random() * list.length)]
-const norm = (s) => s.toLowerCase().replace(/[^a-z]/g, '').replace(/(es|s)$/, '')
+const norm = (s) => s.toLowerCase().replace(/[^a-z]/g, '').replace(/s$/, '')  // "Sarees" → "saree"
 
 // The garment a category names ("Kurtis" → Kurti, "Sarees" → Saree, "Men's Shirts" → Shirt).
 function garmentFor(categoryName) {
