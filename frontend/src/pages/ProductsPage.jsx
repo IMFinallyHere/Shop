@@ -25,7 +25,7 @@ import { Table, Td, Tr } from '../components/ui/Table'
 import { useToast } from '../components/ui/Toast'
 import { EMPTY_LINE, variantLabel } from '../utils/variant'
 import { moneyShort } from '../utils/format'
-import { suggestProductName } from '../utils/productNames'
+import { newBaseName, productName } from '../utils/productNames'
 import usePrintSettings from '../hooks/usePrintSettings'
 
 const EMPTY = { name: '', sku: '', category: '', seller: '', fabric_type: '' }
@@ -84,26 +84,37 @@ export default function ProductsPage() {
     return out
   }
 
-  const suggestName = (d = formData) => suggestProductName({
+  // Suggested names never guess the garment: a neutral design name ("Gulmohar 27") plus
+  // only the fabric typed and the garment the chosen category names.
+  const [baseName, setBaseName] = useState('')
+  const [suggested, setSuggested] = useState('')  // the last auto-filled name, while untouched
+  const nameFor = (base, d) => productName(base, {
     categoryName: categories.find(c => String(c.id) === String(d.category))?.name, fabric: d.fabric_type,
   })
-  const [suggested, setSuggested] = useState('')  // the last auto-filled name, while untouched
   const openCreate = () => {
-    const name = shopSettings.auto_product_names ? suggestName(EMPTY) : ''
-    setFormData({ ...EMPTY, name }); setSuggested(name)
+    const base = shopSettings.auto_product_names ? newBaseName() : ''
+    const name = base ? nameFor(base, EMPTY) : ''
+    setBaseName(base); setSuggested(name)
+    setFormData({ ...EMPTY, name })
     setFieldErrors({}); setModal('create')
   }
-  // While the name is still our suggestion, picking a category or fabric re-suggests to
-  // match ("Sarees" → "… Saree"). Once the user types their own name, it's left alone.
+  // While the name is still our suggestion, picking a category or typing a fabric updates
+  // it ("Gulmohar 27" → "Gulmohar 27 Linen Pant"). Once the user types a name, it's theirs.
   const onCreateChange = (next) => {
-    const untouched = shopSettings.auto_product_names && next.name === suggested && suggested !== ''
+    const untouched = baseName && next.name === suggested
     if (untouched && (next.category !== formData.category || next.fabric_type !== formData.fabric_type)) {
-      const name = suggestName(next)
+      const name = nameFor(baseName, next)
       setSuggested(name)
       setFormData({ ...next, name })
     } else {
       setFormData(next)
     }
+  }
+  const rerollName = () => {
+    const base = newBaseName()
+    const name = nameFor(base, formData)
+    setBaseName(base); setSuggested(name)
+    setFormData(d => ({ ...d, name }))
   }
   const openEdit = (p) => {
     select(p)
@@ -263,7 +274,7 @@ export default function ProductsPage() {
       <Modal isOpen={modal === 'create'} onClose={closeModal} title="New product" size="lg" footer={formFooter(handleCreate, 'Create product')}>
         <ErrorAlert message={error} />
         <ProductForm data={formData} onChange={onCreateChange} categories={categories} sellers={sellers} errors={fieldErrors}
-          onSuggestName={shopSettings.auto_product_names ? () => setFormData(d => ({ ...d, name: suggestName(d) })) : undefined} />
+          onSuggestName={shopSettings.auto_product_names ? rerollName : undefined} />
       </Modal>
 
       <Modal isOpen={modal === 'edit'} onClose={closeModal} title="Edit product" size="lg" footer={formFooter(handleEdit, 'Save changes')}>

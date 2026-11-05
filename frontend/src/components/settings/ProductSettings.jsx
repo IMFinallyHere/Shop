@@ -4,12 +4,12 @@ import Switch from '../ui/Switch'
 import { updateShopSettings } from '../../api/shopsettings'
 import { setPrintSettings } from '../../hooks/usePrintSettings'
 import { useToast } from '../ui/Toast'
-import { suggestProductName } from '../../utils/productNames'
+import { newBaseName, productName } from '../../utils/productNames'
 
 // Product-form preferences. Saved as soon as they're switched.
 export default function ProductSettings({ initial, onSaved, onError }) {
   const [auto, setAuto] = useState(!!initial.auto_product_names)
-  const [example] = useState(() => [suggestProductName(), suggestProductName({ categoryName: 'Sarees' })])
+  const [example] = useState(() => { const b = newBaseName(); return [b, productName(b, { categoryName: 'Pants', fabric: 'Linen' })] })
   const toast = useToast()
 
   const toggle = async (v) => {
@@ -31,8 +31,8 @@ export default function ProductSettings({ initial, onSaved, onError }) {
         <span>
           <span className="font-medium text-zinc-900">Suggest a name for new products</span>
           <span className="block text-xs text-zinc-500">
-            Fills the name as soon as you click New product, using the category and fabric when you pick them.
-            For example: “{example[0]}”, “{example[1]}”.
+            Fills a neutral design name as soon as you click New product, like “{example[0]}”. It never guesses
+            the garment: only the fabric you type and the category you pick are added (“{example[1]}”).
           </span>
         </span>
         <Switch checked={auto} onChange={toggle} label="Suggest a name for new products" />
