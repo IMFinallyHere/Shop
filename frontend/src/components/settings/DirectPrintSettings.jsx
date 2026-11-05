@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Printer, RefreshCw, RotateCcw } from 'lucide-react'
+import { Download, Printer, RefreshCw, RotateCcw } from 'lucide-react'
 import Section from './Section'
 import Button from '../ui/Button'
 import Switch from '../ui/Switch'
@@ -25,6 +25,23 @@ export default function DirectPrintSettings({ onTestReceipt, onTestLabel }) {
     setDirectPrefs(next)
     return next
   })
+
+  // QZ only remembers "Allow" for sites whose certificate it trusts; ours is self-signed,
+  // so each laptop installs it once as QZ Tray's override.crt.
+  const [certError, setCertError] = useState('')
+  const downloadCert = async () => {
+    setCertError('')
+    try {
+      const { default: api } = await import('../../api/axiosInstance')
+      const { data } = await api.get('/print/qz-cert/')
+      const url = URL.createObjectURL(new Blob([data.certificate], { type: 'application/x-x509-ca-cert' }))
+      const a = Object.assign(document.createElement('a'), { href: url, download: 'override.crt' })
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch {
+      setCertError('Could not download the certificate.')
+    }
+  }
 
   // Keep a saved printer selectable even if it's switched off right now.
   const options = (current) => [...new Set([...(current ? [current] : []), ...printers])]
@@ -69,6 +86,20 @@ export default function DirectPrintSettings({ onTestReceipt, onTestLabel }) {
           onPrinter={v => update({ labelPrinter: v })}
           profile={prefs.profiles.label} onProfile={v => setProfile('label', v)} onTest={onTestLabel}
         />
+      </div>
+
+      <div className="mt-4 rounded-lg bg-amber-50 p-3 text-xs text-amber-900 ring-1 ring-amber-200">
+        <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+          <b>QZ Tray says "Untrusted website" and won't remember Allow?</b>
+          <Button size="xs" icon={Download} onClick={downloadCert}>Download certificate</Button>
+        </div>
+        {certError && <div className="mb-1 text-red-600">{certError}</div>}
+        <ol className="list-decimal space-y-0.5 pl-5">
+          <li>Click <b>Download certificate</b>. You get a file called <b>override.crt</b>.</li>
+          <li>Copy it into QZ Tray's folder (needs admin). Windows: <code>C:\Program Files\QZ Tray\</code>. Mac: right-click QZ Tray in Applications → Show Package Contents → <code>Contents/Resources/</code>.</li>
+          <li>Quit QZ Tray (tray icon → Exit) and start it again.</li>
+          <li>Print a test. The prompt now shows the site as trusted: tick <b>Remember this decision</b> and click <b>Allow</b>. One time per laptop.</li>
+        </ol>
       </div>
 
       <ol className="mt-4 list-decimal space-y-1 pl-5 text-xs text-zinc-500">
