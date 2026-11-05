@@ -80,7 +80,7 @@ class StockItemSerializer(serializers.ModelSerializer):
     color_name = serializers.CharField(source="variant.color.name", read_only=True, default=None)
     size_name = serializers.CharField(source="variant.size.name", read_only=True, default=None)
     price = serializers.DecimalField(source="batch.price", max_digits=10, decimal_places=2, read_only=True)
-    cost_price = serializers.DecimalField(source="batch.cost_price", max_digits=10, decimal_places=2, read_only=True)
+    cost_price = serializers.DecimalField(source="batch.cost_price", max_digits=10, decimal_places=2, read_only=True, allow_null=True)
 
     class Meta:
         model = StockItem
@@ -95,7 +95,8 @@ class AddStockLineSerializer(serializers.Serializer):
     color = serializers.PrimaryKeyRelatedField(queryset=Color.objects.all(), allow_null=True, required=False, default=None)
     size = serializers.PrimaryKeyRelatedField(queryset=Size.objects.all(), allow_null=True, required=False, default=None)
     quantity = serializers.IntegerField(min_value=1, max_value=1000)
-    cost_price = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0)
+    # Optional: what the shop paid, if it wants to track margins.
+    cost_price = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0, required=False, allow_null=True, default=None)
     price = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0)
 
 

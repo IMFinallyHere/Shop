@@ -59,6 +59,16 @@ class InventoryTestCase(TestCase):
         return c.post(f"/api/products/{pid}/add-stock/", {"lines": list(lines)},
                       format="json", HTTP_HOST="acme.localhost")
 
+    def test_add_stock_without_color_or_cost(self):
+        c = self.client_for("acme.localhost", "acme@test.com")
+        pid = c.post("/api/products/", {"name": "Stole"}, format="json", HTTP_HOST="acme.localhost").data["id"]
+        resp = self.add_stock(c, pid, {"quantity": 2, "price": "499"})
+        self.assertEqual(resp.status_code, 201, resp.data)
+        unit = resp.data["items"][0]
+        self.assertEqual((unit["color_name"], unit["price"], unit["cost_price"]), (None, "499.00", None))
+        both = self.add_stock(c, pid, {"quantity": 1, "price": "499", "cost_price": None, "color": None})
+        self.assertEqual(both.status_code, 201, both.data)
+
     def test_add_stock_creates_variants_and_units_with_unique_barcodes(self):
         c = self.client_for("acme.localhost", "acme@test.com")
         resp = c.post("/api/products/", {"name": "Kurti A"}, format="json", HTTP_HOST="acme.localhost")

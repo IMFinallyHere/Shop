@@ -38,7 +38,7 @@ export default function AddStockLines({ lines, onChange, variants = [], colors =
   const select = (i, k, options, label) => (
     <td className="pb-2 pr-2">
       <select value={String(lines[i][k])} onChange={e => setCell(i, k, e.target.value)} className={cls(i, k)} aria-label={label}>
-        <option value="">—</option>
+        <option value="">{k === 'color' ? 'No color' : 'No size'}</option>
         {options.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
       </select>
       {err(i, k)}
@@ -80,7 +80,7 @@ export default function AddStockLines({ lines, onChange, variants = [], colors =
       <div className="overflow-x-auto">
         <table className="w-full min-w-[560px] text-sm">
           <thead>
-            <tr>{[['Color', 'w-[24%]'], ['Size', 'w-[18%]'], ['Qty', 'w-[14%]'], ['Cost ₹', ''], ['Price ₹', '']].map(([h, w]) =>
+            <tr>{[['Color', 'w-[24%]'], ['Size', 'w-[18%]'], ['Qty', 'w-[14%]'], ['Cost ₹ (optional)', ''], ['Price ₹', '']].map(([h, w]) =>
               <th key={h} className={`pb-1.5 pr-2 text-left text-xs font-medium text-zinc-500 ${w}`}>{h}</th>)}<th className="w-10" /></tr>
           </thead>
           <tbody>
@@ -89,7 +89,7 @@ export default function AddStockLines({ lines, onChange, variants = [], colors =
                 {select(i, 'color', colorOptions, 'Color')}
                 {select(i, 'size', sizeOptions, 'Size')}
                 {number(i, 'quantity', '1', 'Quantity', '0')}
-                {number(i, 'cost_price', '0.01', 'Cost price', '0.00')}
+                {number(i, 'cost_price', '0.01', 'Cost price (optional)', 'optional')}
                 {number(i, 'price', '0.01', 'Selling price', '0.00')}
                 <td className="pb-2">
                   <button type="button" onClick={() => remove(i)} disabled={lines.length === 1} aria-label="Remove line"

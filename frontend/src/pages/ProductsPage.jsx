@@ -129,7 +129,7 @@ export default function ProductsPage() {
   const handleAddStock = async () => {
     setSaving(true); setError(''); setLineErrors([])
     try {
-      const payload = lines.map(l => ({ ...l, color: l.color || null, size: l.size || null }))
+      const payload = lines.map(l => ({ ...l, color: l.color || null, size: l.size || null, cost_price: l.cost_price === '' ? null : l.cost_price }))
       const { data } = await addStock(selected.id, payload)
       reload(); closeModal()
       toast(`${data.items.length} unit${data.items.length !== 1 ? 's' : ''} added`)
@@ -156,7 +156,7 @@ export default function ProductsPage() {
     catch (e) { setError(e.response?.data?.detail || 'Failed to delete variant.') }
   }
 
-  const linesValid = lines.length > 0 && lines.every(l => Number(l.quantity) >= 1 && l.cost_price !== '' && l.price !== '')
+  const linesValid = lines.length > 0 && lines.every(l => Number(l.quantity) >= 1 && l.price !== '')  // color, size and cost are optional
   const totalUnits = lines.reduce((s, l) => s + (Number(l.quantity) || 0), 0)
 
   const priceRange = (p) => p.price_min == null ? '—'

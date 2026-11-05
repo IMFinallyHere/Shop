@@ -13,6 +13,11 @@ from customers.models import Customer
 from inventory.models import Product, Seller, StockItem
 from .models import Bill, BillItem, CreditEntry, Return
 
+def _s(value):
+    """Money as a string, or None when unknown (e.g. a batch with no cost price)."""
+    return None if value is None else str(value)
+
+
 LIMIT = 5
 BILL_NO = re.compile(r"^INV-?(\d+)$", re.I)
 RETURN_NO = re.compile(r"^RET-?(\d+)$", re.I)
@@ -122,7 +127,7 @@ class UnitHistoryView(APIView):
         p, seller = v.product, v.product.seller
 
         timeline = [{"type": "added", "at": b.created_at, "batch_quantity": b.quantity,
-                     "cost_price": str(b.cost_price), "price": str(b.price)}]
+                     "cost_price": _s(b.cost_price), "price": str(b.price)}]
         sales = (
             BillItem.objects.filter(stock_item=item)
             .select_related("bill__created_by", "return_item__ret__created_by")
@@ -177,8 +182,8 @@ class UnitHistoryView(APIView):
                         "color_hex": (v.color.hex or None) if v.color else None,
                         "low_stock_threshold": v.low_stock_threshold,
                         "in_stock": v.stock_quantity},
-            "batch": {"id": str(b.id), "cost_price": str(b.cost_price), "price": str(b.price),
-                      "margin": str(b.price - b.cost_price), "quantity": b.quantity, "created_at": b.created_at},
+            "batch": {"id": str(b.id), "cost_price": _s(b.cost_price), "price": str(b.price),
+                      "margin": None if b.cost_price is None else str(b.price - b.cost_price), "quantity": b.quantity, "created_at": b.created_at},
             "seller": seller and {"id": seller.id, "name": seller.name, "phone": seller.phone,
                                   "email": seller.email, "address": seller.address},
             "timeline": timeline,
