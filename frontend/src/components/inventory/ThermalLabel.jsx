@@ -29,7 +29,7 @@ export default function ThermalLabel({ item, settings, className = '' }) {
       {(variant || price) && (
         <div className="flex justify-between gap-2" style={{ fontSize: `${small}pt` }}>
           <span className="truncate">{variant}</span>
-          {price && <span className="shrink-0 font-bold">{price}</span>}
+          {price && <span className="shrink-0 font-bold" style={{ fontSize: '8pt' }}>{price}</span>}
         </div>
       )}
       <div className="min-h-0 flex-1" style={{ marginTop: '0.8mm' }}>
