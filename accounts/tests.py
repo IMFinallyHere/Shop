@@ -204,6 +204,12 @@ class MultiTenancyTestCase(TestCase):
         forbidden = owner_client.get("/api/admin/tenants/", HTTP_HOST="localhost")
         self.assertEqual(forbidden.status_code, 403)
 
+    def test_shop_owner_cannot_use_platform_admin_on_own_subdomain(self):
+        """A shop owner is a superuser *inside their shop*; that must not unlock platform admin."""
+        _, owner_client = self._auth("acme.localhost", "acme@test.com")
+        self.assertEqual(owner_client.get("/api/admin/tenants/", HTTP_HOST="acme.localhost").status_code, 403)
+        self.assertEqual(owner_client.get("/api/admin/tenants/bella/users/", HTTP_HOST="acme.localhost").status_code, 403)
+
     def _auth(self, host, email):
         resp, client = self.login(host, email)
         client.credentials(HTTP_AUTHORIZATION=f"Bearer {resp.data['access']}")

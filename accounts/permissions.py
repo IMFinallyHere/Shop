@@ -1,3 +1,4 @@
+from django_tenants.utils import get_public_schema_name
 from rest_framework.permissions import BasePermission
 
 # DRF viewset action / HTTP method → Django permission verb.
@@ -65,8 +66,13 @@ class IsPlatformAdmin(BasePermission):
     """
 
     def has_permission(self, request, view):
+        # Only on the main domain: on a shop's subdomain ``is_superuser`` means "owner of
+        # this shop", which must never unlock platform-wide endpoints.
+        tenant = getattr(request, "tenant", None)
         return bool(
-            request.user
+            tenant is not None
+            and tenant.schema_name == get_public_schema_name()
+            and request.user
             and request.user.is_authenticated
             and request.user.is_superuser
         )
