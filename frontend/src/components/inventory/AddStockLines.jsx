@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import clsx from 'clsx'
+import { Select } from '../ui/Field'
 import { Plus, X } from 'lucide-react'
 import { EMPTY_LINE, variantLabel } from '../../utils/variant'
 import { Swatch } from '../ui/Badge'
@@ -14,7 +15,7 @@ export default function AddStockLines({ lines, onChange, variants = [], colors =
     ...variants
       .filter(v => v[idKey] && !options.some(o => o.id === v[idKey]))
       .filter((v, i, arr) => arr.findIndex(x => x[idKey] === v[idKey]) === i)
-      .map(v => ({ id: v[idKey], name: v[nameKey] })),
+      .map(v => ({ id: v[idKey], name: v[nameKey], hex: v.color_hex })),
   ]
   const colorOptions = withVariants(colors, 'color', 'color_name')
   const sizeOptions = withVariants(sizes, 'size', 'size_name')
@@ -37,10 +38,12 @@ export default function AddStockLines({ lines, onChange, variants = [], colors =
 
   const select = (i, k, options, label) => (
     <td className="pb-2 pr-2">
-      <select value={String(lines[i][k])} onChange={e => setCell(i, k, e.target.value)} className={cls(i, k)} aria-label={label}>
+      <Select value={String(lines[i][k])} onChange={e => setCell(i, k, e.target.value)} className={cls(i, k)} aria-label={label}>
         <option value="">{k === 'color' ? 'No color' : 'No size'}</option>
-        {options.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-      </select>
+        {options.map(o => (
+          <option key={o.id} value={o.id} data-hex={k === 'color' ? (/multi/i.test(o.name) ? 'multi' : o.hex || '') : undefined}>{o.name}</option>
+        ))}
+      </Select>
       {err(i, k)}
     </td>
   )

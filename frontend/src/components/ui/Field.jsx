@@ -23,13 +23,9 @@ export function Input({ className, invalid, ...props }) {
   return <input className={clsx('input', invalid && 'input-error', className)} {...props} />
 }
 
-export function Select({ className, invalid, children, ...props }) {
-  return (
-    <select className={clsx('input pr-8', invalid && 'input-error', className)} {...props}>
-      {children}
-    </select>
-  )
-}
+// Styled dropdown (see ui/Select.jsx); same props as a native <select>.
+export { default as Select } from './Select'
+
 
 export function Textarea({ className, invalid, ...props }) {
   return <textarea className={clsx('input min-h-[80px]', invalid && 'input-error', className)} {...props} />
