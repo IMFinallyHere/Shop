@@ -96,7 +96,9 @@ export async function printNodes(printer, nodes, size, { jobName = 'Shop print',
   for (const node of nodes) {
     node.classList.add('raster')  // thermal styles: solid black, no shadows/outlines
     try {
-      const png = await toPng(node, { pixelRatio, backgroundColor: '#fff', fontEmbedCSS: fontCss })
+      // margin: 0 — the copy keeps the node's on-screen margins (the receipt is centred
+      // with mx-auto/my-8), which would push it out of its own image and print blank paper.
+      const png = await toPng(node, { pixelRatio, backgroundColor: '#fff', fontEmbedCSS: fontCss, style: { margin: '0' } })
       pages.push(png.replace(/^data:image\/png;base64,/, ''))
     } finally {
       node.classList.remove('raster')
