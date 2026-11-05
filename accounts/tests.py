@@ -81,6 +81,20 @@ class MultiTenancyTestCase(TestCase):
         self.assertEqual(resp.data["user"]["email"], "acme@test.com")
         self.assertTrue(resp.data["user"]["is_superuser"])  # owner is superuser in their shop
 
+    def test_refresh_rotates_and_old_refresh_token_stops_working(self):
+        """The frontend must keep the refresh token each refresh returns (see axiosInstance.js):
+        the old one is blacklisted, which used to log people out about an hour in."""
+        resp, client = self.login("acme.localhost", "acme@test.com")
+        old = resp.data["refresh"]
+        r1 = client.post("/api/auth/refresh/", {"refresh": old}, format="json", HTTP_HOST="acme.localhost")
+        self.assertEqual(r1.status_code, 200)
+        self.assertIn("refresh", r1.data)
+        self.assertNotEqual(r1.data["refresh"], old)
+        again = client.post("/api/auth/refresh/", {"refresh": old}, format="json", HTTP_HOST="acme.localhost")
+        self.assertEqual(again.status_code, 401)
+        ok = client.post("/api/auth/refresh/", {"refresh": r1.data["refresh"]}, format="json", HTTP_HOST="acme.localhost")
+        self.assertEqual(ok.status_code, 200)
+
     def test_login_on_public_domain_has_no_shop_permissions(self):
         # The same account authenticates on the main domain, but in the public
         # tenant it has no staff/superuser rights and cannot manage users.

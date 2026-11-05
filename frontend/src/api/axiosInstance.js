@@ -10,24 +10,49 @@ api.interceptors.request.use(config => {
   return config
 })
 
+// One refresh at a time: the server rotates refresh tokens and blacklists the old one,
+// so parallel 401s must share a single refresh call (a second call with the same,
+// now-blacklisted token would fail and log the user out).
+let refreshing = null
+function refreshAccess() {
+  refreshing ??= (async () => {
+    const refresh = localStorage.getItem('refresh_token')
+    if (!refresh) throw Object.assign(new Error('No refresh token'), { signedOut: true })
+    try {
+      const { data } = await axios.post('/api/auth/refresh/', { refresh })
+      localStorage.setItem('access_token', data.access)
+      // Rotation: keep the new refresh token, the old one no longer works.
+      if (data.refresh) localStorage.setItem('refresh_token', data.refresh)
+      return data.access
+    } catch (e) {
+      // Only a rejected token means signed out; a network blip or a server restart
+      // (deploys) must not throw the user out.
+      const status = e.response?.status
+      throw Object.assign(e, { signedOut: status === 401 || status === 400 })
+    }
+  })().finally(() => { refreshing = null })
+  return refreshing
+}
+
+function signOut() {
+  localStorage.removeItem('access_token')
+  localStorage.removeItem('refresh_token')
+  // Public pages (the website, sign in, sign up) just carry on signed out.
+  if (!PUBLIC_PATHS.includes(window.location.pathname)) window.location.href = '/login'
+}
+
 api.interceptors.response.use(
   response => response,
   async error => {
     const original = error.config
-    if (error.response?.status === 401 && !original._retry) {
+    if (error.response?.status === 401 && original && !original._retry && !original.url?.includes('/auth/login')) {
       original._retry = true
       try {
-        const refresh = localStorage.getItem('refresh_token')
-        if (!refresh) throw new Error('No refresh token')
-        const { data } = await axios.post('/api/auth/refresh/', { refresh })
-        localStorage.setItem('access_token', data.access)
-        original.headers.Authorization = `Bearer ${data.access}`
+        const access = await refreshAccess()
+        original.headers.Authorization = `Bearer ${access}`
         return api(original)
-      } catch {
-        localStorage.removeItem('access_token')
-        localStorage.removeItem('refresh_token')
-        // Public pages (the website, sign in, sign up) just carry on signed out.
-        if (!PUBLIC_PATHS.includes(window.location.pathname)) window.location.href = '/login'
+      } catch (e) {
+        if (e.signedOut) signOut()
       }
     }
     return Promise.reject(error)

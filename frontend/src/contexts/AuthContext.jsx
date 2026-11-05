@@ -28,11 +28,20 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     if (!localStorage.getItem('access_token')) return
-    getMe()
+    // A few retries ride out a server restart (deploys) instead of showing the login page.
+    const getMeRetrying = (left = 3) => getMe().catch(e => (
+      e.response?.status === 401 || left === 0 ? Promise.reject(e)
+        : new Promise(r => setTimeout(r, 1500)).then(() => getMeRetrying(left - 1))
+    ))
+    getMeRetrying()
       .then(res => setUser(res.data))
-      .catch(() => {
-        localStorage.removeItem('access_token')
-        localStorage.removeItem('refresh_token')
+      .catch((e) => {
+        // Signed out only if the token was rejected (the API client already tried a
+        // refresh). A network error or a 5xx during a deploy keeps the session.
+        if (e.response?.status === 401) {
+          localStorage.removeItem('access_token')
+          localStorage.removeItem('refresh_token')
+        }
       })
       .finally(() => setIsLoading(false))
   }, [])
