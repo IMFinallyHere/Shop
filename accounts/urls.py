@@ -18,5 +18,6 @@ urlpatterns = [
     path('auth/me/', views.MeView.as_view(), name='me'),
     path('auth/my-shops/', views.MyShopsView.as_view(), name='my-shops'),
     path('admin/tenants/', views.AdminTenantsView.as_view(), name='admin-tenants'),
+    path('admin/tenants/<slug:slug>/', views.AdminTenantDeleteView.as_view(), name='admin-tenant-delete'),
     path('admin/tenants/<slug:slug>/users/', views.AdminTenantUsersView.as_view(), name='admin-tenant-users'),
 ] + router.urls

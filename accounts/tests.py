@@ -210,6 +210,32 @@ class MultiTenancyTestCase(TestCase):
         self.assertEqual(owner_client.get("/api/admin/tenants/", HTTP_HOST="acme.localhost").status_code, 403)
         self.assertEqual(owner_client.get("/api/admin/tenants/bella/users/", HTTP_HOST="acme.localhost").status_code, 403)
 
+    def test_platform_admin_deletes_a_shop_with_confirmation(self):
+        from django_tenants.utils import schema_exists
+        from tenants.models import Domain
+
+        with schema_context(get_public_schema_name()):
+            owner = User.objects.create_user(email="gone@test.com", password=PW)
+        provision_tenant("Gone Shop", "gone", owner, schema_name="gone")
+        _, admin = self._auth("localhost", "sys@test.com")
+        _, acme_owner = self._auth("acme.localhost", "acme@test.com")
+        # Not for shop owners (even on their own subdomain), and never without the typed name.
+        self.assertEqual(acme_owner.delete("/api/admin/tenants/gone/", {"confirm": "gone"}, format="json",
+                                           HTTP_HOST="acme.localhost").status_code, 403)
+        self.assertEqual(admin.delete("/api/admin/tenants/gone/", {"confirm": "acme"}, format="json",
+                                      HTTP_HOST="localhost").status_code, 400)
+        self.assertEqual(admin.delete("/api/admin/tenants/public/", {"confirm": "public"}, format="json",
+                                      HTTP_HOST="localhost").status_code, 400)
+        resp = admin.delete("/api/admin/tenants/gone/", {"confirm": "Gone"}, format="json", HTTP_HOST="localhost")
+        self.assertEqual(resp.status_code, 204)
+        with schema_context(get_public_schema_name()):
+            self.assertFalse(Tenant.objects.filter(schema_name="gone").exists())
+            self.assertFalse(Domain.objects.filter(domain__startswith="gone.").exists())
+            self.assertTrue(User.objects.filter(email="gone@test.com").exists())  # the account stays
+        self.assertFalse(schema_exists("gone"))
+        # Other shops are untouched.
+        self.assertEqual(acme_owner.get("/api/auth/me/", HTTP_HOST="acme.localhost").status_code, 200)
+
     def _auth(self, host, email):
         resp, client = self.login(host, email)
         client.credentials(HTTP_AUTHORIZATION=f"Bearer {resp.data['access']}")

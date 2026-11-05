@@ -1,5 +1,8 @@
+import logging
+
 from django.contrib.auth.models import Group, Permission
-from django.shortcuts import get_object_or_404
+from django.db import connection, transaction
+from django.http import Http404
 from django_tenants.utils import get_public_schema_name, schema_context
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -16,6 +19,8 @@ from tenant_users.permissions.models import UserTenantPermissions
 from .models import User
 from .permissions import IsPlatformAdmin, IsShopOwner
 from tenants.models import Tenant
+
+logger = logging.getLogger(__name__)
 from .serializers import (
     AssignGroupPermissionsSerializer,
     AssignGroupsSerializer,
@@ -100,6 +105,14 @@ class MyShopsView(APIView):
         return Response([_shop_payload(t) for t in tenants])
 
 
+def _admin_tenant(slug):
+    """The shop the admin screen calls ``slug`` (its slug, or schema name if it has none)."""
+    tenant = Tenant.objects.filter(slug=slug).first() or Tenant.objects.filter(schema_name=slug).first()
+    if tenant is None:
+        raise Http404
+    return tenant
+
+
 class AdminTenantsView(APIView):
     """Platform admin: list every shop with basic stats."""
 
@@ -127,13 +140,46 @@ class AdminTenantsView(APIView):
         return Response(data)
 
 
+class AdminTenantDeleteView(APIView):
+    """Platform admin: permanently delete a shop (its schema and everything in it).
+
+    The request must repeat the shop's subdomain in ``confirm`` so a mis-click can't
+    delete the wrong shop. Member accounts stay (they may belong to other shops); only
+    their access to this shop goes. Nightly database backups are the only way back.
+    """
+
+    permission_classes = [IsPlatformAdmin]
+
+    def delete(self, request, slug):
+        tenant = _admin_tenant(slug)
+        if tenant.schema_name == get_public_schema_name():
+            return Response({'detail': 'The main site cannot be deleted.'}, status=status.HTTP_400_BAD_REQUEST)
+        expected = _shop_payload(tenant)['slug']  # what the admin screen shows and asks for
+        if (request.data.get('confirm') or '').strip().lower() != expected.lower():
+            return Response({'confirm': f'Type "{expected}" to confirm.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        name = tenant.name
+        with transaction.atomic():
+            # Unlink members (the M2M lives in the public schema); their per-shop
+            # permissions live in the shop's schema and go with it.
+            for user in tenant.user_set.all():
+                user.tenants.remove(tenant)
+            # Fire any deferred FK checks now: Postgres won't drop a table that still
+            # has pending trigger events in this transaction.
+            with connection.cursor() as cur:
+                cur.execute('SET CONSTRAINTS ALL IMMEDIATE')
+            tenant.delete(force_drop=True)  # drops the schema, domains cascade
+        logger.warning('Shop %r (%s) deleted by %s', name, slug, request.user.email)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class AdminTenantUsersView(APIView):
     """Platform admin: view the members of a specific shop."""
 
     permission_classes = [IsPlatformAdmin]
 
     def get(self, request, slug):
-        tenant = get_object_or_404(Tenant, schema_name=slug)
+        tenant = _admin_tenant(slug)
         with schema_context(tenant.schema_name):
             qs = (
                 UserTenantPermissions.objects

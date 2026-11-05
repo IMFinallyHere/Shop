@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
-import { LogOut, Store, Users } from 'lucide-react'
+import { LogOut, Store, Trash2, Users } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
-import { getAdminTenants, getTenantUsers } from '../api/shops'
+import { deleteTenant, getAdminTenants, getTenantUsers } from '../api/shops'
 import Spinner from '../components/common/Spinner'
 import Modal from '../components/common/Modal'
 import Logo from '../components/ui/Logo'
@@ -11,6 +11,8 @@ import Button from '../components/ui/Button'
 import Badge from '../components/ui/Badge'
 import { Table, Td, Tr } from '../components/ui/Table'
 import { formatDate } from '../utils/format'
+import { Field, Input } from '../components/ui/Field'
+import { useToast } from '../components/ui/Toast'
 
 export default function PlatformAdminPage() {
   const { user, logout } = useAuth()
@@ -19,6 +21,11 @@ export default function PlatformAdminPage() {
   const [loading, setLoading] = useState(true)
   const [detail, setDetail] = useState(null)   // { tenant, users }
   const [detailLoading, setDetailLoading] = useState(false)
+  const [doomed, setDoomed] = useState(null)       // shop being deleted
+  const [confirmText, setConfirmText] = useState('')
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+  const toast = useToast()
 
   useEffect(() => {
     getAdminTenants()
@@ -35,6 +42,20 @@ export default function PlatformAdminPage() {
       .then(r => setDetail(r.data))
       .catch(() => setDetail({ tenant: slug, users: [] }))
       .finally(() => setDetailLoading(false))
+  }
+
+  const openDelete = (t) => { setDoomed(t); setConfirmText(''); setDeleteError('') }
+  const confirmed = doomed && confirmText.trim().toLowerCase() === doomed.slug
+  const handleDelete = async () => {
+    setDeleting(true); setDeleteError('')
+    try {
+      await deleteTenant(doomed.slug, confirmText.trim())
+      setTenants(ts => ts.filter(t => t.slug !== doomed.slug))
+      toast(`${doomed.name} deleted`)
+      setDoomed(null)
+    } catch (e) {
+      setDeleteError(e.response?.data?.confirm || e.response?.data?.detail || 'Failed to delete the shop.')
+    } finally { setDeleting(false) }
   }
 
   return (
@@ -66,11 +87,38 @@ export default function PlatformAdminPage() {
               <Td>{t.owner_email}</Td>
               <Td><Badge>{t.member_count}</Badge></Td>
               <Td className="text-zinc-500">{formatDate(t.created)}</Td>
-              <Td><Button variant="ghost" size="xs" icon={Users} onClick={() => openDetail(t.slug)}>Members</Button></Td>
+              <Td>
+                <div className="flex gap-1">
+                  <Button variant="ghost" size="xs" icon={Users} onClick={() => openDetail(t.slug)}>Members</Button>
+                  <Button variant="danger-ghost" size="xs" icon={Trash2} onClick={() => openDelete(t)} aria-label={`Delete ${t.name}`}>Delete</Button>
+                </div>
+              </Td>
             </Tr>
           ))}
         </Table>
       </div>
+
+      <Modal
+        isOpen={!!doomed} onClose={() => !deleting && setDoomed(null)} title={`Delete ${doomed?.name ?? ''}?`}
+        description={doomed?.domain}
+        footer={<>
+          <Button onClick={() => setDoomed(null)} disabled={deleting}>Cancel</Button>
+          <Button variant="danger" icon={Trash2} onClick={handleDelete} loading={deleting} disabled={!confirmed}>Delete shop permanently</Button>
+        </>}
+      >
+        <div className="space-y-3 text-sm text-zinc-700">
+          <p className="rounded-lg bg-red-50 p-3 text-red-800 ring-1 ring-red-200">
+            This permanently deletes the shop and <b>everything in it</b>: products, stock, bills, returns, store credit,
+            settings and staff access ({doomed?.member_count ?? 0} member{doomed?.member_count === 1 ? '' : 's'}).
+            It cannot be undone from here.
+          </p>
+          <p>Member accounts are kept, since they may belong to other shops. They just lose access to this one.</p>
+          <Field label={<>Type <b className="font-mono">{doomed?.slug}</b> to confirm</>} error={deleteError}>
+            {id => <Input id={id} value={confirmText} onChange={e => setConfirmText(e.target.value)} autoComplete="off" autoFocus
+              onKeyDown={e => { if (e.key === 'Enter' && confirmed) handleDelete() }} />}
+          </Field>
+        </div>
+      </Modal>
 
       <Modal isOpen={!!detail} onClose={() => setDetail(null)} title="Members" description={detail?.tenant}>
         {detailLoading ? <Spinner /> : (
