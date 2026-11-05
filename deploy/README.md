@@ -87,7 +87,15 @@ nginx -t && systemctl reload nginx
 cat > /etc/cron.d/shop-backup <<'CRON'
 30 2 * * * shop pg_dump -Fc shop > /opt/shop/backups/shop-$(date +\%F).dump && find /opt/shop/backups -name 'shop-*.dump' -mtime +14 -delete
 CRON
+
+# 10. Direct-printing (QZ Tray) signing key, then reload the app.
+sudo -u shop bash /opt/shop/app/tools/make_qz_cert.sh /opt/shop/shared/qz
+# add QZ_CERT_FILE / QZ_PRIVATE_KEY_FILE to /opt/shop/shared/.env (see env.production.example)
+systemctl restart shop
 ```
+
+nginx config changes are not part of `deploy.sh` (the `shop` user can't touch nginx).
+After editing `deploy/nginx-shop.conf`, as root: `cp deploy/nginx-shop.conf /etc/nginx/sites-available/shop && nginx -t && systemctl reload nginx`.
 
 ## Checks
 

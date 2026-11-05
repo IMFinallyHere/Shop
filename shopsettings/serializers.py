@@ -5,6 +5,14 @@ import re
 from .models import Color, PaymentMethod, ShopSettings, Size, UserOnboarding
 
 
+def _tidy_lines(value, what, max_lines=4):
+    """Receipt text whose line breaks print as typed; drops stray spaces and blank lines."""
+    lines = [line.strip() for line in value.splitlines() if line.strip()]
+    if len(lines) > max_lines:
+        raise serializers.ValidationError(f"Keep the {what} to {max_lines} lines or fewer.")
+    return "\n".join(lines)
+
+
 class ShopSettingsSerializer(serializers.ModelSerializer):
     class Meta:
         model = ShopSettings
@@ -18,11 +26,10 @@ class ShopSettingsSerializer(serializers.ModelSerializer):
         ]
 
     def validate_receipt_address(self, value):
-        # Line breaks print as typed; tidy stray spaces and blank lines.
-        lines = [line.strip() for line in value.splitlines() if line.strip()]
-        if len(lines) > 4:
-            raise serializers.ValidationError("Keep the address to 4 lines or fewer.")
-        return "\n".join(lines)
+        return _tidy_lines(value, "address")
+
+    def validate_receipt_footer(self, value):
+        return _tidy_lines(value, "footer")
 
     def validate(self, attrs):
         paper = attrs.get("receipt_width_mm", getattr(self.instance, "receipt_width_mm", 80))

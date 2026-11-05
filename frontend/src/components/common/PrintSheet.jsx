@@ -1,7 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Printer, X } from 'lucide-react'
 import Button from '../ui/Button'
+import { useToast } from '../ui/Toast'
+import { directPrinterFor, getDirectPrefs, printNodes } from '../../utils/directPrint'
 
 const PX_PER_MM = 96 / 25.4
 
@@ -14,7 +16,7 @@ const pageCss = (width, height) => {
   @page { ${size} margin: 0; }
   html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
   body > *:not(.print-portal) { display: none !important; }
-  .print-portal { position: static !important; overflow: visible !important; background: #fff !important; }
+  .print-portal { position: static !important; overflow: visible !important; background: #fff !important; opacity: 1 !important; }
   .no-print { display: none !important; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }`
@@ -22,21 +24,40 @@ const pageCss = (width, height) => {
 
 // Full-screen print preview: a toolbar (hidden when printing) above `children`.
 // `page` = { width, height } in mm sets the paper size; height 'auto' measures the content
-// just before printing (continuous receipt rolls). `autoPrint` opens the dialog once ready.
+// just before printing (continuous receipt rolls). `autoPrint` prints once `ready`.
 // `css` is for any extra rules the caller needs.
-export default function PrintSheet({ title, subtitle, css, page, autoPrint = false, onPrint, onClose, children, actions }) {
+//
+// `direct` = { kind: 'receipt' | 'label', selector, size: node => ({ width, height }) mm }
+// lets Print go straight to this laptop's printer for that kind through QZ Tray (Settings →
+// Printing → Direct printing), falling back to the browser dialog if that fails. With
+// "Skip the preview" on, sheets that print on open (`autoPrint` / `printOnOpen`) print
+// without ever showing and close themselves.
+export default function PrintSheet({
+  title, subtitle, css, page, autoPrint = false, printOnOpen = false, ready = true,
+  direct, onPrint, onClose, children, actions,
+}) {
   const pageW = page?.width
   const pageH = page?.height
   const rootRef = useRef(null)
   const onPrintRef = useRef(onPrint)
-  useEffect(() => { onPrintRef.current = onPrint }, [onPrint])
+  const directRef = useRef(direct)
+  const onCloseRef = useRef(onClose)
+  useEffect(() => { onPrintRef.current = onPrint; directRef.current = direct; onCloseRef.current = onClose })
   const styleRef = useRef(null)
+  const toast = useToast()
+
+  // Read once per sheet: changing printers in Settings applies to the next print.
+  const [prefs] = useState(getDirectPrefs)
+  const printer = direct ? directPrinterFor(direct.kind, prefs) : ''
+  const wantsInstant = !!printer && prefs.skipPreview && (autoPrint || printOnOpen)
+  const [showPreview, setShowPreview] = useState(!wantsInstant)
+  const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    const onKey = (e) => { if (e.key === 'Escape') onCloseRef.current() }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
+  }, [])
 
   // Re-measure on every print (button or Ctrl+P) so 'auto' height fits the current content.
   useEffect(() => {
@@ -51,25 +72,52 @@ export default function PrintSheet({ title, subtitle, css, page, autoPrint = fal
     return () => window.removeEventListener('beforeprint', update)
   }, [pageW, pageH])
 
+  const dialogPrint = useCallback(() => {
+    setShowPreview(true)
+    setTimeout(() => window.print(), 50)  // after the sheet is visible again
+  }, [])
+
+  const print = useCallback(async ({ instant = false } = {}) => {
+    const d = directRef.current
+    if (!printer || !d) return dialogPrint()
+    setBusy(true)
+    try {
+      const nodes = [...(rootRef.current?.querySelectorAll(d.selector) ?? [])]
+      await printNodes(printer, nodes, d.size, title)
+      onPrintRef.current?.()
+      toast(`Printed on ${printer}`)
+      if (instant) onCloseRef.current()
+    } catch (e) {
+      const reason = /connect|websocket/i.test(String(e?.message ?? e)) ? 'QZ Tray is not running' : 'direct printing failed'
+      toast(`${reason}: opening the print dialog`, 'error')
+      dialogPrint()
+    } finally {
+      setBusy(false)
+    }
+  }, [printer, title, toast, dialogPrint])
+
   useEffect(() => {
-    if (!autoPrint) return
-    const t = setTimeout(() => window.print(), 150)  // let barcodes/canvases paint first
+    if (!ready || !(autoPrint || wantsInstant)) return
+    const t = setTimeout(() => print({ instant: wantsInstant }), 150)  // let barcodes/canvases paint first
     return () => clearTimeout(t)
-  }, [autoPrint])
+    // Once per sheet: re-running on `print` identity changes would print twice.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, autoPrint, wantsInstant])
 
   return createPortal(
-    <div className="print-portal fixed inset-0 z-50 animate-fade-in overflow-auto bg-zinc-100">
+    <div className={`print-portal fixed inset-0 z-50 overflow-auto bg-zinc-100 ${showPreview ? 'animate-fade-in' : 'pointer-events-none opacity-0'}`} aria-hidden={!showPreview}>
       <style ref={styleRef} />
       {css && <style>{css}</style>}
       <div className="no-print sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur sm:px-6">
         <div className="min-w-0">
           <div className="truncate text-sm font-semibold text-zinc-900">{title}</div>
-          {subtitle && <div className="text-xs text-zinc-500">{subtitle}</div>}
+          {(subtitle || printer) && <div className="text-xs text-zinc-500">{[subtitle, printer && `→ ${printer}`].filter(Boolean).join(' · ')}</div>}
         </div>
         <div className="flex gap-2">
           {actions}
           <Button onClick={onClose} icon={X}>Close</Button>
-          <Button variant="primary" onClick={() => window.print()} icon={Printer} autoFocus>Print</Button>
+          {printer && <Button onClick={dialogPrint} className="hidden sm:inline-flex">Print dialog…</Button>}
+          <Button variant="primary" onClick={() => print()} loading={busy} icon={Printer} autoFocus>Print</Button>
         </div>
       </div>
       <div ref={rootRef} className="print-root">{children}</div>

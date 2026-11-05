@@ -12,6 +12,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import ThermalLabel from '../inventory/ThermalLabel'
 import PrintBarcodes from '../inventory/PrintBarcodes'
 import BillReceipt from '../billing/BillReceipt'
+import DirectPrintSettings from './DirectPrintSettings'
 
 const FIELDS = Object.keys(PRINT_DEFAULTS)
 const LABEL_PRESETS = [[50, 25], [38, 25], [40, 30], [50, 30], [75, 50], [100, 50]]
@@ -129,7 +130,7 @@ export default function PrintingSettings({ initial, onSaved, onError }) {
             <Field label="Phone" error={errors.receipt_phone}>{id => <Input id={id} value={form.receipt_phone} onChange={setText('receipt_phone')} maxLength={30} />}</Field>
             <Field label="Address" className="sm:col-span-2" hint="Press Enter to start a new line on the receipt (up to 4 lines)." error={errors.receipt_address}>{id => <Textarea id={id} rows={3} value={form.receipt_address} onChange={setText('receipt_address')} maxLength={255} />}</Field>
             <Field label="GSTIN" error={errors.receipt_gstin}>{id => <Input id={id} value={form.receipt_gstin} onChange={e => set('receipt_gstin')(e.target.value.toUpperCase())} maxLength={20} />}</Field>
-            <Field label="Footer" error={errors.receipt_footer}>{id => <Input id={id} value={form.receipt_footer} onChange={setText('receipt_footer')} maxLength={200} />}</Field>
+            <Field label="Footer" className="sm:col-span-2" hint="Press Enter for a new line (up to 4 lines)." error={errors.receipt_footer}>{id => <Textarea id={id} rows={2} value={form.receipt_footer} onChange={setText('receipt_footer')} maxLength={200} />}</Field>
           </div>
           <div className="mt-3 border-t border-zinc-100 pt-2">
             <Toggle label="Open print dialog right after checkout" checked={form.auto_print_after_bill} onChange={set('auto_print_after_bill')} />
@@ -144,6 +145,8 @@ export default function PrintingSettings({ initial, onSaved, onError }) {
           <Button type="submit" variant="primary" loading={saving} disabled={!dirty}>Save print settings</Button>
         </div>
 
+        <DirectPrintSettings />
+
         <Section title="Printer setup (one time per laptop)">
           <ol className="list-decimal space-y-1.5 pl-5 text-sm text-zinc-600">
             <li>Connect the printer by USB and install its driver from the maker's website (TSC, Zebra, Xprinter, TVS…). It should appear in System Settings → Printers.</li>
@@ -152,6 +155,7 @@ export default function PrintingSettings({ initial, onSaved, onError }) {
             <li>Click <b>Print test label</b> / <b>Print test receipt</b>. In the print dialog pick the thermal printer, set Margins to <b>None</b> and Scale to <b>100%</b> (not "Fit to page"). Chrome remembers these for next time.</li>
             <li>Receipt cut off on the right? Lower <b>Printable width</b> by 2 mm and print a test again. Big empty strip on the right? Raise it.</li>
             <li>No printer yet? Choose <b>Save as PDF</b> in the dialog to check the size.</li>
+            <li>Tired of switching printers in the dialog? Set up <b>Direct printing</b> above.</li>
           </ol>
         </Section>
       </form>

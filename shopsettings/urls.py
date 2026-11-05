@@ -11,4 +11,6 @@ router.register("colors", views.ColorViewSet, basename="color")
 urlpatterns = [
     path("shop-settings/", views.ShopSettingsView.as_view(), name="shop-settings"),
     path("onboarding/", views.OnboardingView.as_view(), name="onboarding"),
+    path("print/qz-cert/", views.QZCertView.as_view(), name="qz-cert"),
+    path("print/qz-sign/", views.QZSignView.as_view(), name="qz-sign"),
 ] + router.urls

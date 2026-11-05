@@ -140,6 +140,12 @@ CORS_ALLOWED_ORIGIN_REGEXES = config(
 )
 CORS_ALLOW_CREDENTIALS = True
 
+# QZ Tray (direct printing from the browser): the site signs QZ's requests so the
+# "Allow this site?" prompt can be remembered. Blank = unsigned (QZ asks every time).
+# Make the pair with tools/make_qz_cert.sh; the private key never goes in git.
+QZ_CERT_FILE = config("QZ_CERT_FILE", default="")
+QZ_PRIVATE_KEY_FILE = config("QZ_PRIVATE_KEY_FILE", default="")
+
 # --- Production (behind nginx, HTTPS terminated there) ----------------------
 # nginx sets X-Forwarded-Proto; trust it so request.is_secure() is right.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")

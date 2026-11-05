@@ -7,6 +7,7 @@ import { useOnboarding } from '../../onboarding/OnboardingContext'
 
 // One label per printed page, so a thermal roll advances exactly one label each time.
 const PRINT_CSS = `
+.thermal-label.raster { outline: none !important; box-shadow: none !important; border-radius: 0 !important; }
 @media print {
   .label-sheet { display: block !important; padding: 0 !important; }
   .thermal-label { break-after: page; outline: none !important; box-shadow: none !important; }
@@ -27,6 +28,9 @@ export default function PrintBarcodes({ items, title = 'Barcodes', onClose }) {
       subtitle={`${labels.length} label${labels.length !== 1 ? 's' : ''} · ${settings.label_width_mm}×${settings.label_height_mm} mm`}
       css={PRINT_CSS}
       page={{ width: settings.label_width_mm, height: settings.label_height_mm }}
+      printOnOpen
+      ready={settings.loaded}
+      direct={{ kind: 'label', selector: '.thermal-label', size: () => ({ width: Number(settings.label_width_mm), height: Number(settings.label_height_mm) }) }}
       onPrint={() => addEvent('label_printed')}
       onClose={onClose}
       actions={<Link to="/settings?tab=printing" className="no-print hidden items-center gap-1 self-center text-xs text-zinc-500 hover:text-zinc-800 sm:inline-flex" onClick={onClose}><Settings size={14} />Label settings</Link>}

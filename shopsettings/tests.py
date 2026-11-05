@@ -128,6 +128,38 @@ class ShopSettingsTestCase(TestCase):
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(resp.data["receipt_address"], "Gokul Complex\nMathura")
         self.assertEqual(a.put("/api/shop-settings/", {"receipt_address": "a\nb\nc\nd\ne"}, **h).status_code, 400)
+        resp = a.put("/api/shop-settings/", {"receipt_footer": "Thank you!\n\n  No exchange after 7 days "}, **h)
+        self.assertEqual(resp.data["receipt_footer"], "Thank you!\nNo exchange after 7 days")
+        self.assertEqual(a.put("/api/shop-settings/", {"receipt_footer": "a\nb\nc\nd\ne"}, **h).status_code, 400)
+
+    def test_qz_signing(self):
+        import base64
+        import tempfile
+        from pathlib import Path
+
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import padding, rsa
+        from django.test import override_settings
+
+        a = self.client_for("acme.localhost", "acme@test.com")
+        h = {"format": "json", "HTTP_HOST": "acme.localhost"}
+        # Not configured: 404, so the frontend falls back to unsigned.
+        self.assertEqual(a.post("/api/print/qz-sign/", {"request": "x"}, **h).status_code, 404)
+        self.assertEqual(APIClient().post("/api/print/qz-sign/", {"request": "x"}, **h).status_code, 401)
+
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        with tempfile.TemporaryDirectory() as d:
+            key_file, cert_file = Path(d, "key.pem"), Path(d, "cert.pem")
+            key_file.write_bytes(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                                                   serialization.NoEncryption()))
+            cert_file.write_text("-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----\n")
+            with override_settings(QZ_CERT_FILE=str(cert_file), QZ_PRIVATE_KEY_FILE=str(key_file)):
+                self.assertIn("BEGIN CERTIFICATE", a.get("/api/print/qz-cert/", HTTP_HOST="acme.localhost").data["certificate"])
+                resp = a.post("/api/print/qz-sign/", {"request": "hello qz"}, **h)
+                self.assertEqual(resp.status_code, 200, resp.data)
+                key.public_key().verify(base64.b64decode(resp.data["signature"]), b"hello qz",
+                                        padding.PKCS1v15(), hashes.SHA512())  # raises if wrong
+                self.assertEqual(a.post("/api/print/qz-sign/", {}, **h).status_code, 400)
 
     # --- first-run onboarding --------------------------------------------------
 

@@ -161,3 +161,42 @@ class OnboardingView(APIView):
             if changed:
                 obj.save(update_fields=changed)
         return Response(self._payload(request, obj))
+
+
+# --- QZ Tray request signing (direct printing) --------------------------------
+
+def _qz_files():
+    from django.conf import settings as dj
+    if not (dj.QZ_CERT_FILE and dj.QZ_PRIVATE_KEY_FILE):
+        return None
+    return dj.QZ_CERT_FILE, dj.QZ_PRIVATE_KEY_FILE
+
+
+class QZCertView(APIView):
+    """Public certificate QZ Tray checks the site's signatures against."""
+
+    def get(self, request):
+        files = _qz_files()
+        if not files:
+            return Response({"detail": "Direct-print signing is not configured."}, status=status.HTTP_404_NOT_FOUND)
+        with open(files[0]) as f:
+            return Response({"certificate": f.read()})
+
+
+class QZSignView(APIView):
+    """Signs one QZ Tray request (RSA, SHA-512) so the user's "Remember" choice sticks."""
+
+    def post(self, request):
+        files = _qz_files()
+        if not files:
+            return Response({"detail": "Direct-print signing is not configured."}, status=status.HTTP_404_NOT_FOUND)
+        to_sign = request.data.get("request")
+        if not isinstance(to_sign, str) or not to_sign or len(to_sign) > 10_000:
+            return Response({"detail": "Nothing to sign."}, status=status.HTTP_400_BAD_REQUEST)
+        import base64
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import padding
+        with open(files[1], "rb") as f:
+            key = serialization.load_pem_private_key(f.read(), password=None)
+        signature = key.sign(to_sign.encode(), padding.PKCS1v15(), hashes.SHA512())
+        return Response({"signature": base64.b64encode(signature).decode()})

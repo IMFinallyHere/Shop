@@ -1,0 +1,96 @@
+// Direct printing through QZ Tray (a small desktop app on the billing laptop): jobs go
+// straight to the printer chosen for each kind of print, with no browser dialog.
+// The preview DOM is rasterised to PNG and sent as an image, so paper looks exactly
+// like the on-screen preview. Printer names differ per laptop, so preferences live in
+// this browser (localStorage), not in the shop's settings.
+
+const PREFS_KEY = 'shop.directPrint'
+const PX_PER_MM = 96 / 25.4
+const DOTS_PER_PX = 203 / 96  // thermal heads are 203 dpi; render at twice that for crisp edges
+
+export const DEFAULT_PREFS = { enabled: false, skipPreview: false, receiptPrinter: '', labelPrinter: '' }
+
+export function getDirectPrefs() {
+  try {
+    return { ...DEFAULT_PREFS, ...JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') }
+  } catch {
+    return { ...DEFAULT_PREFS }
+  }
+}
+
+export function setDirectPrefs(prefs) {
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)) } catch { /* private window: not saved */ }
+}
+
+// Printer for this kind of job ('receipt' | 'label') when direct printing is on, else ''.
+export function directPrinterFor(kind, prefs = getDirectPrefs()) {
+  return prefs.enabled ? (prefs[`${kind}Printer`] || '') : ''
+}
+
+let qzPromise = null
+const loadQz = () => {
+  // Lazy: this module sits in the main bundle (PrintSheet), these don't need to.
+  qzPromise ??= Promise.all([import('qz-tray'), import('../api/axiosInstance')]).then(([{ default: qz }, { default: api }]) => {
+    // The site signs QZ's requests (see shopsettings QZSignView) so "Remember this
+    // decision" sticks. If the server has no key configured, QZ still works but asks.
+    let signed = null  // null = unknown, true/false once the cert was fetched
+    qz.security.setCertificatePromise((resolve) => {
+      api.get('/print/qz-cert/')
+        .then(r => { signed = true; resolve(r.data.certificate) })
+        .catch(() => { signed = false; resolve() })
+    })
+    qz.security.setSignatureAlgorithm('SHA512')
+    qz.security.setSignaturePromise((toSign) => (resolve, reject) => {
+      if (signed === false) return resolve()
+      api.post('/print/qz-sign/', { request: toSign })
+        .then(r => resolve(r.data.signature))
+        .catch(e => (e.response?.status === 404 ? resolve() : reject(e)))
+    })
+    return qz
+  })
+  return qzPromise
+}
+
+// Connects to QZ Tray if it isn't already; rejects when it isn't installed or running.
+export async function connect() {
+  const qz = await loadQz()
+  if (!qz.websocket.isActive()) await qz.websocket.connect({ retries: 0 })
+  return qz
+}
+
+export async function listPrinters() {
+  const qz = await connect()
+  const found = await qz.printers.find()
+  return Array.isArray(found) ? found : [found]
+}
+
+let fontCss = null  // web fonts embedded once per page load, not per print
+
+// Prints each node as one page of exactly `size(node)` mm ({ width, height }).
+export async function printNodes(printer, nodes, size, jobName = 'Shop print') {
+  const [qz, { toPng, getFontEmbedCSS }] = await Promise.all([connect(), import('html-to-image')])
+  if (!nodes.length) throw new Error('Nothing to print')
+  fontCss ??= await getFontEmbedCSS(nodes[0]).catch(() => '')
+
+  const pages = []
+  for (const node of nodes) {
+    const { width, height } = size(node)
+    node.classList.add('raster')  // thermal styles: solid black, no shadows/outlines
+    try {
+      const png = await toPng(node, { pixelRatio: DOTS_PER_PX * 2, backgroundColor: '#fff', fontEmbedCSS: fontCss })
+      pages.push({ width, height, data: png.replace(/^data:image\/png;base64,/, '') })
+    } finally {
+      node.classList.remove('raster')
+    }
+  }
+
+  // Same size on every page (labels) → one job; receipts are a single page anyway.
+  const { width, height } = pages[0]
+  const config = qz.configs.create(printer, {
+    units: 'mm', size: { width, height, custom: true }, margins: 0,
+    scaleContent: true, colorType: 'blackwhite', jobName,
+  })
+  await qz.print(config, pages.map(p => ({ type: 'pixel', format: 'image', flavor: 'base64', data: p.data })))
+}
+
+export const nodeHeightMm = (node) => Math.ceil(node.offsetHeight / PX_PER_MM)

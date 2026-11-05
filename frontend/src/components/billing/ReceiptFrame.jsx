@@ -1,8 +1,12 @@
 import PrintSheet from '../common/PrintSheet'
 import usePrintSettings, { receiptPrintableMm } from '../../hooks/usePrintSettings'
+import { nodeHeightMm } from '../../utils/directPrint'
 
 // Thermal heads print grey as speckled dots (light-grey lines vanish), so text and rules print solid black.
+// `.raster` is the same look for direct printing, which captures the on-screen receipt as an image.
 const PRINT_CSS = `
+.receipt.raster, .receipt.raster * { color: #000 !important; border-color: #000 !important; }
+.receipt.raster { box-shadow: none !important; border-radius: 0 !important; }
 @media print {
   .receipt, .receipt * { color: #000 !important; border-color: #000 !important; }
   .receipt { box-shadow: none !important; border-radius: 0 !important; margin: 0 auto !important; }
@@ -29,7 +33,9 @@ export default function ReceiptFrame({ title, docTitle, shopName, autoPrint = fa
       subtitle={a4 ? 'A4' : `${width} mm roll · ${printable} mm printable`}
       css={PRINT_CSS}
       page={a4 ? { width: 210, height: 297 } : { width: printable, height: 'auto' }}
-      autoPrint={autoPrint && s.loaded}
+      autoPrint={autoPrint}
+      ready={s.loaded}
+      direct={a4 ? undefined : { kind: 'receipt', selector: '.receipt', size: node => ({ width: printable, height: nodeHeightMm(node) }) }}
       onClose={onClose}
     >
       <div className="receipt mx-auto my-8 rounded-xl bg-white leading-snug text-gray-800 shadow-card" style={style}>
@@ -41,7 +47,7 @@ export default function ReceiptFrame({ title, docTitle, shopName, autoPrint = fa
           <div className="mt-[0.4em] font-semibold uppercase tracking-wide text-gray-500">{docTitle}</div>
         </div>
         {children}
-        {s.receipt_footer && <div className="mt-[1.5em] text-center text-[0.85em] text-gray-500">{s.receipt_footer}</div>}
+        {s.receipt_footer && <div className="mt-[1.5em] whitespace-pre-line text-center text-[0.85em] text-gray-500">{s.receipt_footer}</div>}
       </div>
     </PrintSheet>
   )
