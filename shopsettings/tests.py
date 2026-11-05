@@ -95,13 +95,16 @@ class ShopSettingsTestCase(TestCase):
 
     def test_colors_crud_hex_and_active_filter(self):
         a = self.client_for("acme.localhost", "acme@test.com")
-        self.assertEqual(a.get("/api/colors/", HTTP_HOST="acme.localhost").data, [])  # no seed
+        seeded = a.get("/api/colors/", HTTP_HOST="acme.localhost").data  # common colours on first open
+        self.assertEqual([c["name"] for c in seeded[:3]], ["Black", "White", "Off White"])
+        self.assertEqual(seeded[0]["hex"], "#111111")
+        self.assertEqual(len(a.get("/api/colors/", HTTP_HOST="acme.localhost").data), len(seeded))  # seeded once
         bad = a.post("/api/colors/", {"name": "Teal", "hex": "teal"}, format="json", HTTP_HOST="acme.localhost")
         self.assertEqual(bad.status_code, 400)
         teal = a.post("/api/colors/", {"name": "Teal", "hex": "#008080"}, format="json", HTTP_HOST="acme.localhost")
         self.assertEqual(teal.status_code, 201, teal.data)
         a.patch(f"/api/colors/{teal.data['id']}/", {"is_active": False}, format="json", HTTP_HOST="acme.localhost")
-        self.assertEqual(a.get("/api/colors/?active=1", HTTP_HOST="acme.localhost").data, [])
+        self.assertNotIn("Teal", [c["name"] for c in a.get("/api/colors/?active=1", HTTP_HOST="acme.localhost").data])
         # Unused colors can be deleted.
         self.assertEqual(a.delete(f"/api/colors/{teal.data['id']}/", HTTP_HOST="acme.localhost").status_code, 204)
 

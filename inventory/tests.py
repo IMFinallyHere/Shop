@@ -147,11 +147,11 @@ class InventoryTestCase(TestCase):
         again = self.add_stock(c, pid, {"color": cid, "size": None, "quantity": 1, "cost_price": "1", "price": "2"})
         self.assertEqual(first.data["items"][0]["variant"], again.data["items"][0]["variant"])
 
-        c.patch(f"/api/colors/{cid}/", {"name": "Wine"}, format="json", HTTP_HOST="acme.localhost")
+        c.patch(f"/api/colors/{cid}/", {"name": "Deep Maroon"}, format="json", HTTP_HOST="acme.localhost")
         v = c.get(f"/api/products/{pid}/", HTTP_HOST="acme.localhost").data["variants"][0]
-        self.assertEqual((v["color_name"], v["size_name"]), ("Wine", None))
+        self.assertEqual((v["color_name"], v["size_name"]), ("Deep Maroon", None))
         unit = c.get(f"/api/stock-items/?product={pid}", HTTP_HOST="acme.localhost").data["results"][0]
-        self.assertEqual(unit["color_name"], "Wine")
+        self.assertEqual(unit["color_name"], "Deep Maroon")
 
         resp = c.delete(f"/api/colors/{cid}/", HTTP_HOST="acme.localhost")
         self.assertEqual(resp.status_code, 400)

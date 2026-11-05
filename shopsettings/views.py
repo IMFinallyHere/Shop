@@ -7,7 +7,7 @@ from rest_framework.views import APIView
 from tenant_users.permissions.models import UserTenantPermissions
 
 from accounts.permissions import ANY_STAFF, ShopPermission
-from .models import Color, PaymentMethod, ShopSettings, Size, UserOnboarding, ensure_payment_methods, ensure_sizes
+from .models import Color, PaymentMethod, ShopSettings, Size, UserOnboarding, ensure_colors, ensure_payment_methods, ensure_sizes
 from .serializers import ColorSerializer, OnboardingUpdateSerializer, PaymentMethodSerializer, ShopSettingsSerializer, SizeSerializer
 
 
@@ -89,6 +89,10 @@ class ColorViewSet(_VariantOptionViewSet):
     perm_model = "shopsettings.color"
     serializer_class = ColorSerializer
     model = Color
+
+    def get_queryset(self):
+        ensure_colors()  # seed common colours on first access
+        return super().get_queryset()
 
 
 def _setup_checklist():

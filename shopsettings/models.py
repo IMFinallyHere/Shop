@@ -2,6 +2,16 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 DEFAULT_PAYMENT_METHODS = ["Cash", "UPI", "Card"]
+# Common clothing colours (name, swatch), seeded the first time a shop opens its colours.
+DEFAULT_COLORS = [
+    ("Black", "#111111"), ("White", "#ffffff"), ("Off White", "#f5f1e6"), ("Cream", "#f3e5c0"),
+    ("Beige", "#d9c3a0"), ("Grey", "#808080"), ("Navy", "#1f2a5a"), ("Blue", "#2563eb"),
+    ("Sky Blue", "#7cc4ef"), ("Red", "#d0202a"), ("Maroon", "#7a1f2b"), ("Wine", "#5e1a33"),
+    ("Pink", "#f08cb4"), ("Peach", "#f7b89a"), ("Orange", "#f07c22"), ("Mustard", "#d4a017"),
+    ("Yellow", "#f5d90a"), ("Green", "#2e9e4f"), ("Bottle Green", "#0f4d33"), ("Olive", "#6b7a2a"),
+    ("Purple", "#6b3fa0"), ("Brown", "#6f4a2e"), ("Gold", "#c9a227"), ("Silver", "#c0c0c0"),
+    ("Multicolour", ""),
+]
 DEFAULT_SIZES = ["XS", "S", "M", "L", "XL", "XXL", "XXXL", "Free Size"]
 
 
@@ -105,6 +115,12 @@ class Color(models.Model):
 
     def __str__(self):
         return self.name
+
+
+def ensure_colors():
+    """Seed common clothing colours the first time a shop touches its colour list."""
+    if not Color.objects.exists():
+        Color.objects.bulk_create([Color(name=n, hex=h, position=i) for i, (n, h) in enumerate(DEFAULT_COLORS)])
 
 
 def ensure_sizes():
