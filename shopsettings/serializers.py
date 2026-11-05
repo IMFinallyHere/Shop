@@ -17,6 +17,13 @@ class ShopSettingsSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
+    def validate_receipt_address(self, value):
+        # Line breaks print as typed; tidy stray spaces and blank lines.
+        lines = [line.strip() for line in value.splitlines() if line.strip()]
+        if len(lines) > 4:
+            raise serializers.ValidationError("Keep the address to 4 lines or fewer.")
+        return "\n".join(lines)
+
     def validate(self, attrs):
         paper = attrs.get("receipt_width_mm", getattr(self.instance, "receipt_width_mm", 80))
         printable = attrs.get("receipt_printable_mm", getattr(self.instance, "receipt_printable_mm", None))

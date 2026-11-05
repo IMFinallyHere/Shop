@@ -35,7 +35,7 @@ export default function ReceiptFrame({ title, docTitle, shopName, autoPrint = fa
       <div className="receipt mx-auto my-8 rounded-xl bg-white leading-snug text-gray-800 shadow-card" style={style}>
         <div className="mb-[1em] text-center">
           <div className="text-[1.35em] font-bold leading-tight">{s.receipt_shop_name || shopName || 'Shop'}</div>
-          {s.receipt_address && <div className="text-[0.85em] text-gray-600">{s.receipt_address}</div>}
+          {s.receipt_address && <div className="whitespace-pre-line text-[0.85em] text-gray-600">{s.receipt_address}</div>}
           {s.receipt_phone && <div className="text-[0.85em] text-gray-600">Ph: {s.receipt_phone}</div>}
           {s.receipt_gstin && <div className="text-[0.85em] text-gray-600">GSTIN: {s.receipt_gstin}</div>}
           <div className="mt-[0.4em] font-semibold uppercase tracking-wide text-gray-500">{docTitle}</div>

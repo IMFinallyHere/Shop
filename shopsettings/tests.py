@@ -121,6 +121,14 @@ class ShopSettingsTestCase(TestCase):
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertIsNone(resp.data["receipt_printable_mm"])
 
+    def test_receipt_address_keeps_line_breaks(self):
+        a = self.client_for("acme.localhost", "acme@test.com")
+        h = {"format": "json", "HTTP_HOST": "acme.localhost"}
+        resp = a.put("/api/shop-settings/", {"receipt_address": "  Gokul Complex \r\n\r\nMathura  \n"}, **h)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data["receipt_address"], "Gokul Complex\nMathura")
+        self.assertEqual(a.put("/api/shop-settings/", {"receipt_address": "a\nb\nc\nd\ne"}, **h).status_code, 400)
+
     # --- first-run onboarding --------------------------------------------------
 
     def test_onboarding_checklist_follows_the_shops_data(self):

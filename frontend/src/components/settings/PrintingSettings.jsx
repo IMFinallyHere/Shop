@@ -6,7 +6,7 @@ import Section from './Section'
 import Button from '../ui/Button'
 import Switch from '../ui/Switch'
 import SegmentedControl from '../ui/SegmentedControl'
-import { Field, Input } from '../ui/Field'
+import { Field, Input, Textarea } from '../ui/Field'
 import { useToast } from '../ui/Toast'
 import { useAuth } from '../../contexts/AuthContext'
 import ThermalLabel from '../inventory/ThermalLabel'
@@ -127,7 +127,7 @@ export default function PrintingSettings({ initial, onSaved, onError }) {
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Shop name on receipt" hint="Leave blank to use the shop's name" error={errors.receipt_shop_name}>{id => <Input id={id} value={form.receipt_shop_name} onChange={setText('receipt_shop_name')} maxLength={100} />}</Field>
             <Field label="Phone" error={errors.receipt_phone}>{id => <Input id={id} value={form.receipt_phone} onChange={setText('receipt_phone')} maxLength={30} />}</Field>
-            <Field label="Address" className="sm:col-span-2" error={errors.receipt_address}>{id => <Input id={id} value={form.receipt_address} onChange={setText('receipt_address')} maxLength={255} />}</Field>
+            <Field label="Address" className="sm:col-span-2" hint="Press Enter to start a new line on the receipt (up to 4 lines)." error={errors.receipt_address}>{id => <Textarea id={id} rows={3} value={form.receipt_address} onChange={setText('receipt_address')} maxLength={255} />}</Field>
             <Field label="GSTIN" error={errors.receipt_gstin}>{id => <Input id={id} value={form.receipt_gstin} onChange={e => set('receipt_gstin')(e.target.value.toUpperCase())} maxLength={20} />}</Field>
             <Field label="Footer" error={errors.receipt_footer}>{id => <Input id={id} value={form.receipt_footer} onChange={setText('receipt_footer')} maxLength={200} />}</Field>
           </div>
