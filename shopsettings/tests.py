@@ -123,6 +123,12 @@ class ShopSettingsTestCase(TestCase):
         for bad in ({"label_width_mm": 5}, {"label_height_mm": 500}, {"label_copies": 0}, {"receipt_width_mm": 100}):
             self.assertEqual(a.put("/api/shop-settings/", bad, format="json", HTTP_HOST="acme.localhost").status_code, 400, bad)
 
+    def test_auto_product_names_setting(self):
+        a = self.client_for("acme.localhost", "acme@test.com")
+        h = {"format": "json", "HTTP_HOST": "acme.localhost"}
+        self.assertFalse(a.get("/api/shop-settings/", HTTP_HOST="acme.localhost").data["auto_product_names"])
+        self.assertTrue(a.put("/api/shop-settings/", {"auto_product_names": True}, **h).data["auto_product_names"])
+
     def test_receipt_printable_width(self):
         a = self.client_for("acme.localhost", "acme@test.com")
         h = {"format": "json", "HTTP_HOST": "acme.localhost"}

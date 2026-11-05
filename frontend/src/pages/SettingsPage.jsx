@@ -8,6 +8,7 @@ import {
 } from '../api/shopsettings'
 import OptionList from '../components/settings/OptionList'
 import GstSettings from '../components/settings/GstSettings'
+import ProductSettings from '../components/settings/ProductSettings'
 import Section from '../components/settings/Section'
 import PrintingSettings from '../components/settings/PrintingSettings'
 import Spinner from '../components/common/Spinner'
@@ -18,6 +19,7 @@ import Tabs from '../components/ui/Tabs'
 const TABS = [
   { value: 'general', label: 'Billing & tax' },
   { value: 'payments', label: 'Payment methods' },
+  { value: 'products', label: 'Products' },
   { value: 'sizes', label: 'Sizes' },
   { value: 'colors', label: 'Colors' },
   { value: 'printing', label: 'Printing' },
@@ -69,6 +71,8 @@ export default function SettingsPage() {
             <OptionList items={methods} api={methodApi} onChange={refreshMethods} onError={setError} placeholder="Add a method (e.g. Paytm)" reorder={false} />
           </Section>
         )}
+
+        {tab === 'products' && <ProductSettings initial={shopSettings} onSaved={setShopSettings} onError={setError} />}
 
         {tab === 'sizes' && (
           <Section title="Sizes" description="Offered when adding stock, in this order. Renaming updates every product that uses it; sizes in use can be turned off but not deleted.">

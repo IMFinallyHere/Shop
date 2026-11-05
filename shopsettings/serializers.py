@@ -33,7 +33,7 @@ class ShopSettingsSerializer(serializers.ModelSerializer):
     class Meta:
         model = ShopSettings
         fields = [
-            "tax_slabs", "prices_include_tax",
+            "tax_slabs", "prices_include_tax", "auto_product_names",
             "label_width_mm", "label_height_mm", "label_show_name", "label_show_variant",
             "label_show_price", "label_show_code_text", "label_copies",
             "receipt_width_mm", "receipt_printable_mm", "receipt_shop_name", "receipt_address",

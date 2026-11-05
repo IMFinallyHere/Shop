@@ -1,6 +1,8 @@
+import { Shuffle } from 'lucide-react'
 import { Field, Input, Select } from '../ui/Field'
 
-export default function ProductForm({ data, onChange, categories, sellers, errors = {} }) {
+// onSuggestName (optional): shows a button that fills a suggested clothing name.
+export default function ProductForm({ data, onChange, categories, sellers, errors = {}, onSuggestName }) {
   const set = (k) => (e) => onChange({ ...data, [k]: e.target.value })
 
   const field = (name, label, { required = false, placeholder, autoFocus } = {}) => (
@@ -22,7 +24,15 @@ export default function ProductForm({ data, onChange, categories, sellers, error
 
   return (
     <div className="space-y-4">
-      {field('name', 'Product name', { required: true, placeholder: 'e.g. Cotton kurti', autoFocus: true })}
+      <div>
+        {field('name', 'Product name', { required: true, placeholder: 'e.g. Cotton kurti', autoFocus: true })}
+        {onSuggestName && (
+          <button type="button" onClick={onSuggestName}
+            className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700">
+            <Shuffle size={12} /> Suggest another name
+          </button>
+        )}
+      </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {select('category', 'Category', categories)}
         {select('seller', 'Seller', sellers)}

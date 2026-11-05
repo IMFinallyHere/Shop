@@ -32,6 +32,9 @@ class ShopSettings(models.Model):
     # False: GST is added on top of the tag price at the counter.
     prices_include_tax = models.BooleanField(default=True)
 
+    # Products: fill a suggested clothing name when "New product" opens (always editable).
+    auto_product_names = models.BooleanField(default=False)
+
     # Stock-unit labels: one label per page at this physical size (thermal roll).
     label_width_mm = models.PositiveSmallIntegerField(default=50, validators=[MinValueValidator(20), MaxValueValidator(110)])
     label_height_mm = models.PositiveSmallIntegerField(default=25, validators=[MinValueValidator(10), MaxValueValidator(150)])
