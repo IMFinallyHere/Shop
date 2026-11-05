@@ -83,18 +83,20 @@ export default function PrintSheet({
     setBusy(true)
     try {
       const nodes = [...(rootRef.current?.querySelectorAll(d.selector) ?? [])]
-      await printNodes(printer, nodes, d.size, title)
+      await printNodes(printer, nodes, d.size, { jobName: title, profile: prefs.profiles[d.kind] })
       onPrintRef.current?.()
       toast(`Printed on ${printer}`)
       if (instant) onCloseRef.current()
     } catch (e) {
-      const reason = /connect|websocket/i.test(String(e?.message ?? e)) ? 'QZ Tray is not running' : 'direct printing failed'
-      toast(`${reason}: opening the print dialog`, 'error')
+      const msg = String(e?.message ?? e)
+      console.error('Direct print failed', e)
+      const reason = /connect|websocket/i.test(msg) ? 'QZ Tray is not running' : `Direct print failed (${msg.slice(0, 120)})`
+      toast(`${reason}. Opening the print dialog.`, 'error')
       dialogPrint()
     } finally {
       setBusy(false)
     }
-  }, [printer, title, toast, dialogPrint])
+  }, [printer, prefs, title, toast, dialogPrint])
 
   useEffect(() => {
     if (!ready || !(autoPrint || wantsInstant)) return

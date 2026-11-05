@@ -16,7 +16,7 @@ const PRINT_CSS = `
 `
 
 // Full-screen overlay showing the stock-unit labels at their configured size.
-export default function PrintBarcodes({ items, title = 'Barcodes', onClose }) {
+export default function PrintBarcodes({ items, title = 'Barcodes', autoPrint = false, onClose }) {
   const settings = usePrintSettings()
   const { addEvent } = useOnboarding()
   if (!items) return null
@@ -29,6 +29,7 @@ export default function PrintBarcodes({ items, title = 'Barcodes', onClose }) {
       css={PRINT_CSS}
       page={{ width: settings.label_width_mm, height: settings.label_height_mm }}
       printOnOpen
+      autoPrint={autoPrint}
       ready={settings.loaded}
       direct={{ kind: 'label', selector: '.thermal-label', size: () => ({ width: Number(settings.label_width_mm), height: Number(settings.label_height_mm) }) }}
       onPrint={() => addEvent('label_printed')}

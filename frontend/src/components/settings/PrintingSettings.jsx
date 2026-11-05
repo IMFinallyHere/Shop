@@ -47,6 +47,7 @@ export default function PrintingSettings({ initial, onSaved, onError }) {
   const [errors, setErrors] = useState({})
   const [testLabel, setTestLabel] = useState(false)
   const [testReceipt, setTestReceipt] = useState(null)
+  const [testAuto, setTestAuto] = useState(false)  // Test buttons under Direct printing print straight away
   const toast = useToast()
   const { user } = useAuth()
 
@@ -145,7 +146,10 @@ export default function PrintingSettings({ initial, onSaved, onError }) {
           <Button type="submit" variant="primary" loading={saving} disabled={!dirty}>Save print settings</Button>
         </div>
 
-        <DirectPrintSettings />
+        <DirectPrintSettings
+          onTestReceipt={() => withForm(() => { setTestAuto(true); setTestReceipt(sampleBill(user?.shop_name)) })}
+          onTestLabel={() => withForm(() => { setTestAuto(true); setTestLabel(true) })}
+        />
 
         <Section title="Printer setup (one time per laptop)">
           <ol className="list-decimal space-y-1.5 pl-5 text-sm text-zinc-600">
@@ -161,8 +165,8 @@ export default function PrintingSettings({ initial, onSaved, onError }) {
       </form>
 
       {/* Outside the form: portal events still bubble through React's tree. */}
-      {testLabel && <PrintBarcodes items={[SAMPLE_ITEM]} title="Test label" onClose={() => closeTest(() => setTestLabel(false))} />}
-      <BillReceipt bill={testReceipt} onClose={() => closeTest(() => setTestReceipt(null))} />
+      {testLabel && <PrintBarcodes items={[SAMPLE_ITEM]} title="Test label" autoPrint={testAuto} onClose={() => closeTest(() => { setTestLabel(false); setTestAuto(false) })} />}
+      <BillReceipt bill={testReceipt} autoPrint={testAuto} onClose={() => closeTest(() => { setTestReceipt(null); setTestAuto(false) })} />
     </>
   )
 }
