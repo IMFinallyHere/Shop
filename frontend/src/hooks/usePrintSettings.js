@@ -6,9 +6,15 @@ export const PRINT_DEFAULTS = {
   label_width_mm: 50, label_height_mm: 25,
   label_show_name: true, label_show_variant: true, label_show_price: true, label_show_code_text: true,
   label_copies: 1,
-  receipt_width_mm: 80, receipt_shop_name: '', receipt_address: '', receipt_phone: '', receipt_gstin: '',
+  receipt_width_mm: 80, receipt_printable_mm: null, receipt_shop_name: '', receipt_address: '', receipt_phone: '', receipt_gstin: '',
   receipt_footer: 'Thank you, visit again!', auto_print_after_bill: false,
 }
+
+// A thermal head doesn't cover the whole roll: 80 mm paper typically prints 72 mm (576 dots),
+// 58 mm prints 48 mm (384 dots). Receipts are laid out at this width so nothing gets clipped.
+const TYPICAL_PRINTABLE = { 80: 72, 58: 48 }
+export const autoPrintableMm = (paper) => TYPICAL_PRINTABLE[Number(paper)] ?? Number(paper)
+export const receiptPrintableMm = (s) => Number(s.receipt_printable_mm) || autoPrintableMm(s.receipt_width_mm)
 
 // Shop settings are fetched once per page load and shared by every print component.
 let cache = null

@@ -1,10 +1,10 @@
 import PrintSheet from '../common/PrintSheet'
-import usePrintSettings from '../../hooks/usePrintSettings'
+import usePrintSettings, { receiptPrintableMm } from '../../hooks/usePrintSettings'
 
-// Thermal heads print grey as speckled dots, so everything prints solid black.
+// Thermal heads print grey as speckled dots (light-grey lines vanish), so text and rules print solid black.
 const PRINT_CSS = `
 @media print {
-  .receipt, .receipt * { color: #000 !important; }
+  .receipt, .receipt * { color: #000 !important; border-color: #000 !important; }
   .receipt { box-shadow: none !important; border-radius: 0 !important; margin: 0 auto !important; }
 }
 `
@@ -16,17 +16,19 @@ export default function ReceiptFrame({ title, docTitle, shopName, autoPrint = fa
   const s = usePrintSettings()
   const width = Number(s.receipt_width_mm)
   const a4 = width >= 210
-  const narrow = width < 70
+  // Thermal: lay out (and size the page) to what the head can print, not the paper width.
+  const printable = receiptPrintableMm(s)
+  const narrow = printable < 60
   const style = a4
     ? { width: '130mm', padding: '12mm 8mm', fontSize: '10pt' }
-    : { width: `${width}mm`, padding: narrow ? '3mm 2.5mm' : '4mm 3.5mm', fontSize: narrow ? '8pt' : '9pt' }
+    : { width: `${printable}mm`, padding: narrow ? '2mm 1.5mm' : '3mm 2mm', fontSize: narrow ? '8pt' : '9pt' }
 
   return (
     <PrintSheet
       title={title}
-      subtitle={a4 ? 'A4' : `${width} mm roll`}
+      subtitle={a4 ? 'A4' : `${width} mm roll · ${printable} mm printable`}
       css={PRINT_CSS}
-      page={a4 ? { width: 210, height: 297 } : { width, height: 'auto' }}
+      page={a4 ? { width: 210, height: 297 } : { width: printable, height: 'auto' }}
       autoPrint={autoPrint && s.loaded}
       onClose={onClose}
     >

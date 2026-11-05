@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Printer } from 'lucide-react'
 import { updateShopSettings } from '../../api/shopsettings'
-import { PRINT_DEFAULTS, setPrintSettings } from '../../hooks/usePrintSettings'
+import { PRINT_DEFAULTS, autoPrintableMm, setPrintSettings } from '../../hooks/usePrintSettings'
 import Section from './Section'
 import Button from '../ui/Button'
 import Switch from '../ui/Switch'
@@ -112,9 +112,18 @@ export default function PrintingSettings({ initial, onSaved, onError }) {
         </Section>
 
         <Section title="Receipts" description="Paper for bills and credit notes. Thermal rolls print one continuous strip as long as the receipt.">
-          <Field label="Paper width" className="mb-4">
-            <div><SegmentedControl options={RECEIPT_WIDTHS} value={form.receipt_width_mm} onChange={set('receipt_width_mm')} /></div>
-          </Field>
+          <div className="mb-4 grid gap-3 sm:grid-cols-2">
+            <Field label="Paper width">
+              <div><SegmentedControl options={RECEIPT_WIDTHS} value={form.receipt_width_mm} onChange={set('receipt_width_mm')} /></div>
+            </Field>
+            {form.receipt_width_mm < 210 && (
+              <Field label="Printable width (mm)" error={errors.receipt_printable_mm}
+                hint={`From the printer's spec sheet. Most 80 mm printers print 72 mm, 58 mm printers 48 mm. Blank uses ${autoPrintableMm(form.receipt_width_mm)} mm.`}>
+                {id => <Input id={id} type="number" min="30" max={form.receipt_width_mm} placeholder={String(autoPrintableMm(form.receipt_width_mm))}
+                  value={form.receipt_printable_mm ?? ''} onChange={e => set('receipt_printable_mm')(e.target.value === '' ? null : Number(e.target.value))} />}
+              </Field>
+            )}
+          </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Shop name on receipt" hint="Leave blank to use the shop's name" error={errors.receipt_shop_name}>{id => <Input id={id} value={form.receipt_shop_name} onChange={setText('receipt_shop_name')} maxLength={100} />}</Field>
             <Field label="Phone" error={errors.receipt_phone}>{id => <Input id={id} value={form.receipt_phone} onChange={setText('receipt_phone')} maxLength={30} />}</Field>
@@ -138,9 +147,10 @@ export default function PrintingSettings({ initial, onSaved, onError }) {
         <Section title="Printer setup (one time per laptop)">
           <ol className="list-decimal space-y-1.5 pl-5 text-sm text-zinc-600">
             <li>Connect the printer by USB and install its driver from the maker's website (TSC, Zebra, Xprinter, TVS…). It should appear in System Settings → Printers.</li>
-            <li>In the printer's settings, add a paper size matching your label ({W} × {H} mm) and, for receipts, the roll width.</li>
+            <li>In the printer's settings, add a paper size matching your label ({W} × {H} mm) and, for receipts, the roll width (e.g. 80 mm).</li>
             <li>Calibrate the label gap: most printers do this when you hold the feed button until it beeps, or from the driver's utility.</li>
-            <li>Click <b>Print test label</b>. In the print dialog pick the thermal printer, set Margins to <b>None</b> and Scale to <b>100%</b>. Chrome remembers these for next time.</li>
+            <li>Click <b>Print test label</b> / <b>Print test receipt</b>. In the print dialog pick the thermal printer, set Margins to <b>None</b> and Scale to <b>100%</b> (not "Fit to page"). Chrome remembers these for next time.</li>
+            <li>Receipt cut off on the right? Lower <b>Printable width</b> by 2 mm and print a test again. Big empty strip on the right? Raise it.</li>
             <li>No printer yet? Choose <b>Save as PDF</b> in the dialog to check the size.</li>
           </ol>
         </Section>

@@ -23,6 +23,11 @@ class ShopSettings(models.Model):
 
     # Receipts.
     receipt_width_mm = models.PositiveSmallIntegerField(choices=RECEIPT_WIDTHS, default=80)
+    # Thermal heads don't cover the whole roll (80 mm paper prints ~72 mm, 58 mm prints ~48 mm).
+    receipt_printable_mm = models.PositiveSmallIntegerField(
+        null=True, blank=True, validators=[MinValueValidator(30), MaxValueValidator(110)],
+        help_text="Width the print head covers; blank uses the typical value for the paper",
+    )
     receipt_shop_name = models.CharField(max_length=100, blank=True, help_text="Blank uses the shop's name")
     receipt_address = models.CharField(max_length=255, blank=True)
     receipt_phone = models.CharField(max_length=30, blank=True)

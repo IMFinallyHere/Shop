@@ -17,6 +17,11 @@ export const formatDateTime = (d) => (d ? new Date(d).toLocaleString('en-IN', {
   day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit',
 }) : '—')
 
+// 05 Nov 2026, 4:56 pm — for printed receipts: day-first and unambiguous, no seconds.
+export const formatReceiptDate = (d) => (d ? new Date(d).toLocaleString('en-IN', {
+  day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit',
+}) : '')
+
 export const displayName = (u) => [u?.first_name, u?.last_name].filter(Boolean).join(' ') || u?.email || ''
 
 export const initials = (name) => (name || '').split(/[\s@.]/).filter(Boolean).slice(0, 2).map(s => s[0].toUpperCase()).join('')

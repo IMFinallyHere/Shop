@@ -105,6 +105,22 @@ class ShopSettingsTestCase(TestCase):
         for bad in ({"label_width_mm": 5}, {"label_height_mm": 500}, {"label_copies": 0}, {"receipt_width_mm": 100}):
             self.assertEqual(a.put("/api/shop-settings/", bad, format="json", HTTP_HOST="acme.localhost").status_code, 400, bad)
 
+    def test_receipt_printable_width(self):
+        a = self.client_for("acme.localhost", "acme@test.com")
+        h = {"format": "json", "HTTP_HOST": "acme.localhost"}
+        self.assertIsNone(a.get("/api/shop-settings/", HTTP_HOST="acme.localhost").data["receipt_printable_mm"])
+        resp = a.put("/api/shop-settings/", {"receipt_width_mm": 80, "receipt_printable_mm": 72}, **h)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data["receipt_printable_mm"], 72)
+        # Wider than the paper: on its own, and when switching to a narrower roll.
+        self.assertEqual(a.put("/api/shop-settings/", {"receipt_printable_mm": 90}, **h).status_code, 400)
+        self.assertEqual(a.put("/api/shop-settings/", {"receipt_width_mm": 58}, **h).status_code, 400)
+        self.assertEqual(a.put("/api/shop-settings/", {"receipt_printable_mm": 10}, **h).status_code, 400)
+        # Cleared back to auto.
+        resp = a.put("/api/shop-settings/", {"receipt_printable_mm": None}, **h)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIsNone(resp.data["receipt_printable_mm"])
+
     # --- first-run onboarding --------------------------------------------------
 
     def test_onboarding_checklist_follows_the_shops_data(self):

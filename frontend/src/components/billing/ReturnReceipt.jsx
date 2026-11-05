@@ -1,5 +1,5 @@
 import ReceiptFrame from './ReceiptFrame'
-import { money } from '../../utils/format'
+import { formatReceiptDate, money } from '../../utils/format'
 
 export default function ReturnReceipt({ ret, onClose }) {
   if (!ret) return null
@@ -7,7 +7,7 @@ export default function ReturnReceipt({ ret, onClose }) {
     <ReceiptFrame title={`Return ${ret.number}`} docTitle="Credit Note" shopName={ret.shop_name} onClose={onClose}>
       <div className="mb-[0.2em] flex justify-between text-[0.85em] text-gray-500">
         <span>{ret.number}</span>
-        <span>{new Date(ret.created_at).toLocaleString()}</span>
+        <span>{formatReceiptDate(ret.created_at)}</span>
       </div>
       <div className="mb-[0.8em] text-[0.85em] text-gray-500">Against bill {ret.bill_number}</div>
       {ret.customer_name && (

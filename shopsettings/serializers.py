@@ -12,10 +12,19 @@ class ShopSettingsSerializer(serializers.ModelSerializer):
             "default_tax_rate",
             "label_width_mm", "label_height_mm", "label_show_name", "label_show_variant",
             "label_show_price", "label_show_code_text", "label_copies",
-            "receipt_width_mm", "receipt_shop_name", "receipt_address", "receipt_phone",
-            "receipt_gstin", "receipt_footer", "auto_print_after_bill",
+            "receipt_width_mm", "receipt_printable_mm", "receipt_shop_name", "receipt_address",
+            "receipt_phone", "receipt_gstin", "receipt_footer", "auto_print_after_bill",
             "updated_at",
         ]
+
+    def validate(self, attrs):
+        paper = attrs.get("receipt_width_mm", getattr(self.instance, "receipt_width_mm", 80))
+        printable = attrs.get("receipt_printable_mm", getattr(self.instance, "receipt_printable_mm", None))
+        if printable and paper < 210 and printable > paper:
+            raise serializers.ValidationError(
+                {"receipt_printable_mm": f"Can't be wider than the {paper} mm paper."}
+            )
+        return attrs
 
 
 class PaymentMethodSerializer(serializers.ModelSerializer):
