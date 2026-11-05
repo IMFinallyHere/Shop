@@ -167,8 +167,9 @@ class Command(BaseCommand):
             subtotal = sum(u[5] for u in lines)
             at = start + timedelta(seconds=rng.randrange(365 * 86400))
             cid, cname, cphone = rng.choice(customers) if customers else (None, "", "")
+            # No GST on perf bills (pre-slab style: lines carry no per-line GST).
             bill_rows.append((b, cid, cname, cphone, subtotal, "none", 0, 0,
-                              0, 0, subtotal, rng.choice(PAYMENTS), 0, at))
+                              0, 0, subtotal, rng.choice(PAYMENTS), 0, at, False))
             for u in lines:
                 u[3] = "sold"
                 item_rows.append((len(item_rows) + 1, b, u, at))
@@ -184,7 +185,7 @@ class Command(BaseCommand):
 
         copy("billing_bill", ["id", "customer_id", "customer_name", "customer_phone", "subtotal", "discount_type",
                               "discount_value", "discount_amount", "tax_rate", "tax_amount", "total", "payment_mode",
-                              "credit_used", "created_at"], bill_rows)
+                              "credit_used", "created_at", "prices_include_tax"], bill_rows)
         copy("billing_billitem", ["id", "bill_id", "stock_item_id", "product_name", "unit_price"],
              ((iid, b, u[6], "Perf product", u[5]) for iid, b, u, _ in item_rows))
         reset_sequence("billing_bill")

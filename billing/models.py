@@ -27,9 +27,14 @@ class Bill(models.Model):
     discount_type = models.CharField(max_length=10, choices=DISCOUNT_CHOICES, default=NONE)
     discount_value = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    # One rate when every line shares it, else 0 (each line has its own; see billing/tax.py).
     tax_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    # Sum of the lines' taxable values; null on bills from before per-line GST.
+    taxable_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     tax_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    # Snapshot of the shop setting: tag prices included GST (vs GST added on top).
+    prices_include_tax = models.BooleanField(default=False)
     # Stores the chosen payment method name (configured per shop in shopsettings).
     payment_mode = models.CharField(max_length=40, default="Cash")
     # Store credit applied at checkout; the customer paid ``total - credit_used``.
@@ -62,6 +67,18 @@ class BillItem(models.Model):
     stock_item = models.ForeignKey(StockItem, on_delete=models.PROTECT, related_name="bill_items")
     product_name = models.CharField(max_length=150)
     unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+    # Per-line GST (billing/tax.py). Null on bills from before per-line GST.
+    discount_share = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    taxable_value = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    tax_rate = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    tax_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+
+    @property
+    def line_total(self):
+        """What the customer paid for this line, or None on old bills."""
+        if self.taxable_value is None:
+            return None
+        return self.taxable_value + self.tax_amount
 
     def __str__(self):
         return f"{self.product_name} @ {self.unit_price}"
@@ -70,11 +87,13 @@ class BillItem(models.Model):
 def refund_shares(bill):
     """Each line's share of ``bill.total`` → ``{bill_item_id: Decimal}``.
 
-    Shares are proportional to the unit price, so the bill's discount and tax are
-    refunded pro rata; the rounding remainder goes to the last line so the shares
-    always add up to exactly the bill total.
+    Bills with per-line GST refund each line exactly what was paid for it. Older bills
+    split the total in proportion to unit price (discount and tax pro rata), with the
+    rounding remainder on the last line, so shares always add up to the bill total.
     """
     items = sorted(bill.items.all(), key=lambda i: i.id)
+    if items and all(i.line_total is not None for i in items):
+        return {i.id: i.line_total for i in items}
     if not items or not bill.subtotal:
         return {i.id: Decimal("0.00") for i in items}
     shares, allocated = {}, Decimal("0.00")

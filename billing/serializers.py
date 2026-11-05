@@ -12,7 +12,11 @@ class BillItemSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = BillItem
-        fields = ["id", "stock_item", "code", "product_name", "unit_price", "returned", "refund_amount"]
+        fields = [
+            "id", "stock_item", "code", "product_name", "unit_price",
+            "discount_share", "taxable_value", "tax_rate", "tax_amount",
+            "returned", "refund_amount",
+        ]
 
     def get_returned(self, obj):
         return hasattr(obj, "return_item")
@@ -41,15 +45,27 @@ class BillSerializer(serializers.ModelSerializer):
     returns = BillReturnSummarySerializer(many=True, read_only=True)
     refunded_total = serializers.SerializerMethodField()
     shop_name = serializers.SerializerMethodField()
+    gst_summary = serializers.SerializerMethodField()
 
     class Meta:
         model = Bill
         fields = [
             "id", "number", "customer_id", "customer_name", "customer_phone",
             "subtotal", "discount_type", "discount_value", "discount_amount",
-            "tax_rate", "tax_amount", "total", "credit_used", "payment_mode",
+            "tax_rate", "taxable_amount", "tax_amount", "total", "prices_include_tax",
+            "gst_summary", "credit_used", "payment_mode",
             "items", "returns", "refunded_total", "shop_name", "created_at",
         ]
+
+    def get_gst_summary(self, obj):
+        """Per rate: taxable, CGST, SGST. Empty on bills from before per-line GST."""
+        from .tax import gst_summary
+
+        items = list(obj.items.all())
+        if not items or any(i.taxable_value is None for i in items):
+            return []
+        rows = gst_summary([{"rate": i.tax_rate, "taxable": i.taxable_value, "tax": i.tax_amount} for i in items])
+        return [{k: str(v) for k, v in r.items()} for r in rows]
 
     def get_refunded_total(self, obj):
         return str(sum((r.amount for r in obj.returns.all()), Decimal("0.00")))
@@ -75,6 +91,12 @@ class CheckoutCustomerSerializer(serializers.Serializer):
     )
 
 
+class QuoteSerializer(serializers.Serializer):
+    codes = serializers.ListField(child=serializers.CharField(), allow_empty=True)
+    discount_type = serializers.ChoiceField(choices=[c[0] for c in Bill.DISCOUNT_CHOICES], default=Bill.NONE)
+    discount_value = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0, default=0)
+
+
 class CheckoutSerializer(serializers.Serializer):
     codes = serializers.ListField(child=serializers.CharField(), allow_empty=False)
     customer = CheckoutCustomerSerializer()
@@ -82,7 +104,7 @@ class CheckoutSerializer(serializers.Serializer):
         choices=[c[0] for c in Bill.DISCOUNT_CHOICES], default=Bill.NONE
     )
     discount_value = serializers.DecimalField(max_digits=10, decimal_places=2, default=0)
-    # Tax is NOT taken from the client — the shop's default rate is applied server-side.
+    # GST is NOT taken from the client: the shop's slabs are applied server-side.
     payment_mode = serializers.CharField()
     # Store credit to apply (capped by the customer's balance and the bill total).
     credit_used = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0, default=0)

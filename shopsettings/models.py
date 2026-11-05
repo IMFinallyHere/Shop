@@ -5,12 +5,22 @@ DEFAULT_PAYMENT_METHODS = ["Cash", "UPI", "Card"]
 DEFAULT_SIZES = ["XS", "S", "M", "L", "XL", "XXL", "XXXL", "Free Size"]
 
 
+def default_tax_slabs():
+    """Indian clothing from 22 Sep 2025: 5% up to ₹2,500 a piece, 18% above."""
+    return [{"upto": 2500, "rate": 5}, {"upto": None, "rate": 18}]
+
+
 class ShopSettings(models.Model):
     """Per-shop configuration (one row per schema)."""
 
     RECEIPT_WIDTHS = [(58, "58 mm"), (80, "80 mm"), (210, "A4")]
 
-    default_tax_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    # GST by price slab, per piece: [{"upto": 2500, "rate": 5}, {"upto": None, "rate": 18}]
+    # (ascending; the last slab is open-ended). See billing/tax.py.
+    tax_slabs = models.JSONField(default=default_tax_slabs)
+    # True: tag prices include GST (the bill shows the GST inside them).
+    # False: GST is added on top of the tag price at the counter.
+    prices_include_tax = models.BooleanField(default=True)
 
     # Stock-unit labels: one label per page at this physical size (thermal roll).
     label_width_mm = models.PositiveSmallIntegerField(default=50, validators=[MinValueValidator(20), MaxValueValidator(110)])
@@ -43,7 +53,7 @@ class ShopSettings(models.Model):
         return obj
 
     def __str__(self):
-        return f"ShopSettings(tax={self.default_tax_rate})"
+        return f"ShopSettings(slabs={self.tax_slabs})"
 
 
 class PaymentMethod(models.Model):

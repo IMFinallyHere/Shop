@@ -3,7 +3,7 @@
     python manage.py seed_demo acme
 
 Everything goes through the shop's own API (as the shop owner), so stock, checkout,
-tax and return rules apply exactly as in real use. Bills and returns are then
+GST and return rules apply exactly as in real use. Bills and returns are then
 backdated across the last 14 days so the dashboard has history. Refuses to run twice
 on the same shop.
 """
@@ -117,7 +117,9 @@ class Command(BaseCommand):
     # -- seeding -----------------------------------------------------------------
     def seed(self):
         out = self.stdout
-        self.call("put", "shop-settings/", {"default_tax_rate": "5"})
+        # Indian clothing GST: 5% up to ₹2,500 a piece, 18% above; tag prices include GST.
+        self.call("put", "shop-settings/", {"tax_slabs": [{"upto": 2500, "rate": 5}, {"upto": None, "rate": 18}],
+                                            "prices_include_tax": True})
 
         # Colors and sizes (sizes list self-seeds the defaults on first read).
         colors = {c["name"].lower(): c["id"] for c in self.rows("colors/")}

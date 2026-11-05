@@ -51,7 +51,7 @@ const FEATURES = [
   ['One code per piece', 'See exactly when each garment came in, sold, came back or was written off.'],
   ['Returns and store credit', 'Refund to cash or UPI, or keep it as credit the customer spends on their next visit.'],
   ['Customers by phone', 'Type a number and their name, bills and credit are there. No loyalty cards to hand out.'],
-  ['GST on every bill', 'Set your tax rate once. Every bill and receipt shows it, with discounts worked out for you.'],
+  ['GST on every bill', 'Set your GST slabs once. Each piece gets the right rate by its price, and every bill shows CGST and SGST.'],
   ['Staff with their own logins', 'Cashiers bill, managers look after stock, and only you decide who does what.'],
   ['Find anything', 'One search box takes a barcode, bill number, customer or product.'],
   ['Your own web address', 'Your shop opens at its own address from any laptop with a browser. Nothing to install.'],

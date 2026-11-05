@@ -19,15 +19,38 @@ const LABEL_PRESETS = [[50, 25], [38, 25], [40, 30], [50, 30], [75, 50], [100, 5
 const RECEIPT_WIDTHS = [{ value: 58, label: '58 mm' }, { value: 80, label: '80 mm' }, { value: 210, label: 'A4' }]
 
 const SAMPLE_ITEM = { code: 'A1B2C3D4E5F6', product_name: 'Cotton Kurta', color_name: 'Maroon', size_name: 'XL', price: '1299.00' }
-const sampleBill = (shopName) => ({
-  shop_name: shopName,
-  number: 'INV-00042', created_at: new Date().toISOString(), customer_name: 'Test Customer', customer_phone: '9876543210',
-  items: [
-    { id: 1, product_name: 'Cotton Kurta', code: 'A1B2C3D4E5F6', unit_price: '1299.00' },
-    { id: 2, product_name: 'Silk Dupatta', code: '0F9E8D7C6B5A', unit_price: '650.00' },
-  ],
-  subtotal: '1949.00', discount_amount: '0', tax_amount: '0', total: '1949.00', credit_used: '0', payment_mode: 'Cash', returns: [],
-})
+// Sample bill for test prints: 3 pieces on Indian clothing slabs (two at 5%, one at 18%),
+// in the shop's pricing mode, so the GST lines look like a real bill.
+const SAMPLE_GST = {
+  inclusive: {
+    lines: [['1237.14', '61.86'], ['619.05', '30.95'], ['2711.86', '488.14']],
+    summary: [['5.00', '1856.19', '92.81', '46.41', '46.40'], ['18.00', '2711.86', '488.14', '244.07', '244.07']],
+    taxable: '4568.05', tax: '580.95', total: '5149.00',
+  },
+  exclusive: {
+    lines: [['1299.00', '64.95'], ['650.00', '32.50'], ['3200.00', '576.00']],
+    summary: [['5.00', '1949.00', '97.45', '48.73', '48.72'], ['18.00', '3200.00', '576.00', '288.00', '288.00']],
+    taxable: '5149.00', tax: '673.45', total: '5822.45',
+  },
+}
+const sampleBill = (shopName, inclusive = true) => {
+  const g = SAMPLE_GST[inclusive ? 'inclusive' : 'exclusive']
+  const items = [
+    ['Cotton Kurta — Maroon / XL', 'A1B2C3D4E5F6', '1299.00', '5.00'],
+    ['Silk Dupatta — Gold / Free Size', '0F9E8D7C6B5A', '650.00', '5.00'],
+    ['Silk Lehenga — Red / M', '9C8B7A6F5E4D', '3200.00', '18.00'],
+  ].map(([product_name, code, unit_price, tax_rate], i) => ({
+    id: i + 1, product_name, code, unit_price, tax_rate, taxable_value: g.lines[i][0], tax_amount: g.lines[i][1],
+  }))
+  return {
+    shop_name: shopName,
+    number: 'INV-00042', created_at: new Date().toISOString(), customer_name: 'Test Customer', customer_phone: '9876543210',
+    items, subtotal: '5149.00', discount_amount: '0', taxable_amount: g.taxable, tax_amount: g.tax, total: g.total,
+    prices_include_tax: inclusive,
+    gst_summary: g.summary.map(([rate, taxable, tax, cgst, sgst]) => ({ rate, taxable, tax, cgst, sgst })),
+    credit_used: '0', payment_mode: 'Cash', returns: [],
+  }
+}
 
 function Toggle({ label, checked, onChange }) {
   return (
@@ -137,7 +160,7 @@ export default function PrintingSettings({ initial, onSaved, onError }) {
             <Toggle label="Open print dialog right after checkout" checked={form.auto_print_after_bill} onChange={set('auto_print_after_bill')} />
           </div>
           <div className="mt-3">
-            <Button size="sm" icon={Printer} onClick={() => withForm(() => setTestReceipt(sampleBill(user?.shop_name)))}>Print test receipt</Button>
+            <Button size="sm" icon={Printer} onClick={() => withForm(() => setTestReceipt(sampleBill(user?.shop_name, initial?.prices_include_tax ?? true)))}>Print test receipt</Button>
           </div>
         </Section>
 
@@ -147,7 +170,7 @@ export default function PrintingSettings({ initial, onSaved, onError }) {
         </div>
 
         <DirectPrintSettings
-          onTestReceipt={() => withForm(() => { setTestAuto(true); setTestReceipt(sampleBill(user?.shop_name)) })}
+          onTestReceipt={() => withForm(() => { setTestAuto(true); setTestReceipt(sampleBill(user?.shop_name, initial?.prices_include_tax ?? true)) })}
           onTestLabel={() => withForm(() => { setTestAuto(true); setTestLabel(true) })}
         />
 

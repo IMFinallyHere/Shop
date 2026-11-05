@@ -59,7 +59,7 @@ async function prepareShop(scene) {
   const token = tokens.access
   await api('/onboarding/', { token, method: 'PATCH', body: { tour_done: true, checklist_dismissed: true } })
   if (scene === 'setup-shop') {
-    await api('/shop-settings/', { token, method: 'PUT', body: { default_tax_rate: '0', receipt_address: '', receipt_phone: '', receipt_gstin: '' } })
+    await api('/shop-settings/', { token, method: 'PUT', body: { tax_slabs: [{ upto: null, rate: 0 }], prices_include_tax: true, receipt_address: '', receipt_phone: '', receipt_gstin: '' } })
   }
   const stock = await api('/stock-items/?status=in_stock&page_size=100', { token })
   const codes = []

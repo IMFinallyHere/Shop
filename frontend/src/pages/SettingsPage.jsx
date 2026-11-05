@@ -1,21 +1,19 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Percent } from 'lucide-react'
 import {
-  getShopSettings, updateShopSettings,
+  getShopSettings,
   getPaymentMethods, createPaymentMethod, updatePaymentMethod, deletePaymentMethod,
   getSizes, createSize, updateSize, deleteSize,
   getColors, createColor, updateColor, deleteColor,
 } from '../api/shopsettings'
 import OptionList from '../components/settings/OptionList'
+import GstSettings from '../components/settings/GstSettings'
 import Section from '../components/settings/Section'
 import PrintingSettings from '../components/settings/PrintingSettings'
 import Spinner from '../components/common/Spinner'
 import ErrorAlert from '../components/common/ErrorAlert'
 import PageHeader from '../components/ui/PageHeader'
-import Button from '../components/ui/Button'
 import Tabs from '../components/ui/Tabs'
-import { useToast } from '../components/ui/Toast'
 
 const TABS = [
   { value: 'general', label: 'Billing & tax' },
@@ -36,35 +34,20 @@ export default function SettingsPage() {
   const [shopSettings, setShopSettings] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [taxRate, setTaxRate] = useState('')
-  const [savedTax, setSavedTax] = useState('')
-  const [savingTax, setSavingTax] = useState(false)
   const [methods, setMethods] = useState([])
   const [sizes, setSizes] = useState([])
   const [colors, setColors] = useState([])
-  const toast = useToast()
 
   useEffect(() => {
     Promise.all([getShopSettings(), getPaymentMethods(), getSizes(), getColors()])
       .then(([s, m, sz, c]) => {
         setShopSettings(s.data)
-        setTaxRate(s.data.default_tax_rate); setSavedTax(s.data.default_tax_rate)
         setMethods(m.data.results ?? m.data)
         setSizes(sz.data); setColors(c.data)
       })
       .catch(() => setError('Failed to load settings.'))
       .finally(() => setLoading(false))
   }, [])
-
-  const saveTax = async () => {
-    setSavingTax(true); setError('')
-    try {
-      const { data } = await updateShopSettings({ default_tax_rate: taxRate || 0 })
-      setSavedTax(data.default_tax_rate); setTaxRate(data.default_tax_rate)
-      toast('Tax rate saved')
-    } catch { setError('Failed to save tax rate.') }
-    finally { setSavingTax(false) }
-  }
 
   const refreshMethods = () => getPaymentMethods().then(m => setMethods(m.data.results ?? m.data))
   const refreshSizes = () => getSizes().then(r => setSizes(r.data))
@@ -78,16 +61,7 @@ export default function SettingsPage() {
 
       {loading ? <Spinner /> : (<>
         {tab === 'general' && (
-          <Section title="Default tax (GST)" description="Applied automatically to every bill. Cashiers can't change this at the counter.">
-            <form className="flex items-center gap-3" onSubmit={e => { e.preventDefault(); saveTax() }}>
-              <div className="relative">
-                <input type="number" min="0" step="0.01" value={taxRate} onChange={e => setTaxRate(e.target.value)} aria-label="Tax rate"
-                  className="input w-32 pr-8" />
-                <Percent size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400" />
-              </div>
-              <Button type="submit" variant="primary" loading={savingTax} disabled={taxRate === savedTax}>Save</Button>
-            </form>
-          </Section>
+          <GstSettings initial={shopSettings} onSaved={setShopSettings} onError={setError} />
         )}
 
         {tab === 'payments' && (

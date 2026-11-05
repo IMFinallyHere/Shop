@@ -1,8 +1,16 @@
 import ReceiptFrame from './ReceiptFrame'
 import { formatReceiptDate, money } from '../../utils/format'
 
+const pct = (rate) => `${Number(rate)}%`
+
 export default function BillReceipt({ bill, autoPrint = false, onClose }) {
   if (!bill) return null
+  // Bills since per-piece GST carry a summary by rate; older ones show one tax line.
+  const summary = bill.gst_summary ?? []
+  const perLine = summary.length > 0
+  const gst = summary.filter(r => Number(r.tax) > 0)
+  const cgst = gst.reduce((s, r) => s + Number(r.cgst), 0)
+  const sgst = gst.reduce((s, r) => s + Number(r.sgst), 0)
   return (
     <ReceiptFrame title={`Bill ${bill.number}`} docTitle="Tax Invoice" shopName={bill.shop_name} autoPrint={autoPrint} onClose={onClose}>
       <div className="mb-[0.8em] flex justify-between text-[0.85em] text-gray-500">
@@ -25,7 +33,10 @@ export default function BillReceipt({ bill, autoPrint = false, onClose }) {
               <td className="py-[0.25em]">
                 <span className={it.returned ? 'text-gray-400 line-through' : ''}>{it.product_name}</span>
                 {it.returned && <span className="ml-1 text-[0.75em] text-red-500">returned</span>}
-                <div className="font-mono text-[0.75em] text-gray-400">{it.code}</div>
+                <div className="text-[0.75em] text-gray-400">
+                  <span className="font-mono">{it.code}</span>
+                  {perLine && gst.length > 0 && it.tax_rate != null && <span> · GST {pct(it.tax_rate)}</span>}
+                </div>
               </td>
               <td className={`py-[0.25em] text-right align-top ${it.returned ? 'text-gray-400 line-through' : ''}`}>{money(it.unit_price)}</td>
             </tr>
@@ -34,9 +45,18 @@ export default function BillReceipt({ bill, autoPrint = false, onClose }) {
       </table>
       <div className="space-y-[0.2em] border-t border-dashed border-gray-400 pt-[0.4em] text-right">
         <Row label="Subtotal" value={money(bill.subtotal)} />
-        {Number(bill.discount_amount) > 0 && <Row label={`Discount${bill.discount_type === 'percent' ? ` (${bill.discount_value}%)` : ''}`} value={`− ${money(bill.discount_amount)}`} />}
-        {Number(bill.tax_amount) > 0 && <Row label={`Tax (${bill.tax_rate}%)`} value={money(bill.tax_amount)} />}
-        <div className="flex justify-between border-t border-gray-400 pt-[0.2em] text-[1.15em] font-bold"><span>Total</span><span>{money(bill.total)}</span></div>
+        {Number(bill.discount_amount) > 0 && <Row label={`Discount${bill.discount_type === 'percent' ? ` (${Number(bill.discount_value)}%)` : ''}`} value={`− ${money(bill.discount_amount)}`} />}
+        {!perLine && Number(bill.tax_amount) > 0 && <Row label={`Tax (${bill.tax_rate}%)`} value={money(bill.tax_amount)} />}
+        {perLine && !bill.prices_include_tax && gst.length > 0 && (
+          <>
+            <Row label="CGST" value={money(cgst)} />
+            <Row label="SGST" value={money(sgst)} />
+          </>
+        )}
+        <div className="flex justify-between border-t border-gray-400 pt-[0.2em] text-[1.15em] font-bold">
+          <span>{perLine && bill.prices_include_tax && gst.length > 0 ? 'Total (incl. GST)' : 'Total'}</span>
+          <span>{money(bill.total)}</span>
+        </div>
         {Number(bill.credit_used) > 0 && (
           <>
             <Row label="Store credit" value={`− ${money(bill.credit_used)}`} />
@@ -50,7 +70,44 @@ export default function BillReceipt({ bill, autoPrint = false, onClose }) {
           </div>
         ))}
       </div>
+      {gst.length > 0 && <GstSummary rows={gst} />}
     </ReceiptFrame>
+  )
+}
+
+// Taxable value and CGST/SGST per rate (counter sales are intra-state: half each).
+function GstSummary({ rows }) {
+  const sum = (k) => rows.reduce((s, r) => s + Number(r[k]), 0)
+  const cell = 'py-[0.1em] text-right tabular-nums'
+  return (
+    <table className="mt-[1em] w-full border-t border-dashed border-gray-400 text-[0.8em] text-gray-600">
+      <thead>
+        <tr className="text-gray-500">
+          <th className="pt-[0.4em] text-left font-semibold">GST</th>
+          <th className={`pt-[0.4em] font-semibold ${cell}`}>Taxable</th>
+          <th className={`pt-[0.4em] font-semibold ${cell}`}>CGST</th>
+          <th className={`pt-[0.4em] font-semibold ${cell}`}>SGST</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map(r => (
+          <tr key={r.rate}>
+            <td className="py-[0.1em]">{pct(r.rate)}</td>
+            <td className={cell}>{money(r.taxable)}</td>
+            <td className={cell}>{money(r.cgst)}</td>
+            <td className={cell}>{money(r.sgst)}</td>
+          </tr>
+        ))}
+        {rows.length > 1 && (
+          <tr className="border-t border-gray-300 font-semibold">
+            <td className="py-[0.1em]">Total</td>
+            <td className={cell}>{money(sum('taxable'))}</td>
+            <td className={cell}>{money(sum('cgst'))}</td>
+            <td className={cell}>{money(sum('sgst'))}</td>
+          </tr>
+        )}
+      </tbody>
+    </table>
   )
 }
 

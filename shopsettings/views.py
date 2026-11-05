@@ -97,7 +97,7 @@ def _setup_checklist():
     from inventory.models import Product
 
     settings = ShopSettings.load()
-    shop_details = settings.default_tax_rate > 0 or any(
+    shop_details = any(
         getattr(settings, f) for f in ("receipt_address", "receipt_phone", "receipt_gstin")
     )
     return [

@@ -44,13 +44,28 @@ class ShopSettingsTestCase(TestCase):
         c.credentials(HTTP_AUTHORIZATION=f"Bearer {resp.data['access']}")
         return c
 
-    def test_default_tax_is_per_shop(self):
+    def test_tax_slabs_per_shop_and_validated(self):
         a = self.client_for("acme.localhost", "acme@test.com")
         b = self.client_for("bella.localhost", "bella@test.com")
-        a.put("/api/shop-settings/", {"default_tax_rate": "12"}, format="json", HTTP_HOST="acme.localhost")
-        self.assertEqual(Decimal(a.get("/api/shop-settings/", HTTP_HOST="acme.localhost").data["default_tax_rate"]), Decimal("12.00"))
-        # Bella is untouched (its own default).
-        self.assertEqual(Decimal(b.get("/api/shop-settings/", HTTP_HOST="bella.localhost").data["default_tax_rate"]), Decimal("0.00"))
+        h = {"format": "json", "HTTP_HOST": "acme.localhost"}
+        # New shops start on Indian clothing slabs, prices including GST.
+        data = a.get("/api/shop-settings/", HTTP_HOST="acme.localhost").data
+        self.assertEqual((data["tax_slabs"], data["prices_include_tax"]),
+                         ([{"upto": 2500, "rate": 5}, {"upto": None, "rate": 18}], True))
+        resp = a.put("/api/shop-settings/", {"tax_slabs": [{"upto": "1000", "rate": "5"}, {"upto": None, "rate": 12}],
+                                             "prices_include_tax": False}, **h)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data["tax_slabs"], [{"upto": 1000, "rate": 5}, {"upto": None, "rate": 12}])
+        # Bella is untouched.
+        self.assertEqual(b.get("/api/shop-settings/", HTTP_HOST="bella.localhost").data["tax_slabs"][0], {"upto": 2500, "rate": 5})
+        for bad in (
+            [],                                                       # none
+            [{"upto": 2500, "rate": 5}],                              # last slab capped
+            [{"upto": None, "rate": 5}, {"upto": None, "rate": 18}],  # open slab not last
+            [{"upto": 3000, "rate": 5}, {"upto": 2000, "rate": 12}, {"upto": None, "rate": 18}],  # not ascending
+            [{"upto": None, "rate": 40}],                             # rate too high
+        ):
+            self.assertEqual(a.put("/api/shop-settings/", {"tax_slabs": bad}, **h).status_code, 400, bad)
 
     def test_payment_methods_seed_and_manage(self):
         a = self.client_for("acme.localhost", "acme@test.com")

@@ -5,8 +5,8 @@ import { ScanBarcode, Trash2, X, UserRound, Wallet, ShoppingCart, BadgeCheck } f
 import { lookupStockItem } from '../api/inventory'
 import { variantLabel } from '../utils/variant'
 import { lookupCustomers } from '../api/customers'
-import { checkout, getStoreCredit } from '../api/billing'
-import { getShopSettings, getPaymentMethods } from '../api/shopsettings'
+import { checkout, getStoreCredit, quoteBill } from '../api/billing'
+import { getPaymentMethods } from '../api/shopsettings'
 import BillReceipt from '../components/billing/BillReceipt'
 import usePrintSettings from '../hooks/usePrintSettings'
 import ErrorAlert from '../components/common/ErrorAlert'
@@ -39,7 +39,7 @@ export default function POSPage() {
   const [returning, setReturning] = useState(false)   // name was auto-filled from an existing customer
   const [discountType, setDiscountType] = useState('none')
   const [discountValue, setDiscountValue] = useState('')
-  const [taxRate, setTaxRate] = useState(0)            // from shop settings (read-only here)
+  const [quote, setQuote] = useState(null)             // server-computed totals + per-piece GST
   const [paymentMethods, setPaymentMethods] = useState([])
   const [paymentMode, setPaymentMode] = useState('')
   const [error, setError] = useState('')
@@ -54,7 +54,6 @@ export default function POSPage() {
   const toast = useToast()
 
   useEffect(() => {
-    getShopSettings().then(r => setTaxRate(Number(r.data.default_tax_rate))).catch(() => {})
     getPaymentMethods({ active: 1 }).then(r => {
       const list = r.data.results ?? r.data
       setPaymentMethods(list)
@@ -62,17 +61,29 @@ export default function POSPage() {
     }).catch(() => {})
   }, [])
 
+  // Totals come from the server (same maths as checkout: GST slab per piece), so the
+  // counter never shows a figure the bill won't match.
+  const codesKey = cart.map(l => l.code).join(',')
+  useEffect(() => {
+    let live = true
+    const t = setTimeout(() => {
+      quoteBill({ codes: codesKey ? codesKey.split(',') : [], discount_type: discountType, discount_value: discountValue || 0 })
+        .then(r => { if (live) setQuote(r.data) })
+        .catch(() => {})
+    }, 150)
+    return () => { live = false; clearTimeout(t) }
+  }, [codesKey, discountType, discountValue])
+
+  const rateByCode = useMemo(() => Object.fromEntries((quote?.lines ?? []).map(l => [l.code, Number(l.rate)])), [quote])
   const totals = useMemo(() => {
-    const subtotal = cart.reduce((s, l) => s + Number(l.unit_price), 0)
-    let discount = 0
-    if (discountType === 'flat') discount = Math.min(Number(discountValue || 0), subtotal)
-    else if (discountType === 'percent') discount = subtotal * Number(discountValue || 0) / 100
-    const taxable = subtotal - discount
-    const tax = taxable * Number(taxRate || 0) / 100
-    const total = Math.round((taxable + tax) * 100) / 100
+    const fresh = quote && quote.lines.length === cart.length
+    const subtotal = fresh ? Number(quote.subtotal) : cart.reduce((s, l) => s + Number(l.unit_price), 0)
+    const discount = fresh ? Number(quote.discount_amount) : 0
+    const tax = fresh ? Number(quote.tax_amount) : 0
+    const total = fresh ? Number(quote.total) : subtotal
     const credit = Math.min(Number(creditUse || 0), creditBalance, total)
-    return { subtotal, discount, tax, total, credit, toPay: total - credit }
-  }, [cart, discountType, discountValue, taxRate, creditUse, creditBalance])
+    return { subtotal, discount, tax, total, credit, toPay: total - credit, inclusive: !!quote?.prices_include_tax, fresh }
+  }, [quote, cart, creditUse, creditBalance])
 
   const focusScan = () => setTimeout(() => scanRef.current?.focus(), 0)
 
@@ -200,6 +211,7 @@ export default function POSPage() {
                     <div className="flex items-center gap-1.5 text-xs text-zinc-500">
                       {l.variant && <span>{l.variant} ·</span>}
                       <span className="font-mono">{l.code}</span>
+                      {rateByCode[l.code] > 0 && <span>· GST {rateByCode[l.code]}%</span>}
                     </div>
                   </div>
                   <div className="text-sm font-semibold tabular-nums text-zinc-900">{money(l.unit_price)}</div>
@@ -264,7 +276,9 @@ export default function POSPage() {
           <div className="space-y-1.5 p-5 text-sm">
             <Row label="Subtotal" value={money(totals.subtotal)} />
             {totals.discount > 0 && <Row label="Discount" value={`− ${money(totals.discount)}`} />}
-            <Row label={`Tax (${taxRate}%)`} value={money(totals.tax)} />
+            {totals.tax > 0 && (totals.inclusive
+              ? <Row label="Includes GST" value={money(totals.tax)} />
+              : <Row label="GST (CGST + SGST)" value={money(totals.tax)} />)}
             {totals.credit > 0 && <Row label="Store credit" value={`− ${money(totals.credit)}`} />}
             <div className="flex items-baseline justify-between pt-2">
               <span className="font-medium text-zinc-900">{totals.credit > 0 ? 'To pay' : 'Total'}</span>

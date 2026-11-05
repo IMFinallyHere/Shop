@@ -49,10 +49,12 @@ class BillingTestCase(TestCase):
         c.credentials(HTTP_AUTHORIZATION=f"Bearer {resp.data['access']}")
         return c
 
-    def set_tax(self, schema, rate):
+    def set_tax(self, schema, rate=None, slabs=None, inclusive=False):
+        """One flat rate added on top (the pre-slab behaviour), or explicit slabs."""
         with schema_context(schema):
             s = ShopSettings.load()
-            s.default_tax_rate = rate
+            s.tax_slabs = slabs or [{"upto": None, "rate": rate}]
+            s.prices_include_tax = inclusive
             s.save()
 
     def _product_with_units(self, host, client, qty, price="200"):
@@ -142,6 +144,48 @@ class BillingTests(BillingTestCase):
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(Decimal(resp.data["tax_rate"]), Decimal("10.00"))
         self.assertEqual(Decimal(resp.data["tax_amount"]), Decimal("10.00"))  # 10% of 100
+
+    def test_clothing_slabs_per_piece_inclusive(self):
+        """The plan's example bill: 1299 + 650 at 5%, 3200 at 18%, prices include GST."""
+        host = "acme.localhost"
+        self.set_tax("acme", slabs=[{"upto": 2500, "rate": 5}, {"upto": None, "rate": 18}], inclusive=True)
+        c = self.client_for(host, "acme@test.com")
+        codes = []
+        for price in ("1299", "650", "3200"):
+            codes += self._product_with_units(host, c, 1, price=price)[1]
+        quote = c.post("/api/bills/quote/", {"codes": codes}, format="json", HTTP_HOST=host).data
+        resp = c.post("/api/bills/", {"codes": codes, "payment_mode": "Cash", "customer": CUST}, format="json", HTTP_HOST=host)
+        self.assertEqual(resp.status_code, 201, resp.data)
+        b = resp.data
+        self.assertEqual((b["subtotal"], b["total"], b["taxable_amount"], b["tax_amount"]),
+                         ("5149.00", "5149.00", "4568.05", "580.95"))
+        self.assertTrue(b["prices_include_tax"])
+        self.assertEqual([(i["unit_price"], i["tax_rate"]) for i in b["items"]],
+                         [("1299.00", "5.00"), ("650.00", "5.00"), ("3200.00", "18.00")])
+        self.assertEqual([(r["rate"], r["taxable"], r["cgst"], r["sgst"]) for r in b["gst_summary"]],
+                         [("5.00", "1856.19", "46.41", "46.40"), ("18.00", "2711.86", "244.07", "244.07")])
+        # The POS preview is the same computation.
+        self.assertEqual((quote["total"], quote["tax_amount"], quote["missing"]), ("5149.00", "580.95", []))
+        # Returning the lehenga refunds exactly what was paid for it.
+        lehenga = b["items"][2]
+        self.assertEqual(lehenga["refund_amount"], "3200.00")
+        ret = self._return(host, c, b["id"], [lehenga["id"]])
+        self.assertEqual(ret.data["amount"], "3200.00")
+
+    def test_discount_can_move_a_piece_down_a_slab(self):
+        host = "acme.localhost"
+        self.set_tax("acme", slabs=[{"upto": 2500, "rate": 5}, {"upto": None, "rate": 18}], inclusive=False)
+        c = self.client_for(host, "acme@test.com")
+        _, codes = self._product_with_units(host, c, 1, price="2700")
+        q = lambda **d: c.post("/api/bills/quote/", {"codes": codes, **d}, format="json", HTTP_HOST=host).data
+        self.assertEqual(q()["lines"][0]["rate"], "18")
+        off = q(discount_type="flat", discount_value="300")  # 2400 taxable → 5%
+        self.assertEqual((off["lines"][0]["rate"], off["tax_amount"], off["total"]), ("5", "120.00", "2520.00"))
+
+    def test_quote_lists_unavailable_codes(self):
+        c = self.client_for("acme.localhost", "acme@test.com")
+        resp = c.post("/api/bills/quote/", {"codes": ["NOPE"]}, format="json", HTTP_HOST="acme.localhost")
+        self.assertEqual((resp.status_code, resp.data["missing"], resp.data["total"]), (200, ["NOPE"], "0.00"))
 
     def test_invalid_payment_method_rejected(self):
         c = self.client_for("acme.localhost", "acme@test.com")

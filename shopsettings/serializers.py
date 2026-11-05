@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from rest_framework import serializers
 
 import re
@@ -13,17 +15,50 @@ def _tidy_lines(value, what, max_lines=4):
     return "\n".join(lines)
 
 
+class TaxSlabSerializer(serializers.Serializer):
+    # Per-piece taxable value this slab goes up to (₹); null on the last, open-ended slab.
+    upto = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal("0.01"), allow_null=True)
+    rate = serializers.DecimalField(max_digits=5, decimal_places=2, min_value=0, max_value=28)
+
+
+def _num(value):
+    """Decimal → a plain JSON number (2500, 2.5)."""
+    return None if value is None else (int(value) if value == value.to_integral() else float(value))
+
+
 class ShopSettingsSerializer(serializers.ModelSerializer):
+    # Stored and returned as plain JSON numbers; each row is checked with TaxSlabSerializer.
+    tax_slabs = serializers.ListField(child=serializers.DictField())
+
     class Meta:
         model = ShopSettings
         fields = [
-            "default_tax_rate",
+            "tax_slabs", "prices_include_tax",
             "label_width_mm", "label_height_mm", "label_show_name", "label_show_variant",
             "label_show_price", "label_show_code_text", "label_copies",
             "receipt_width_mm", "receipt_printable_mm", "receipt_shop_name", "receipt_address",
             "receipt_phone", "receipt_gstin", "receipt_footer", "auto_print_after_bill",
             "updated_at",
         ]
+
+    def validate_tax_slabs(self, rows):
+        slabs = []
+        for i, row in enumerate(rows, 1):
+            slab = TaxSlabSerializer(data=row)
+            if not slab.is_valid():
+                field, errors = next(iter(slab.errors.items()))
+                raise serializers.ValidationError(f"Slab {i}, {'limit' if field == 'upto' else field}: {errors[0]}")
+            slabs.append(slab.validated_data)
+        if not 1 <= len(slabs) <= 6:
+            raise serializers.ValidationError("Use between 1 and 6 slabs.")
+        if slabs[-1]["upto"] is not None:
+            raise serializers.ValidationError("The last slab must have no upper limit (covers everything above).")
+        limits = [s["upto"] for s in slabs[:-1]]
+        if any(u is None for u in limits):
+            raise serializers.ValidationError("Only the last slab can have no upper limit.")
+        if limits != sorted(set(limits)):
+            raise serializers.ValidationError("Slab limits must go up from one row to the next.")
+        return [{"upto": _num(s["upto"]), "rate": _num(s["rate"])} for s in slabs]
 
     def validate_receipt_address(self, value):
         return _tidy_lines(value, "address")

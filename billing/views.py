@@ -20,7 +20,19 @@ from shopsettings.models import PaymentMethod, ShopSettings, ensure_payment_meth
 from .models import (
     Bill, BillItem, CreditEntry, Return, ReturnItem, credit_balance, money, refund_shares,
 )
-from .serializers import BillSerializer, CheckoutSerializer, CreateReturnSerializer, ReturnSerializer
+from .serializers import BillSerializer, CheckoutSerializer, CreateReturnSerializer, QuoteSerializer, ReturnSerializer
+from .tax import compute_bill
+
+
+def _jsonable(value):
+    """Decimals → strings, like DRF renders model money fields."""
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, dict):
+        return {k: _jsonable(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_jsonable(v) for v in value]
+    return value
 
 
 def is_active_payment_method(name):
@@ -107,6 +119,29 @@ class BillViewSet(viewsets.ModelViewSet):
         data["scanned_item"] = item.id
         return Response(data)
 
+    @action(detail=False, methods=["post"])
+    def quote(self, request):
+        """Totals and GST for a cart, exactly as checkout will compute them; saves nothing.
+
+        Takes ``codes`` (in scan order), ``discount_type`` and ``discount_value``; unknown
+        or sold codes are left out and listed in ``missing``.
+        """
+        serializer = QuoteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        codes = list(dict.fromkeys(data["codes"]))
+        prices = dict(
+            StockItem.objects.filter(code__in=codes, status=StockItem.IN_STOCK).values_list("code", "batch__price")
+        )
+        shop = ShopSettings.load()
+        calc = compute_bill([prices[c] for c in codes if c in prices], data["discount_type"],
+                            data["discount_value"], shop.tax_slabs, shop.prices_include_tax)
+        kept = [c for c in codes if c in prices]
+        for line, code in zip(calc["lines"], kept):
+            line["code"] = code
+        calc["missing"] = [c for c in codes if c not in prices]
+        return Response(_jsonable(calc))
+
     def create(self, request, *args, **kwargs):
         serializer = CheckoutSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -119,8 +154,8 @@ class BillViewSet(viewsets.ModelViewSet):
                 {"payment_mode": "Not an enabled payment method for this shop."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        # Tax rate comes from the shop's settings, not the request.
-        tax_rate = Decimal(ShopSettings.load().default_tax_rate)
+        # GST comes from the shop's settings, never the request.
+        shop = ShopSettings.load()
 
         with transaction.atomic():
             units = list(
@@ -136,18 +171,11 @@ class BillViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            subtotal = money(sum(u.batch.price for u in units))
+            units.sort(key=lambda u: codes.index(u.code))  # bill lines in scan order
             dtype = data["discount_type"]
             dvalue = Decimal(data["discount_value"])
-            if dtype == Bill.FLAT:
-                discount_amount = money(min(dvalue, subtotal))
-            elif dtype == Bill.PERCENT:
-                discount_amount = money(subtotal * dvalue / 100)
-            else:
-                discount_amount = Decimal("0.00")
-            taxable = subtotal - discount_amount
-            tax_amount = money(taxable * tax_rate / 100)
-            total = money(taxable + tax_amount)
+            calc = compute_bill([u.batch.price for u in units], dtype, dvalue, shop.tax_slabs, shop.prices_include_tax)
+            total = calc["total"]
 
             cust = data["customer"]
             customer_id, cname, cphone = resolve_customer(cust["name"], cust["phone"])
@@ -165,16 +193,22 @@ class BillViewSet(viewsets.ModelViewSet):
 
             bill = Bill.objects.create(
                 customer_id=customer_id, customer_name=cname, customer_phone=cphone,
-                subtotal=subtotal, discount_type=dtype, discount_value=dvalue,
-                discount_amount=discount_amount, tax_rate=tax_rate, tax_amount=tax_amount,
-                total=total, credit_used=credit_used, payment_mode=data["payment_mode"],
+                subtotal=calc["subtotal"], discount_type=dtype, discount_value=dvalue,
+                discount_amount=calc["discount_amount"], tax_rate=calc["tax_rate"],
+                taxable_amount=calc["taxable_amount"], tax_amount=calc["tax_amount"],
+                total=total, prices_include_tax=calc["prices_include_tax"],
+                credit_used=credit_used, payment_mode=data["payment_mode"],
                 created_by=request.user,
             )
             if credit_used > 0:
                 CreditEntry.objects.create(customer_id=customer_id, amount=-credit_used, bill=bill)
             BillItem.objects.bulk_create([
-                BillItem(bill=bill, stock_item=u, product_name=str(u.variant), unit_price=u.batch.price)
-                for u in units
+                BillItem(
+                    bill=bill, stock_item=u, product_name=str(u.variant), unit_price=line["price"],
+                    discount_share=line["discount_share"], taxable_value=line["taxable"],
+                    tax_rate=line["rate"], tax_amount=line["tax"],
+                )
+                for u, line in zip(units, calc["lines"])
             ])
             StockItem.objects.filter(id__in=[u.id for u in units]).update(status=StockItem.SOLD)
             recount(variant_ids={u.variant_id for u in units})

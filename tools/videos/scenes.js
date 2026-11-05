@@ -209,12 +209,12 @@ module.exports = {
   'setup-shop': {
     steps: [
       {
-        en: 'Open Settings. On Billing and tax, enter your G S T rate and save.',
-        hi: 'Settings खोलें। Billing and tax में अपना G S T रेट डालें और सेव करें।',
+        en: 'Open Settings. On Billing and tax, pick the Indian clothing G S T rates and save.',
+        hi: 'Settings खोलें। Billing and tax में Indian clothing G S T रेट चुनें और सेव करें।',
         do: async (d) => {
           await d.goto('/settings')
-          await d.type(d.page.getByLabel('Tax rate'), '5')
-          await d.click(d.page.getByRole('button', { name: 'Save' }))
+          await d.click(d.page.getByRole('button', { name: /Indian clothing rates/ }))
+          await d.click(d.page.getByRole('button', { name: 'Save GST settings' }))
         },
       },
       {
