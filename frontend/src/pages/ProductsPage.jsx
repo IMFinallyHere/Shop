@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Archive, Layers, PackagePlus, Pencil, Plus, Shirt, Trash2, Truck, X } from 'lucide-react'
+import { Archive, Layers, PackagePlus, Pencil, Plus, Printer, Shirt, Trash2, Truck, X } from 'lucide-react'
 import {
   getProducts, createProduct, updateProduct, deleteProduct, addStock,
-  updateVariant, deleteVariant, getCategories, getSellers,
+  updateVariant, deleteVariant, getCategories, getSellers, getStockItems,
 } from '../api/inventory'
 import { getColors, getSizes } from '../api/shopsettings'
 import useQuery, { asList } from '../hooks/useQuery'
@@ -57,6 +57,7 @@ export default function ProductsPage() {
   const [colors, setColors] = useState([])
   const [sizes, setSizes] = useState([])
   const [printItems, setPrintItems] = useState(null)
+  const [printingId, setPrintingId] = useState(null)
   const toast = useToast()
 
   const { data, loading, error: loadError, reload } = useQuery(
@@ -145,6 +146,20 @@ export default function ProductsPage() {
   const openAddStock = (p) => {
     select(p); setLines([{ ...EMPTY_LINE }]); setLineErrors([]); setError(''); setModal('addstock')
     loadStockOptions()
+  }
+  // Preview/print labels for every in-stock unit of a product (the list API is paged, so walk the pages).
+  const openPrint = async (p) => {
+    setPrintingId(p.id); setError('')
+    try {
+      const items = []
+      for (let page = 1; page <= 50; page++) {
+        const { data } = await getStockItems({ product: p.id, status: 'in_stock', page })
+        items.push(...(data.results ?? data))
+        if (!data.next) break
+      }
+      if (items.length) setPrintItems(items); else toast('No units in stock to print', 'error')
+    } catch { setError('Failed to load units to print.') }
+    finally { setPrintingId(null) }
   }
   const openVariants = (p) => { select(p); setError(''); setModal('variants') }
   const closeModal = () => { setModal(null); setSelectedId(null); setSnapshot(null); setError(''); setFieldErrors({}) }
@@ -340,8 +355,11 @@ export default function ProductsPage() {
             <Td className="text-right">
               <div className="flex items-center justify-end gap-1">
                 <Button variant="ghost" size="xs" icon={PackagePlus} onClick={() => openAddStock(p)} className="hidden md:inline-flex">Add stock</Button>
+                <Button variant="ghost" size="xs" icon={Printer} onClick={() => openPrint(p)} loading={printingId === p.id}
+                  disabled={p.stock_quantity === 0} title="Preview & print barcodes" aria-label="Print barcodes" className="hidden md:inline-flex" />
                 <ActionMenu actions={[
                   { label: 'Add stock', icon: PackagePlus, onClick: () => openAddStock(p) },
+                  { label: 'Print barcodes', icon: Printer, onClick: () => openPrint(p) },
                   { label: 'Variants', icon: Layers, onClick: () => openVariants(p) },
                   { label: 'Edit', icon: Pencil, onClick: () => openEdit(p) },
                   { label: 'Delete', icon: Trash2, onClick: () => openDelete(p), variant: 'danger' },
@@ -405,7 +423,7 @@ export default function ProductsPage() {
       <ConfirmDialog isOpen={modal === 'delete'} onClose={closeModal} onConfirm={handleDelete} loading={saving} error={error}
         title="Delete product" message={`Delete "${selected ? shown(selected) : ''}"? This removes the product and all its stock units.`} />
 
-      <PrintBarcodes items={printItems} title={`New stock — ${hideName ? '' : printItems?.[0]?.product_name ?? ''}`} onClose={() => setPrintItems(null)} />
+      <PrintBarcodes items={printItems} title={`Barcodes${hideName ? '' : ` — ${printItems?.[0]?.product_name ?? ''}`}`} onClose={() => setPrintItems(null)} />
     </div>
   )
 }
