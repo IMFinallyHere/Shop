@@ -190,7 +190,9 @@ class Command(BaseCommand):
 
         copy("billing_bill", ["id", "customer_id", "customer_name", "customer_phone", "subtotal", "discount_type",
                               "discount_value", "discount_amount", "tax_rate", "tax_amount", "total", "payment_mode",
-                              "credit_used", "created_at", "prices_include_tax"], bill_rows)
+                              "credit_used", "created_at", "prices_include_tax", "amount_paid", "balance_due"],
+             # Seeded bills are paid in full: amount_paid = total - credit_used, nothing owed.
+             (row + (row[10] - row[12], 0) for row in bill_rows))
         copy("billing_billitem", ["id", "bill_id", "stock_item_id", "product_name", "unit_price"],
              ((iid, b, u[6], "Perf product", u[5]) for iid, b, u, _ in item_rows))
         reset_sequence("billing_bill")
@@ -211,7 +213,8 @@ class Command(BaseCommand):
                 credit_rows.append((bill[1], u[5], r, at + timedelta(days=1)))
             restock.append(u[6])
         copy("billing_return", ["id", "bill_id", "mode", "payment_mode", "amount", "reason", "customer_id",
-                                "customer_name", "customer_phone", "created_at"], ret_rows)
+                                "customer_name", "customer_phone", "created_at", "due_cleared"],
+             (row + (0,) for row in ret_rows))
         copy("billing_returnitem", ["id", "ret_id", "bill_item_id", "refund_amount"], ret_items)
         copy("billing_creditentry", ["customer_id", "amount", "ret_id", "created_at"], credit_rows)
         with connection.cursor() as c:

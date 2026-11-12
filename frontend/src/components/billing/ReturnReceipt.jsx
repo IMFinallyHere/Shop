@@ -43,7 +43,12 @@ export default function ReturnReceipt({ ret, onClose }) {
       </table>
       <div className="flex justify-between border-t border-gray-400 pt-[0.2em] text-[1.15em] font-bold"><span>Total</span><span>{money(ret.amount)}</span></div>
       <div className="pt-[0.2em] text-right text-[0.85em] text-gray-500">
-        {ret.mode === 'credit' ? 'Added to store credit' : `Refunded via ${ret.payment_mode?.toUpperCase()}`}
+        {Number(ret.due_cleared) > 0 && <div>{money(ret.due_cleared)} adjusted against balance due</div>}
+        {Number(ret.amount) - Number(ret.due_cleared) > 0 && (
+          ret.mode === 'credit'
+            ? `${money(Number(ret.amount) - Number(ret.due_cleared))} added to store credit`
+            : `${money(Number(ret.amount) - Number(ret.due_cleared))} refunded via ${ret.payment_mode?.toUpperCase()}`
+        )}
       </div>
       {ret.reason && <div className="mt-[0.5em] text-[0.85em] text-gray-500">Reason: {ret.reason}</div>}
     </ReceiptFrame>

@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import clsx from 'clsx'
-import { ScanBarcode, Trash2, X, UserRound, Wallet, ShoppingCart, BadgeCheck } from 'lucide-react'
+import { ScanBarcode, Trash2, X, UserRound, Wallet, ShoppingCart, BadgeCheck, HandCoins } from 'lucide-react'
 import { lookupStockItem } from '../api/inventory'
 import { variantLabel } from '../utils/variant'
 import { lookupCustomers } from '../api/customers'
-import { checkout, getStoreCredit, quoteBill } from '../api/billing'
+import { checkout, getDuesSummary, getStoreCredit, quoteBill } from '../api/billing'
 import { getPaymentMethods } from '../api/shopsettings'
 import BillReceipt from '../components/billing/BillReceipt'
 import usePrintSettings from '../hooks/usePrintSettings'
@@ -50,6 +50,8 @@ export default function POSPage() {
   const hideName = !!printSettings.hide_product_name
   const [creditBalance, setCreditBalance] = useState(0)   // this shop's store credit for the phone
   const [creditUse, setCreditUse] = useState('')
+  const [owed, setOwed] = useState({ amount: 0, bills: 0 })   // what this customer already owes the shop
+  const [paidNow, setPaidNow] = useState('')                   // '' = pay the full amount now
   const [confirmClear, setConfirmClear] = useState(false)
   const scanRef = useRef(null)
   const checkoutRef = useRef(null)
@@ -84,8 +86,11 @@ export default function POSPage() {
     const tax = fresh ? Number(quote.tax_amount) : 0
     const total = fresh ? Number(quote.total) : subtotal
     const credit = Math.min(Number(creditUse || 0), creditBalance, total)
-    return { subtotal, discount, tax, total, credit, toPay: total - credit, inclusive: !!quote?.prices_include_tax, fresh }
-  }, [quote, cart, creditUse, creditBalance])
+    const toPay = total - credit
+    // Amount collected now; whatever is left is written down as owed by the customer.
+    const paid = paidNow === '' ? toPay : Math.min(Math.max(Number(paidNow) || 0, 0), toPay)
+    return { subtotal, discount, tax, total, credit, toPay, paid, due: Math.max(toPay - paid, 0), inclusive: !!quote?.prices_include_tax, fresh }
+  }, [quote, cart, creditUse, creditBalance, paidNow])
 
   const focusScan = () => setTimeout(() => scanRef.current?.focus(), 0)
 
@@ -121,9 +126,10 @@ export default function POSPage() {
   const removeLine = (code) => { setCart(c => c.filter(l => l.code !== code)); focusScan() }
 
   const handlePhoneBlur = async () => {
-    setCreditBalance(0); setCreditUse('')
+    setCreditBalance(0); setCreditUse(''); setOwed({ amount: 0, bills: 0 })
     if (customer.phone.length !== 10) return
     getStoreCredit(customer.phone).then(r => setCreditBalance(Number(r.data.balance))).catch(() => {})
+    getDuesSummary(customer.phone).then(r => setOwed({ amount: Number(r.data.balance_due), bills: r.data.open_bills })).catch(() => {})
     if (customer.name) return
     try {
       const { data } = await lookupCustomers(customer.phone)
@@ -133,18 +139,19 @@ export default function POSPage() {
   }
 
   const customerReady = customer.phone.length === 10 && customer.name.trim().length > 0
-  const canCheckout = !saving && cart.length > 0 && !!paymentMode && customerReady
+  const needsMethod = totals.paid > 0
+  const canCheckout = !saving && cart.length > 0 && (!!paymentMode || !needsMethod) && customerReady
 
   const resetBill = () => {
     setCart([]); setCustomer({ name: '', phone: '' }); setReturning(false)
     setDiscountType('none'); setDiscountValue('')
-    setCreditBalance(0); setCreditUse(''); setScanError(''); setError('')
+    setCreditBalance(0); setCreditUse(''); setOwed({ amount: 0, bills: 0 }); setPaidNow(''); setScanError(''); setError('')
   }
 
   const handleCheckout = async () => {
     if (cart.length === 0) return
     if (!customerReady) { setError('Customer name and a 10-digit phone are required.'); return }
-    if (!paymentMode) return
+    if (needsMethod && !paymentMode) return
     setSaving(true); setError('')
     try {
       const { data } = await checkout({
@@ -152,15 +159,16 @@ export default function POSPage() {
         customer: { name: customer.name.trim(), phone: customer.phone },
         discount_type: discountType,
         discount_value: discountValue || 0,
-        payment_mode: paymentMode,
+        payment_mode: needsMethod ? paymentMode : '',
         credit_used: totals.credit.toFixed(2),
+        amount_paid: totals.paid.toFixed(2),
       })
       setReceipt(data)
       resetBill()
       toast(`Bill ${data.number} saved`)
     } catch (e) {
       const d = e.response?.data
-      setError(d?.codes || d?.customer?.phone?.[0] || d?.customer?.name?.[0] || d?.customer?.[0] || d?.credit_used || d?.detail || 'Checkout failed.')
+      setError(d?.codes || d?.customer?.phone?.[0] || d?.customer?.name?.[0] || d?.customer?.[0] || d?.credit_used || d?.amount_paid || d?.payment_mode || d?.detail || 'Checkout failed.')
     } finally { setSaving(false) }
   }
   useEffect(() => { checkoutRef.current = canCheckout ? handleCheckout : null })
@@ -233,7 +241,7 @@ export default function POSPage() {
           <div className="space-y-3 p-5">
             <div className="flex items-center gap-2 text-sm font-medium text-zinc-900"><UserRound size={16} className="text-zinc-400" />Customer</div>
             <Input value={customer.phone} onBlur={handlePhoneBlur}
-              onChange={e => { setCustomer({ ...customer, phone: e.target.value.replace(/\D/g, '').slice(0, 10) }); setCreditBalance(0); setCreditUse(''); setReturning(false) }}
+              onChange={e => { setCustomer({ ...customer, phone: e.target.value.replace(/\D/g, '').slice(0, 10) }); setCreditBalance(0); setCreditUse(''); setOwed({ amount: 0, bills: 0 }); setReturning(false) }}
               type="tel" inputMode="numeric" pattern="[0-9]{10}" maxLength={10} autoComplete="off"
               required placeholder="10-digit phone" aria-label="Customer phone" />
             <div className="relative">
@@ -245,6 +253,13 @@ export default function POSPage() {
                 </span>
               )}
             </div>
+            {owed.amount > 0 && (
+              <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900" role="status">
+                <HandCoins size={16} className="mt-0.5 shrink-0" />
+                <span><span className="font-semibold">{customer.name || 'This customer'}</span> owes <span className="font-semibold">{money(owed.amount)}</span> from {owed.bills} earlier bill{owed.bills !== 1 ? 's' : ''}.
+                  {' '}<Link to="/credit" className="font-medium underline">Collect</Link></span>
+              </div>
+            )}
             {creditBalance > 0 && (
               <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3">
                 <div className="mb-2 flex items-center gap-2 text-sm text-emerald-800">
@@ -273,6 +288,16 @@ export default function POSPage() {
                 ? <p className="text-sm text-zinc-500">No payment methods set up. <Link to="/settings" className="font-medium text-brand-600 hover:underline">Add one in Settings</Link></p>
                 : <SegmentedControl stretch options={paymentMethods.map(m => ({ value: m.name, label: m.name }))} value={paymentMode} onChange={setPaymentMode} />}
             </Field>
+            {totals.toPay > 0 && (
+              <Field label="Paid now" hint={totals.due > 0 ? 'The rest is added to what this customer owes.' : undefined}>
+                <div className="flex gap-2">
+                  <Input type="number" min="0" max={totals.toPay} value={paidNow} onChange={e => setPaidNow(e.target.value)}
+                    placeholder={String(totals.toPay)} aria-label="Amount paid now" className="flex-1" />
+                  <Button size="md" onClick={() => setPaidNow('')}>Full</Button>
+                  <Button size="md" onClick={() => setPaidNow('0')}>Pay later</Button>
+                </div>
+              </Field>
+            )}
           </div>
 
           <div className="space-y-1.5 p-5 text-sm">
@@ -286,12 +311,20 @@ export default function POSPage() {
               <span className="font-medium text-zinc-900">{totals.credit > 0 ? 'To pay' : 'Total'}</span>
               <span className="text-2xl font-semibold tracking-tight tabular-nums text-zinc-900">{money(totals.toPay)}</span>
             </div>
+            {totals.due > 0 && (
+              <>
+                <Row label="Paid now" value={money(totals.paid)} />
+                <div className="flex justify-between font-medium text-amber-700"><span>Balance due (credit)</span><span className="tabular-nums">{money(totals.due)}</span></div>
+              </>
+            )}
           </div>
 
           <div className="p-5">
             <ErrorAlert message={error} onDismiss={() => setError('')} />
             <Button variant="primary" size="lg" className="w-full" onClick={handleCheckout} disabled={!canCheckout} loading={saving}>
-              {saving ? 'Processing…' : `Charge ${money(totals.toPay)}`}
+              {saving ? 'Processing…' : totals.due > 0
+                ? (totals.paid > 0 ? `Charge ${money(totals.paid)} · ${money(totals.due)} on credit` : `Bill ${money(totals.due)} on credit`)
+                : `Charge ${money(totals.toPay)}`}
             </Button>
             <p className="mt-2.5 text-center text-xs text-zinc-500">
               {cart.length > 0 && !customerReady

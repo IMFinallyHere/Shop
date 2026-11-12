@@ -3,7 +3,7 @@ from datetime import datetime, time, timedelta
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Count, OuterRef, Prefetch, Q, Subquery, Sum
+from django.db.models import Count, Min, OuterRef, Prefetch, Q, Subquery, Sum
 from django.db.models.functions import TruncDate
 from django.utils import timezone
 from django_tenants.utils import get_public_schema_name, schema_context
@@ -18,9 +18,13 @@ from inventory.models import LOW_STOCK, ProductVariant, StockItem
 from inventory.stock import recount
 from shopsettings.models import PaymentMethod, ShopSettings, ensure_payment_methods
 from .models import (
-    Bill, BillItem, CreditEntry, Return, ReturnItem, credit_balance, money, refund_shares,
+    Bill, BillItem, CreditEntry, DueAllocation, DuePayment, Return, ReturnItem, credit_balance, money,
+    refund_shares,
 )
-from .serializers import BillSerializer, CheckoutSerializer, CreateReturnSerializer, QuoteSerializer, ReturnSerializer
+from .serializers import (
+    BillSerializer, CheckoutSerializer, CreateReturnSerializer, DuePaymentSerializer, QuoteSerializer,
+    ReceiveDueSerializer, ReturnSerializer,
+)
 from .tax import compute_bill
 
 
@@ -148,12 +152,6 @@ class BillViewSet(viewsets.ModelViewSet):
         data = serializer.validated_data
         codes = list(dict.fromkeys(data["codes"]))  # de-dupe, keep order
 
-        # Payment method must be one the shop has enabled.
-        if not is_active_payment_method(data["payment_mode"]):
-            return Response(
-                {"payment_mode": "Not an enabled payment method for this shop."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
         # GST comes from the shop's settings, never the request.
         shop = ShopSettings.load()
 
@@ -191,13 +189,29 @@ class BillViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
 
+            # What's left after store credit is collected now; any shortfall is owed (balance_due).
+            to_pay = total - credit_used
+            amount_paid = money(data["amount_paid"]) if "amount_paid" in data else to_pay
+            if amount_paid > to_pay:
+                transaction.set_rollback(True)
+                return Response({"amount_paid": f"Can't be more than the amount to pay ({to_pay})."},
+                                status=status.HTTP_400_BAD_REQUEST)
+            payment_mode = data["payment_mode"]
+            # A payment method is only needed when money is actually taken now, and it
+            # must be one the shop has enabled.
+            if (amount_paid > 0 or payment_mode) and not is_active_payment_method(payment_mode):
+                transaction.set_rollback(True)
+                return Response({"payment_mode": "Not an enabled payment method for this shop."},
+                                status=status.HTTP_400_BAD_REQUEST)
+
             bill = Bill.objects.create(
                 customer_id=customer_id, customer_name=cname, customer_phone=cphone,
                 subtotal=calc["subtotal"], discount_type=dtype, discount_value=dvalue,
                 discount_amount=calc["discount_amount"], tax_rate=calc["tax_rate"],
                 taxable_amount=calc["taxable_amount"], tax_amount=calc["tax_amount"],
                 total=total, prices_include_tax=calc["prices_include_tax"],
-                credit_used=credit_used, payment_mode=data["payment_mode"],
+                credit_used=credit_used, payment_mode=payment_mode,
+                amount_paid=amount_paid, balance_due=to_pay - amount_paid,
                 created_by=request.user,
             )
             if credit_used > 0:
@@ -243,13 +257,7 @@ class ReturnViewSet(viewsets.ModelViewSet):
             return Response({"bill": "Bill not found."}, status=status.HTTP_400_BAD_REQUEST)
 
         mode = data["mode"]
-        payment_mode = ""
-        if mode == Return.REFUND:
-            payment_mode = data["payment_mode"]
-            if not is_active_payment_method(payment_mode):
-                return Response({"payment_mode": "Not an enabled payment method for this shop."},
-                                status=status.HTTP_400_BAD_REQUEST)
-        elif not bill.customer_id:  # only bills from before customers were mandatory
+        if mode == Return.CREDIT and not bill.customer_id:  # only bills from before customers were mandatory
             return Response({"mode": "Store credit needs a customer on the bill."},
                             status=status.HTTP_400_BAD_REQUEST)
 
@@ -274,8 +282,22 @@ class ReturnViewSet(viewsets.ModelViewSet):
                                 status=status.HTTP_400_BAD_REQUEST)
 
             amount = sum((shares[i] for i in item_ids), Decimal("0.00"))
+            # Returned value first cancels what the customer still owes on this bill; only
+            # the rest is paid out or credited.
+            locked = Bill.objects.select_for_update().get(pk=bill.pk)
+            due_cleared = min(locked.balance_due, amount)
+            payout = amount - due_cleared
+            payment_mode = ""
+            if mode == Return.REFUND and payout > 0:
+                payment_mode = data["payment_mode"]
+                if not is_active_payment_method(payment_mode):
+                    transaction.set_rollback(True)
+                    return Response({"payment_mode": "Not an enabled payment method for this shop."},
+                                    status=status.HTTP_400_BAD_REQUEST)
+            if due_cleared > 0:
+                Bill.objects.filter(pk=bill.pk).update(balance_due=locked.balance_due - due_cleared)
             ret = Return.objects.create(
-                bill=bill, mode=mode, payment_mode=payment_mode, amount=amount,
+                bill=bill, mode=mode, payment_mode=payment_mode, amount=amount, due_cleared=due_cleared,
                 reason=data["reason"], customer_id=bill.customer_id,
                 customer_name=bill.customer_name, customer_phone=bill.customer_phone,
                 created_by=request.user,
@@ -288,8 +310,8 @@ class ReturnViewSet(viewsets.ModelViewSet):
                 status=StockItem.IN_STOCK
             )
             recount(variant_ids={u.variant_id for u in units})
-            if mode == Return.CREDIT:
-                CreditEntry.objects.create(customer_id=bill.customer_id, amount=amount, ret=ret)
+            if mode == Return.CREDIT and payout > 0:
+                CreditEntry.objects.create(customer_id=bill.customer_id, amount=payout, ret=ret)
 
         ret = self.get_queryset().get(pk=ret.pk)
         return Response(ReturnSerializer(ret, context={"request": request}).data,
@@ -306,6 +328,105 @@ class StoreCreditView(APIView):
         phone = request.query_params.get("phone", "").strip()
         customer_id = find_customer_id(phone) if phone else None
         return Response({"customer_id": customer_id, "balance": str(credit_balance(customer_id))})
+
+
+class DuesView(APIView):
+    """``GET /dues/`` -> customers who owe this shop money, biggest first (``?search=`` name/phone)."""
+
+    permission_classes = [ShopPermission]
+    perm_model = "billing.duepayment"
+
+    def get(self, request):
+        from customers.models import Customer
+
+        rows = list(
+            Bill.objects.filter(balance_due__gt=0, customer_id__isnull=False)
+            .order_by().values("customer_id")
+            .annotate(owed=Sum("balance_due"), open_bills=Count("id"), oldest=Min("created_at"))
+        )
+        with schema_context(get_public_schema_name()):
+            people = {c.id: c for c in Customer.objects.filter(id__in=[r["customer_id"] for r in rows])}
+        q = request.query_params.get("search", "").strip().lower()
+        out = []
+        for r in rows:
+            c = people.get(r["customer_id"])
+            if not c or (q and q not in c.name.lower() and q not in c.phone):
+                continue
+            out.append({"customer_id": c.id, "name": c.name, "phone": c.phone, "owed": str(r["owed"]),
+                        "open_bills": r["open_bills"], "oldest": r["oldest"]})
+        out.sort(key=lambda r: Decimal(r["owed"]), reverse=True)
+        return Response({
+            "total_outstanding": str(sum((Decimal(r["owed"]) for r in out), Decimal("0.00"))),
+            "customers_owing": len(out),
+            "results": out,
+        })
+
+
+class DuesSummaryView(APIView):
+    """``GET /dues/summary/?phone=`` -> what that customer owes, for the note shown while billing."""
+
+    permission_classes = [ShopPermission]
+    perms = {"GET": "billing.add_bill"}  # same as the customer lookup the POS already does
+
+    def get(self, request):
+        phone = request.query_params.get("phone", "").strip()
+        customer_id = find_customer_id(phone) if phone else None
+        owed = Bill.objects.filter(customer_id=customer_id, balance_due__gt=0) if customer_id else Bill.objects.none()
+        agg = owed.aggregate(s=Sum("balance_due"), n=Count("id"))
+        return Response({"customer_id": customer_id, "balance_due": str(agg["s"] or Decimal("0.00")),
+                         "open_bills": agg["n"]})
+
+
+class DuePaymentView(APIView):
+    """``GET /dues/payments/?customer_id=`` lists payments received; ``POST`` receives one.
+
+    The amount is applied to the customer's oldest unpaid bills first.
+    """
+
+    permission_classes = [ShopPermission]
+    perm_model = "billing.duepayment"
+
+    def get(self, request):
+        qs = DuePayment.objects.all()
+        cid = request.query_params.get("customer_id")
+        if cid and cid.isdigit():
+            qs = qs.filter(customer_id=int(cid))
+        return Response(DuePaymentSerializer(qs[:50], many=True).data)
+
+    def post(self, request):
+        serializer = ReceiveDueSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        amount = money(data["amount"])
+        if not is_active_payment_method(data["payment_mode"]):
+            return Response({"payment_mode": "Not an enabled payment method for this shop."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        with transaction.atomic():
+            bills = list(
+                Bill.objects.select_for_update()
+                .filter(customer_id=data["customer_id"], balance_due__gt=0).order_by("created_at", "id")
+            )
+            owed = sum((b.balance_due for b in bills), Decimal("0.00"))
+            if amount > owed:
+                transaction.set_rollback(True)
+                msg = f"The customer owes only {owed}." if bills else "This customer owes nothing."
+                return Response({"amount": msg}, status=status.HTTP_400_BAD_REQUEST)
+            payment = DuePayment.objects.create(
+                customer_id=data["customer_id"], customer_name=bills[0].customer_name,
+                customer_phone=bills[0].customer_phone, amount=amount, payment_mode=data["payment_mode"],
+                note=data["note"], created_by=request.user,
+            )
+            left, allocations = amount, []
+            for bill in bills:
+                if left <= 0:
+                    break
+                part = min(bill.balance_due, left)
+                Bill.objects.filter(pk=bill.pk).update(balance_due=bill.balance_due - part)
+                allocations.append(DueAllocation(payment=payment, bill=bill, amount=part))
+                left -= part
+            DueAllocation.objects.bulk_create(allocations)
+        return Response({**DuePaymentSerializer(payment).data, "balance_due": str(owed - amount)},
+                        status=status.HTTP_201_CREATED)
 
 
 class DashboardView(APIView):
@@ -325,6 +446,8 @@ class DashboardView(APIView):
 
         agg = Bill.objects.filter(**in_today).aggregate(total=Sum("total"), count=Count("id"))
         sales, count = agg["total"] or Decimal("0"), agg["count"]
+        owing = Bill.objects.filter(balance_due__gt=0).aggregate(
+            s=Sum("balance_due"), n=Count("customer_id", distinct=True))
         items_sold = BillItem.objects.filter(**{f"bill__{k}": v for k, v in in_today.items()}).count()
         refunds = Return.objects.filter(**in_today).aggregate(s=Sum("amount"))["s"] or Decimal("0")
 
@@ -351,7 +474,7 @@ class DashboardView(APIView):
 
         recent = [
             {"id": b.id, "number": b.number, "customer_name": b.customer_name, "total": str(b.total),
-             "payment_mode": b.payment_mode, "created_at": b.created_at}
+             "payment_mode": b.payment_mode, "balance_due": str(b.balance_due), "created_at": b.created_at}
             for b in Bill.objects.all()[:5]
         ]
         recent_returns = [
@@ -367,6 +490,7 @@ class DashboardView(APIView):
             "today": {
                 "sales": str(sales), "bills": count, "items_sold": items_sold,
                 "avg_bill": str(money(sales / count) if count else Decimal("0")), "refunds": str(refunds),
+                "outstanding": str(owing["s"] or Decimal("0")), "customers_owing": owing["n"],
             },
             "last_7_days": last_7_days,
             "low_stock": low_stock,

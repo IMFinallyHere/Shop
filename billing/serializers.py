@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
-from .models import Bill, BillItem, Return, ReturnItem, refund_shares
+from .models import Bill, BillItem, DuePayment, Return, ReturnItem, refund_shares
 
 
 class BillItemSerializer(serializers.ModelSerializer):
@@ -36,7 +36,7 @@ class BillReturnSummarySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Return
-        fields = ["id", "number", "mode", "payment_mode", "amount", "created_at"]
+        fields = ["id", "number", "mode", "payment_mode", "amount", "due_cleared", "created_at"]
 
 
 class BillSerializer(serializers.ModelSerializer):
@@ -53,7 +53,7 @@ class BillSerializer(serializers.ModelSerializer):
             "id", "number", "customer_id", "customer_name", "customer_phone",
             "subtotal", "discount_type", "discount_value", "discount_amount",
             "tax_rate", "taxable_amount", "tax_amount", "total", "prices_include_tax",
-            "gst_summary", "credit_used", "payment_mode",
+            "gst_summary", "credit_used", "payment_mode", "amount_paid", "balance_due",
             "items", "returns", "refunded_total", "shop_name", "created_at",
         ]
 
@@ -105,9 +105,12 @@ class CheckoutSerializer(serializers.Serializer):
     )
     discount_value = serializers.DecimalField(max_digits=10, decimal_places=2, default=0)
     # GST is NOT taken from the client: the shop's slabs are applied server-side.
-    payment_mode = serializers.CharField()
+    # Method the amount paid now went through; optional when nothing is paid now.
+    payment_mode = serializers.CharField(required=False, allow_blank=True, default="")
     # Store credit to apply (capped by the customer's balance and the bill total).
     credit_used = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0, default=0)
+    # Collected now; the rest of (total - credit_used) is left owing. Omitted = paid in full.
+    amount_paid = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0, required=False)
 
 
 class ReturnItemSerializer(serializers.ModelSerializer):
@@ -129,7 +132,7 @@ class ReturnSerializer(serializers.ModelSerializer):
     class Meta:
         model = Return
         fields = [
-            "id", "number", "bill", "bill_number", "mode", "payment_mode", "amount", "reason",
+            "id", "number", "bill", "bill_number", "mode", "payment_mode", "amount", "due_cleared", "reason",
             "customer_id", "customer_name", "customer_phone", "items", "shop_name", "created_at",
         ]
 
@@ -145,3 +148,19 @@ class CreateReturnSerializer(serializers.Serializer):
     mode = serializers.ChoiceField(choices=[c[0] for c in Return.MODE_CHOICES])
     payment_mode = serializers.CharField(required=False, allow_blank=True, default="")
     reason = serializers.CharField(required=False, allow_blank=True, default="", max_length=255)
+
+
+class DuePaymentSerializer(serializers.ModelSerializer):
+    number = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = DuePayment
+        fields = ["id", "number", "customer_id", "customer_name", "customer_phone", "amount",
+                  "payment_mode", "note", "created_at"]
+
+
+class ReceiveDueSerializer(serializers.Serializer):
+    customer_id = serializers.IntegerField()
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal("0.01"))
+    payment_mode = serializers.CharField()
+    note = serializers.CharField(required=False, allow_blank=True, default="", max_length=255)

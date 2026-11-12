@@ -44,7 +44,10 @@ export default function SalesPage() {
             <Td className="whitespace-nowrap text-zinc-500">{formatDateTime(b.created_at)}</Td>
             <Td>{b.customer_name || '—'}</Td>
             <Td>{b.items?.length ?? '—'}</Td>
-            <Td><Badge>{b.payment_mode}</Badge></Td>
+            <Td>
+              {b.payment_mode ? <Badge>{b.payment_mode}</Badge> : null}
+              {Number(b.balance_due) > 0 && <Badge tone="warning" className={b.payment_mode ? 'ml-1' : ''}>Due {money(b.balance_due)}</Badge>}
+            </Td>
             <Td className="text-right">
               <div className="font-medium tabular-nums text-zinc-900">{money(b.total)}</div>
               <ReturnBadge bill={b} />

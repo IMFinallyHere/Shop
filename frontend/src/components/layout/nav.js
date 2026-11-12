@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, ScanBarcode, Receipt, Undo2, Users, Shirt, Boxes, FolderTree, Truck,
-  Settings, UserCog, ShieldCheck, KeyRound,
+  Settings, UserCog, ShieldCheck, KeyRound, HandCoins,
 } from 'lucide-react'
 
 export const NAV = [
@@ -12,6 +12,7 @@ export const NAV = [
       { to: '/sales', label: 'Sales', icon: Receipt, perm: 'billing.view_bill' },
       { to: '/returns', label: 'Returns', icon: Undo2, perm: 'billing.view_return' },
       { to: '/customers', label: 'Customers', icon: Users, perm: 'customers.view_customer' },
+      { to: '/credit', label: 'Credit', icon: HandCoins, perm: 'billing.view_duepayment' },
     ],
   },
   {

@@ -30,6 +30,7 @@ class CustomerViewSet(viewsets.ViewSet):
         customers = Customer.objects.filter(Exists(bills)).annotate(
             n_bills=Subquery(bills.annotate(n=Count("id")).values("n")),
             credit=Subquery(credit.annotate(s=Sum("amount")).values("s")),
+            owed=Subquery(bills.filter(balance_due__gt=0).annotate(s=Sum("balance_due")).values("s")),
         ).order_by(Lower("name"), "id")
         search = request.query_params.get("search", "").strip()
         if search:
@@ -41,12 +42,13 @@ class CustomerViewSet(viewsets.ViewSet):
             row = CustomerSerializer(c).data
             row["bill_count"] = c.n_bills
             row["credit_balance"] = str(c.credit or "0.00")
+            row["balance_due"] = str(c.owed or "0.00")
             data.append(row)
         return paginator.get_paginated_response(data)
 
     def retrieve(self, request, pk=None):
         """One customer as THIS shop knows them: profile, totals, bills, returns, credit."""
-        from billing.models import Bill, CreditEntry, Return, credit_balance
+        from billing.models import Bill, CreditEntry, DuePayment, Return, credit_balance, dues_balance
 
         try:
             cid = int(pk)
@@ -66,11 +68,13 @@ class CustomerViewSet(viewsets.ViewSet):
                 "bills": agg["n"], "spent": str(agg["spent"] or 0),
                 "refunded": str(returns.aggregate(s=Sum("amount"))["s"] or 0),
                 "credit_balance": str(credit_balance(cid)),
+                "balance_due": str(dues_balance(cid)),
                 "first_visit": agg["first"], "last_visit": agg["last"],
             },
             "bills": [
                 {"id": b.id, "number": b.number, "items": b.n_items, "total": str(b.total),
-                 "payment_mode": b.payment_mode, "returned": b.n_returns > 0, "created_at": b.created_at}
+                 "payment_mode": b.payment_mode, "balance_due": str(b.balance_due),
+                 "returned": b.n_returns > 0, "created_at": b.created_at}
                 for b in bills.annotate(n_items=Count("items", distinct=True), n_returns=Count("returns", distinct=True))
                 .order_by("-created_at")[:50]
             ],
@@ -79,6 +83,11 @@ class CustomerViewSet(viewsets.ViewSet):
                  "amount": str(r.amount), "mode": r.mode, "payment_mode": r.payment_mode,
                  "reason": r.reason, "created_at": r.created_at}
                 for r in returns.order_by("-created_at")[:50]
+            ],
+            "payments": [
+                {"id": p.id, "number": p.number, "amount": str(p.amount), "payment_mode": p.payment_mode,
+                 "note": p.note, "created_at": p.created_at}
+                for p in DuePayment.objects.filter(customer_id=cid)[:50]
             ],
             "credit": [
                 {"id": e.id, "amount": str(e.amount), "created_at": e.created_at,

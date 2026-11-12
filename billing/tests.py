@@ -427,3 +427,124 @@ class SearchAndHistoryTests(BillingTestCase):
         self.assertEqual(cust["stats"]["bills"], 1)
         self.assertEqual(len(cust["returns"]), 1)
         self.assertTrue(cust["bills"][0]["returned"])
+
+
+class PayLaterTests(BillingTestCase):
+    """Part-paid bills: the balance owed, receiving payments, returns and the dashboard."""
+
+    HOST = "acme.localhost"
+
+    def setUp(self):
+        super().setUp()
+        self.set_tax("acme", 0)
+        self.a = self.client_for(self.HOST, "acme@test.com")
+
+    def _credit_bill(self, qty, paid, phone="9555500001"):
+        _, codes = self._product_with_units(self.HOST, self.a, qty, price="1000")
+        resp = self.a.post("/api/bills/", {
+            "codes": codes, "payment_mode": "Cash", "amount_paid": paid,
+            "customer": {"name": "Credit Cust", "phone": phone},
+        }, format="json", HTTP_HOST=self.HOST)
+        self.assertEqual(resp.status_code, 201, resp.data)
+        return resp.data
+
+    def _owed(self, phone="9555500001"):
+        r = self.a.get(f"/api/dues/summary/?phone={phone}", HTTP_HOST=self.HOST)
+        return Decimal(r.data["balance_due"]), r.data["open_bills"]
+
+    def test_part_payment_leaves_a_balance(self):
+        bill = self._credit_bill(2, "1200")  # total 2000
+        self.assertEqual(Decimal(bill["total"]), Decimal("2000.00"))
+        self.assertEqual(Decimal(bill["amount_paid"]), Decimal("1200.00"))
+        self.assertEqual(Decimal(bill["balance_due"]), Decimal("800.00"))
+        self.assertEqual(self._owed(), (Decimal("800.00"), 1))
+
+    def test_default_is_paid_in_full_and_overpay_is_rejected(self):
+        bill, _ = self._sell(self.HOST, self.a, 1)
+        self.assertEqual(Decimal(bill["balance_due"]), Decimal("0.00"))
+        self.assertEqual(Decimal(bill["amount_paid"]), Decimal(bill["total"]))
+        _, codes = self._product_with_units(self.HOST, self.a, 1)
+        body = {"codes": codes, "payment_mode": "Cash", "customer": CUST}
+        resp = self.a.post("/api/bills/", {**body, "amount_paid": "999"}, format="json", HTTP_HOST=self.HOST)
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("amount_paid", resp.data)
+        self.assertEqual(self.a.post("/api/bills/", {**body, "amount_paid": "-1"}, format="json",
+                                     HTTP_HOST=self.HOST).status_code, 400)
+
+    def test_nothing_paid_now_needs_no_payment_method(self):
+        _, codes = self._product_with_units(self.HOST, self.a, 1)
+        resp = self.a.post("/api/bills/", {"codes": codes, "amount_paid": "0", "customer": CUST},
+                           format="json", HTTP_HOST=self.HOST)
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(Decimal(resp.data["balance_due"]), Decimal("200.00"))
+        # …but taking money without a method is still refused.
+        _, codes = self._product_with_units(self.HOST, self.a, 1)
+        resp = self.a.post("/api/bills/", {"codes": codes, "customer": CUST}, format="json", HTTP_HOST=self.HOST)
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("payment_mode", resp.data)
+
+    def test_payments_clear_oldest_bills_first(self):
+        first = self._credit_bill(1, "400")   # owes 600
+        second = self._credit_bill(1, "0")    # owes 1000
+        self.assertEqual(self._owed(), (Decimal("1600.00"), 2))
+        pay = self.a.post("/api/dues/payments/", {"customer_id": first["customer_id"], "amount": "800",
+                                                  "payment_mode": "UPI", "note": "part"},
+                          format="json", HTTP_HOST=self.HOST)
+        self.assertEqual(pay.status_code, 201, pay.data)
+        self.assertEqual(Decimal(pay.data["balance_due"]), Decimal("800.00"))
+        with schema_context("acme"):
+            self.assertEqual(Bill.objects.get(pk=first["id"]).balance_due, Decimal("0.00"))
+            self.assertEqual(Bill.objects.get(pk=second["id"]).balance_due, Decimal("800.00"))
+        # Can't take more than is owed; nothing changes.
+        over = self.a.post("/api/dues/payments/", {"customer_id": first["customer_id"], "amount": "800.01",
+                                                   "payment_mode": "Cash"}, format="json", HTTP_HOST=self.HOST)
+        self.assertEqual(over.status_code, 400)
+        self.assertEqual(self._owed(), (Decimal("800.00"), 1))
+        listing = self.a.get("/api/dues/", HTTP_HOST=self.HOST).data
+        self.assertEqual(Decimal(listing["total_outstanding"]), Decimal("800.00"))
+        self.assertEqual(listing["customers_owing"], 1)
+        history = self.a.get(f"/api/dues/payments/?customer_id={first['customer_id']}", HTTP_HOST=self.HOST).data
+        self.assertEqual([Decimal(p["amount"]) for p in history], [Decimal("800.00")])
+
+    def test_dues_are_per_shop(self):
+        self._credit_bill(1, "0")
+        b = self.client_for("bella.localhost", "bella@test.com")
+        self.assertEqual(b.get("/api/dues/", HTTP_HOST="bella.localhost").data["results"], [])
+        self.assertEqual(Decimal(b.get("/api/dues/summary/?phone=9555500001", HTTP_HOST="bella.localhost")
+                                 .data["balance_due"]), Decimal("0.00"))
+
+    def test_return_cancels_the_balance_before_refunding(self):
+        bill = self._credit_bill(2, "1200")        # 2 × 1000, owes 800
+        item_ids = [i["id"] for i in bill["items"]]
+        # Return one unit (1000): 800 wipes the balance, 200 is refunded.
+        resp = self._return(self.HOST, self.a, bill["id"], item_ids[:1])
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(Decimal(resp.data["amount"]), Decimal("1000.00"))
+        self.assertEqual(Decimal(resp.data["due_cleared"]), Decimal("800.00"))
+        self.assertEqual(self._owed(), (Decimal("0.00"), 0))
+        # Return the other unit as store credit: the whole 1000 is payable, nothing is owed any more.
+        resp = self._return(self.HOST, self.a, bill["id"], item_ids[1:], mode="credit")
+        self.assertEqual(Decimal(resp.data["due_cleared"]), Decimal("0.00"))
+        credit = self.a.get("/api/store-credit/?phone=9555500001", HTTP_HOST=self.HOST).data["balance"]
+        self.assertEqual(Decimal(credit), Decimal("1000.00"))
+
+    def test_return_fully_absorbed_by_balance_needs_no_refund_method(self):
+        bill = self._credit_bill(1, "0")           # owes 1000
+        resp = self.a.post("/api/returns/", {"bill": bill["id"], "items": [bill["items"][0]["id"]], "mode": "refund"},
+                           format="json", HTTP_HOST=self.HOST)
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data["payment_mode"], "")
+        self.assertEqual(self._owed(), (Decimal("0.00"), 0))
+
+    def test_dashboard_and_customer_show_what_is_owed(self):
+        self._credit_bill(1, "300")                 # owes 700
+        self._credit_bill(1, "0", phone="9555500002")  # owes 1000
+        today = self.a.get("/api/dashboard/", HTTP_HOST=self.HOST).data["today"]
+        self.assertEqual(Decimal(today["outstanding"]), Decimal("1700.00"))
+        self.assertEqual(today["customers_owing"], 2)
+        rows = self.a.get("/api/customers/", HTTP_HOST=self.HOST).data["results"]
+        owed = {r["phone"]: Decimal(r["balance_due"]) for r in rows}
+        self.assertEqual(owed["9555500001"], Decimal("700.00"))
+        cid = [r["id"] for r in rows if r["phone"] == "9555500001"][0]
+        detail = self.a.get(f"/api/customers/{cid}/", HTTP_HOST=self.HOST).data
+        self.assertEqual(Decimal(detail["stats"]["balance_due"]), Decimal("700.00"))

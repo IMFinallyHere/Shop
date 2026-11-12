@@ -27,7 +27,7 @@ export default function CustomersPage() {
       <ErrorAlert message={error && 'Failed to load customers.'} />
 
       <Table
-        columns={[{ label: 'Customer' }, { label: 'Phone' }, { label: 'Email' }, { label: 'Purchases' }, { label: 'Store credit', className: 'text-right' }]}
+        columns={[{ label: 'Customer' }, { label: 'Phone' }, { label: 'Email' }, { label: 'Purchases' }, { label: 'Owes', className: 'text-right' }, { label: 'Store credit', className: 'text-right' }]}
         loading={loading} isEmpty={customers.length === 0}
         empty={{ icon: Users, title: search ? 'No matching customers' : 'No customers yet', description: search ? 'Try a different name or number.' : 'Customers are saved automatically when you create a bill.' }}
       >
@@ -42,6 +42,9 @@ export default function CustomersPage() {
             <Td className="tabular-nums">{c.phone}</Td>
             <Td className="text-zinc-500">{c.email || '—'}</Td>
             <Td>{c.bill_count}</Td>
+            <Td className="text-right">
+              {Number(c.balance_due) > 0 ? <Badge tone="warning">{money(c.balance_due)}</Badge> : <span className="text-zinc-400">—</span>}
+            </Td>
             <Td className="text-right">
               {Number(c.credit_balance) > 0 ? <Badge tone="success">{money(c.credit_balance)}</Badge> : <span className="text-zinc-400">—</span>}
             </Td>

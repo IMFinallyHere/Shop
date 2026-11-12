@@ -64,16 +64,23 @@ export default function BillReceipt({ bill, autoPrint = false, onClose }) {
           <span>{perLine && bill.prices_include_tax && gst.length > 0 ? 'Total (incl. GST)' : 'Total'}</span>
           <span>{money(bill.total)}</span>
         </div>
-        {Number(bill.credit_used) > 0 && (
+        {Number(bill.credit_used) > 0 && <Row label="Store credit" value={`− ${money(bill.credit_used)}`} />}
+        {/* Sold partly on credit: what was paid at the counter, and what is still owed. */}
+        {Number(bill.total) - Number(bill.credit_used) - Number(bill.amount_paid) > 0.005 ? (
           <>
-            <Row label="Store credit" value={`− ${money(bill.credit_used)}`} />
-            <Row label="Paid" value={money(Number(bill.total) - Number(bill.credit_used))} />
+            <Row label="Paid now" value={money(bill.amount_paid)} />
+            {Number(bill.balance_due) > 0
+              ? <div className="flex justify-between font-bold"><span>Balance due</span><span>{money(bill.balance_due)}</span></div>
+              : <Row label="Balance" value="Settled" />}
           </>
+        ) : Number(bill.credit_used) > 0 && <Row label="Paid" value={money(bill.amount_paid)} />}
+        {Number(bill.amount_paid) > 0 && (
+          <div className="pt-[0.2em] text-[0.85em] text-gray-500">Paid via {bill.payment_mode?.toUpperCase()}</div>
         )}
-        <div className="pt-[0.2em] text-[0.85em] text-gray-500">Paid via {bill.payment_mode?.toUpperCase()}</div>
         {bill.returns?.map(r => (
           <div key={r.id} className="text-[0.85em] text-red-500">
-            {r.number}: {money(r.amount)} {r.mode === 'credit' ? 'to store credit' : `refunded via ${r.payment_mode}`}
+            {r.number}: {money(r.amount)}{Number(r.due_cleared) > 0 && ` (${money(r.due_cleared)} off balance due)`}{' '}
+            {Number(r.amount) - Number(r.due_cleared) > 0 && (r.mode === 'credit' ? 'to store credit' : `refunded via ${r.payment_mode}`)}
           </div>
         ))}
       </div>

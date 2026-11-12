@@ -39,6 +39,11 @@ class Bill(models.Model):
     payment_mode = models.CharField(max_length=40, default="Cash")
     # Store credit applied at checkout; the customer paid ``total - credit_used``.
     credit_used = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    # Collected at checkout through ``payment_mode`` (excludes store credit). The rest of
+    # ``total - credit_used`` is owed by the customer and sits in ``balance_due`` until
+    # paid (DuePayment) or cancelled by a return.
+    amount_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    balance_due = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL
@@ -49,6 +54,9 @@ class Bill(models.Model):
         ordering = ["-created_at"]
         indexes = [
             models.Index(fields=["-created_at"]),
+            # Open (unpaid) bills only: the dues list and per-customer balance read these.
+            models.Index(fields=["customer_id", "created_at"], condition=models.Q(balance_due__gt=0),
+                         name="bill_open_dues_idx"),
             trigram_index("customer_name", "bill_customer_name_trgm"),
             trigram_index("customer_phone", "bill_customer_phone_trgm"),
         ]
@@ -114,7 +122,10 @@ class Return(models.Model):
     mode = models.CharField(max_length=10, choices=MODE_CHOICES)
     # Payment method the refund was paid out through (blank for store credit).
     payment_mode = models.CharField(max_length=40, blank=True)
+    # Full value of the returned lines. ``due_cleared`` of it cancelled the bill's unpaid
+    # balance; only ``amount - due_cleared`` is paid out (refund) or credited.
     amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    due_cleared = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     reason = models.CharField(max_length=255, blank=True)
 
     # Snapshot of the bill's customer (soft reference to the shared Customer).
@@ -175,4 +186,48 @@ def credit_balance(customer_id):
     if not customer_id:
         return Decimal("0.00")
     total = CreditEntry.objects.filter(customer_id=customer_id).aggregate(s=Sum("amount"))["s"]
+    return total or Decimal("0.00")
+
+
+class DuePayment(models.Model):
+    """Money received later against what a customer owes (bills sold on credit)."""
+
+    customer_id = models.IntegerField(db_index=True)
+    customer_name = models.CharField(max_length=120, blank=True)
+    customer_phone = models.CharField(max_length=20, blank=True)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    payment_mode = models.CharField(max_length=40)
+    note = models.CharField(max_length=255, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    @property
+    def number(self):
+        return f"PAY-{self.id:05d}"
+
+    def __str__(self):
+        return self.number
+
+
+class DueAllocation(models.Model):
+    """How much of a DuePayment went to which bill (oldest bill first)."""
+
+    payment = models.ForeignKey(DuePayment, on_delete=models.CASCADE, related_name="allocations")
+    bill = models.ForeignKey(Bill, on_delete=models.PROTECT, related_name="due_allocations")
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+
+    def __str__(self):
+        return f"{self.payment} → {self.bill}: {self.amount}"
+
+
+def dues_balance(customer_id):
+    """What this customer owes this shop across all open bills."""
+    if not customer_id:
+        return Decimal("0.00")
+    total = Bill.objects.filter(customer_id=customer_id).aggregate(s=Sum("balance_due"))["s"]
     return total or Decimal("0.00")

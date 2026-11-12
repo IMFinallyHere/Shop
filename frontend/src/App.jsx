@@ -21,6 +21,7 @@ const POSPage = lazy(() => import('./pages/POSPage'))
 const SalesPage = lazy(() => import('./pages/SalesPage'))
 const ReturnsPage = lazy(() => import('./pages/ReturnsPage'))
 const CustomersPage = lazy(() => import('./pages/CustomersPage'))
+const CreditPage = lazy(() => import('./pages/CreditPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const UsersPage = lazy(() => import('./pages/UsersPage'))
 const GroupsPage = lazy(() => import('./pages/GroupsPage'))
@@ -68,6 +69,7 @@ function AppRoutes() {
             <Route path="/returns" element={<ReturnsPage />} />
             <Route path="/customers" element={<CustomersPage />} />
             <Route path="/customers/:id" element={<CustomerDetailPage />} />
+            <Route path="/credit" element={<CreditPage />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/help" element={<HelpPage />} />
             <Route path="/settings" element={<SettingsPage />} />

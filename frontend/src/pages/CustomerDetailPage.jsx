@@ -1,5 +1,9 @@
+import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, IndianRupee, Mail, Phone, Receipt, Undo2, Users, Wallet } from 'lucide-react'
+import { ArrowLeft, HandCoins, IndianRupee, Mail, Phone, Receipt, Undo2, Users, Wallet } from 'lucide-react'
+import { useAuth } from '../contexts/AuthContext'
+import { can } from '../utils/permissions'
+import ReceiveDueModal from '../components/billing/ReceiveDueModal'
 import { getCustomer } from '../api/customers'
 import useQuery from '../hooks/useQuery'
 import useReceipts from '../hooks/useReceipts'
@@ -15,7 +19,9 @@ import { formatDate, formatDateTime, initials, money } from '../utils/format'
 
 export default function CustomerDetailPage() {
   const { id } = useParams()
-  const { data: c, loading, error } = useQuery(() => getCustomer(id), id)
+  const { data: c, loading, error, reload } = useQuery(() => getCustomer(id), id)
+  const { user } = useAuth()
+  const [receiving, setReceiving] = useState(false)
   const { openBill, openReturn, receipts } = useReceipts()
 
   if (loading) return <Spinner />
@@ -45,6 +51,16 @@ export default function CustomerDetailPage() {
         </div>
       </div>
 
+      {Number(s.balance_due) > 0 && (
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-5 py-4">
+          <div className="flex items-center gap-3 text-amber-900">
+            <HandCoins size={20} />
+            <div><div className="text-sm">Balance owed</div><div className="text-xl font-semibold tabular-nums">{money(s.balance_due)}</div></div>
+          </div>
+          {can(user, 'billing.add_duepayment') && <Button variant="primary" onClick={() => setReceiving(true)}>Receive payment</Button>}
+        </div>
+      )}
+
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Bills" icon={Receipt} value={s.bills} />
         <StatCard label="Total spent" icon={IndianRupee} value={money(s.spent)} />
@@ -54,14 +70,15 @@ export default function CustomerDetailPage() {
 
       <h2 className="mb-3 text-base font-semibold text-zinc-900">Bills</h2>
       <Table className="mb-8"
-        columns={[{ label: 'Bill' }, { label: 'Date' }, { label: 'Items' }, { label: 'Payment' }, { label: 'Total', className: 'text-right' }]}
+        columns={[{ label: 'Bill' }, { label: 'Date' }, { label: 'Items' }, { label: 'Payment' }, { label: 'Due', className: 'text-right' }, { label: 'Total', className: 'text-right' }]}
         isEmpty={c.bills.length === 0} empty={{ icon: Receipt, title: 'No bills' }}>
         {c.bills.map(b => (
           <Tr key={b.id} className="cursor-pointer" onClick={() => openBill(b.id)}>
             <Td className="font-medium text-zinc-900">{b.number} {b.returned && <Badge tone="warning" className="ml-1">Returns</Badge>}</Td>
             <Td className="text-zinc-500">{formatDateTime(b.created_at)}</Td>
             <Td>{b.items}</Td>
-            <Td><Badge>{b.payment_mode}</Badge></Td>
+            <Td>{b.payment_mode ? <Badge>{b.payment_mode}</Badge> : <span className="text-zinc-400">—</span>}</Td>
+            <Td className="text-right tabular-nums">{Number(b.balance_due) > 0 ? <Badge tone="warning">{money(b.balance_due)}</Badge> : <span className="text-zinc-400">—</span>}</Td>
             <Td className="text-right font-medium tabular-nums text-zinc-900">{money(b.total)}</Td>
           </Tr>
         ))}
@@ -87,6 +104,21 @@ export default function CustomerDetailPage() {
         </Table>
       </>)}
 
+      {c.payments.length > 0 && (
+        <Card className="mb-8 max-w-xl">
+          <CardHeader title="Payments received" subtitle={`Balance owed ${money(s.balance_due)}`} />
+          <ul className="divide-y divide-zinc-100">
+            {c.payments.map(p => (
+              <li key={p.id} className="flex items-center justify-between px-5 py-2.5 text-sm">
+                <span className="text-zinc-600">{p.number} · {p.payment_mode} <span className="text-xs text-zinc-400">{formatDate(p.created_at)}</span>
+                  {p.note && <span className="block text-xs text-zinc-500">“{p.note}”</span>}</span>
+                <span className="font-medium tabular-nums text-emerald-700">+{money(p.amount)}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
       {c.credit.length > 0 && (
         <Card className="max-w-xl">
           <CardHeader title="Store credit history" subtitle={`Balance ${money(s.credit_balance)}`} />
@@ -103,6 +135,8 @@ export default function CustomerDetailPage() {
         </Card>
       )}
       {receipts}
+      <ReceiveDueModal isOpen={receiving} customer={{ customer_id: c.id, name: c.name, owed: s.balance_due }}
+        onClose={() => setReceiving(false)} onDone={() => { setReceiving(false); reload() }} />
     </div>
   )
 }

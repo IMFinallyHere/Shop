@@ -9,6 +9,7 @@ SHOP_APPS = ("inventory", "billing", "customers", "shopsettings")
 CASHIER = [
     "billing.add_bill", "billing.view_bill",
     "billing.add_return", "billing.view_return", "billing.view_creditentry",
+    "billing.add_duepayment", "billing.view_duepayment",
     "customers.view_customer",
     "inventory.view_product", "inventory.view_stockitem",
 ]

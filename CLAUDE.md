@@ -65,6 +65,14 @@ Product and stock rules (all switched in Settings → Products / Printing, store
   so QZ never resamples. The barcode is a canvas with a whole number of dots per bar
   (`drawCode128Dots`, 2 dots = 0.25 mm at 203 dpi), centred on a whole dot. Never stretch a barcode
   SVG for labels: uneven bars scan badly. Label prices drop ".00" (`labelPrice`); layout is in `ThermalLabel.jsx`.
+- **Pay later / dues** (not the same as *store credit*, which is money the shop owes the customer):
+  checkout takes an optional `amount_paid`; `Bill.balance_due = total - credit_used - amount_paid` is
+  what the customer owes. `DuePayment` + `DueAllocation` (`billing/models.py`) record money received
+  later; `POST /dues/payments/` applies it to the customer's oldest open bills. `GET /dues/` (Credit
+  page), `/dues/summary/?phone=` (POS "owes ₹X" note, needs only `add_bill`). A return first cancels
+  the bill's `balance_due` (`Return.due_cleared`); only the rest is refunded or credited. Perms:
+  `billing.view/add_duepayment` (in the Cashier preset). Raw inserts (`seed_large`) must write
+  `amount_paid`, `balance_due` and `due_cleared`.
 - Bill receipts print a CODE128 `INV-xxxxx` barcode (`receipt_show_invoice_barcode`). Scanning it in
   the global search opens the bill (`billing/search.py` `BILL_NO`).
 

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowRight, IndianRupee, PackagePlus, Receipt, ScanBarcode, ShoppingBag, Undo2, AlertTriangle, CheckCircle2 } from 'lucide-react'
+import { ArrowRight, HandCoins, IndianRupee, PackagePlus, Receipt, ScanBarcode, ShoppingBag, Undo2, AlertTriangle, CheckCircle2 } from 'lucide-react'
 import { getDashboard } from '../api/dashboard'
 import { useAuth } from '../contexts/AuthContext'
+import { can } from '../utils/permissions'
 import { Card, CardHeader } from '../components/ui/Card'
 import StatCard from '../components/ui/StatCard'
 import Button from '../components/ui/Button'
@@ -35,6 +36,7 @@ export default function DashboardPage() {
   }, [])
 
   const t = data?.today
+  const showOwed = can(user, 'billing.view_duepayment')
   const loading = !data && !error
   const weekTotal = data?.last_7_days.reduce((s, d) => s + Number(d.total), 0) ?? 0
 
@@ -59,11 +61,17 @@ export default function DashboardPage() {
       <SetupChecklist />
       <ErrorAlert message={error} />
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className={`grid grid-cols-2 gap-4 ${showOwed ? 'lg:grid-cols-5' : 'lg:grid-cols-4'}`}>
         <StatCard label="Sales today" icon={IndianRupee} loading={loading} value={moneyShort(t?.sales)} hint={t && `${t.items_sold} item${t.items_sold !== 1 ? 's' : ''} sold`} />
         <StatCard label="Bills today" icon={Receipt} loading={loading} value={t?.bills} />
         <StatCard label="Average bill" icon={ShoppingBag} loading={loading} value={t && money(t.avg_bill)} />
         <StatCard label="Refunds today" icon={Undo2} loading={loading} value={moneyShort(t?.refunds)} />
+        {showOwed && (
+          <Link to="/credit" className="block rounded-xl transition-shadow hover:shadow-card focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-500/20">
+            <StatCard label="Customers owe" icon={HandCoins} loading={loading} value={moneyShort(t?.outstanding)}
+              hint={t && (t.customers_owing ? `${t.customers_owing} customer${t.customers_owing !== 1 ? 's' : ''}` : 'Nothing pending')} />
+          </Link>
+        )}
       </div>
 
       {/* Two independent columns so each card keeps its natural height. */}

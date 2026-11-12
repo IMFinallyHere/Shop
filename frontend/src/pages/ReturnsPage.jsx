@@ -101,6 +101,10 @@ export default function ReturnsPage() {
     [bill, selected],
   )
 
+  // The returned value first cancels what the customer still owes on this bill; only the rest is paid out.
+  const dueCleared = Math.min(Number(bill?.balance_due ?? 0), refund)
+  const payout = refund - dueCleared
+
   const clear = () => {
     setBill(null); setSelected(new Set())
     if (params.get('bill')) setParams({})
@@ -113,7 +117,7 @@ export default function ReturnsPage() {
     try {
       const { data } = await createReturn({
         bill: bill.id, items: [...selected], mode,
-        payment_mode: mode === 'refund' ? paymentMode : '', reason,
+        payment_mode: mode === 'refund' && payout > 0 ? paymentMode : '', reason,
       })
       setReceipt(data)
       toast(`Return ${data.number} recorded`)
@@ -194,7 +198,7 @@ export default function ReturnsPage() {
                       options={[{ value: 'refund', label: 'Refund' }, { value: 'credit', label: 'Store credit' }]} />
                   </Field>
 
-                  {mode === 'refund' && (
+                  {mode === 'refund' && payout > 0 && (
                     <Field label="Refund via">
                       {paymentMethods.length === 0
                         ? <p className="text-sm text-zinc-500">No payment methods configured.</p>
@@ -208,11 +212,16 @@ export default function ReturnsPage() {
 
                   <div className="flex items-baseline justify-between border-t border-zinc-100 pt-4">
                     <span className="font-medium text-zinc-900">{mode === 'credit' ? 'Credit' : 'Refund'}</span>
-                    <span className="text-2xl font-semibold tracking-tight tabular-nums text-zinc-900">{money(refund)}</span>
+                    <span className="text-2xl font-semibold tracking-tight tabular-nums text-zinc-900">{money(payout)}</span>
                   </div>
+                  {dueCleared > 0 && (
+                    <p className="-mt-2 text-sm text-amber-700">
+                      {money(dueCleared)} of {money(refund)} is taken off the {money(bill.balance_due)} this customer still owes on this bill.
+                    </p>
+                  )}
 
                   <Button variant="primary" size="lg" className="w-full" icon={Undo2} onClick={handleSubmit} loading={saving}
-                    disabled={selected.size === 0 || (mode === 'refund' && !paymentMode)}>
+                    disabled={selected.size === 0 || (mode === 'refund' && payout > 0 && !paymentMode)}>
                     {selected.size === 0 ? 'Select items to return' : `Return ${selected.size} item${selected.size === 1 ? '' : 's'}`}
                   </Button>
                 </>
@@ -239,7 +248,7 @@ export default function ReturnsPage() {
             <Td className="whitespace-nowrap text-zinc-500">{formatDate(r.created_at)}</Td>
             <Td>{r.customer_name || '—'}</Td>
             <Td>{r.items.length}</Td>
-            <Td><Badge tone={r.mode === 'credit' ? 'success' : 'neutral'}>{r.mode === 'credit' ? 'Store credit' : r.payment_mode}</Badge></Td>
+            <Td><Badge tone={r.mode === 'credit' ? 'success' : 'neutral'}>{Number(r.amount) - Number(r.due_cleared) <= 0 ? 'Off balance due' : r.mode === 'credit' ? 'Store credit' : r.payment_mode}</Badge></Td>
             <Td className="text-right font-medium tabular-nums text-zinc-900">{money(r.amount)}</Td>
             <Td><Button variant="ghost" size="xs" icon={Eye} onClick={e => { e.stopPropagation(); openReceipt(r.id) }}>View</Button></Td>
           </Tr>

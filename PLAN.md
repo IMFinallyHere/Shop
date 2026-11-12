@@ -594,6 +594,11 @@ Optional later: enable `ufw` (22/80/443), Cloudflare real-IP for logs, swap file
 - **2026-11-12** Phase 22: one-time products + Inactive chip, add stock from the New product
   modal, hide-name / mandatory-field settings, delete guard for sold products, margin and
   duplicate-row in add stock, invoice barcode on receipts. Not committed yet.
+- **2026-11-12** Phase 23: pay later / customer credit. "Paid now" at checkout (rest becomes
+  `Bill.balance_due`), Credit page + receive payment (oldest bills first), dashboard "Customers owe"
+  card, "owes ₹X" note in the POS, returns cancel the balance before refunding. Migration
+  `billing/0007_pay_later`; existing Cashier/Manager groups need `add/view_duepayment` ticked on the
+  Groups page (default roles are never overwritten). Not committed yet.
 
 ## Bootstrap (run once `.env` DB_* is filled)
 ```bash

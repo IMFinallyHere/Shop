@@ -12,3 +12,9 @@ export const getReturns = (params) => api.get('/returns/', { params })
 export const getReturn = (id) => api.get(`/returns/${id}/`)
 
 export const getStoreCredit = (phone) => api.get('/store-credit/', { params: { phone } })
+
+// Customers who owe the shop money (bills left partly or wholly unpaid), and settling them.
+export const getDues = (params) => api.get('/dues/', { params })
+export const getDuesSummary = (phone) => api.get('/dues/summary/', { params: { phone } })
+export const getDuePayments = (params) => api.get('/dues/payments/', { params })
+export const receiveDuePayment = (data) => api.post('/dues/payments/', data)
