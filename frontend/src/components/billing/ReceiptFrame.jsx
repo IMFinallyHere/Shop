@@ -1,4 +1,6 @@
+import { useEffect, useRef } from 'react'
 import PrintSheet from '../common/PrintSheet'
+import { drawCode128Svg } from '../../utils/barcode'
 import usePrintSettings, { receiptPrintableMm } from '../../hooks/usePrintSettings'
 import { nodeHeightMm } from '../../utils/directPrint'
 
@@ -16,7 +18,19 @@ const PRINT_CSS = `
 // Shared receipt chrome: paper width, shop header and footer from Settings → Printing.
 // Thermal widths print as one continuous strip sized to the content; A4 prints a page.
 // Children use em-based text sizes so they scale with the paper width.
-export default function ReceiptFrame({ title, docTitle, shopName, autoPrint = false, onClose, children }) {
+// Scannable invoice number: scanning it into the global search opens the bill.
+function InvoiceBarcode({ value }) {
+  const ref = useRef(null)
+  useEffect(() => { if (ref.current) drawCode128Svg(ref.current, value) }, [value])
+  return (
+    <div className="mt-[1.2em] text-center">
+      <div className="mx-auto h-[10mm] w-[85%] bg-white"><svg ref={ref} className="block h-full w-full" /></div>
+      <div className="mt-[0.2em] text-[0.85em] tracking-wider">{value}</div>
+    </div>
+  )
+}
+
+export default function ReceiptFrame({ title, docTitle, shopName, autoPrint = false, barcodeValue, onClose, children }) {
   const s = usePrintSettings()
   const width = Number(s.receipt_width_mm)
   const a4 = width >= 210
@@ -47,6 +61,7 @@ export default function ReceiptFrame({ title, docTitle, shopName, autoPrint = fa
           <div className="mt-[0.4em] font-semibold uppercase tracking-wide text-gray-500">{docTitle}</div>
         </div>
         {children}
+        {barcodeValue && s.receipt_show_invoice_barcode && <InvoiceBarcode value={barcodeValue} />}
         {s.receipt_footer && <div className="mt-[1.5em] whitespace-pre-line text-center text-[0.85em] text-gray-500">{s.receipt_footer}</div>}
       </div>
     </PrintSheet>

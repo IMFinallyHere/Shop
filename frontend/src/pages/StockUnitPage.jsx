@@ -7,6 +7,7 @@ import {
 import { getUnitHistory } from '../api/search'
 import useQuery from '../hooks/useQuery'
 import useReceipts from '../hooks/useReceipts'
+import usePrintSettings from '../hooks/usePrintSettings'
 import BarcodeLabel from '../components/inventory/BarcodeLabel'
 import PrintBarcodes from '../components/inventory/PrintBarcodes'
 import Spinner from '../components/common/Spinner'
@@ -17,6 +18,7 @@ import { Card, CardHeader } from '../components/ui/Card'
 import EmptyState from '../components/ui/EmptyState'
 import { UNIT_STATUS } from '../components/search/results'
 import { downloadCode128 } from '../utils/barcode'
+import { unitTitle } from '../utils/names'
 import { formatDate, formatDateTime, initials, money } from '../utils/format'
 
 function Detail({ label, children }) {
@@ -40,6 +42,7 @@ export default function StockUnitPage() {
   const { data, loading, error } = useQuery(() => getUnitHistory(code), code)
   const { openBill, openReturn, receipts } = useReceipts()
   const [printing, setPrinting] = useState(false)
+  const hideName = !!usePrintSettings().hide_product_name
 
   if (loading) return <Spinner />
   if (error) {
@@ -53,7 +56,7 @@ export default function StockUnitPage() {
 
   const { unit, product, variant, batch, seller, timeline, customers } = data
   const status = UNIT_STATUS[unit.status]
-  const label = { code: unit.code, product_name: product.name, color_name: variant.color_name, size_name: variant.size_name, price: batch.price }
+  const label = { code: unit.code, product_name: unitTitle(product.name, unit.code, hideName), color_name: variant.color_name, size_name: variant.size_name, price: batch.price }
 
   return (
     <div>
@@ -62,12 +65,12 @@ export default function StockUnitPage() {
       <Card className="mb-6 flex flex-wrap items-center gap-5 p-5">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-xl font-semibold tracking-tight text-zinc-900">{product.name}</h1>
+            <h1 className={clsx('text-xl font-semibold tracking-tight text-zinc-900', hideName && 'font-mono')}>{unitTitle(product.name, unit.code, hideName)}</h1>
             <Badge tone={status?.tone} dot>{status?.label ?? unit.status}</Badge>
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-zinc-500">
             {variant.label && <span className="flex items-center gap-1.5"><Swatch hex={variant.color_hex} />{variant.label}</span>}
-            <span className="font-mono">{unit.code}</span>
+            {!hideName && <span className="font-mono">{unit.code}</span>}
             <span>Selling at <span className="font-medium text-zinc-800">{money(batch.price)}</span></span>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
@@ -123,7 +126,7 @@ export default function StockUnitPage() {
 
         <div className="space-y-6">
           <Card>
-            <CardHeader title="Product" action={<Button as={Link} to={`/products?q=${encodeURIComponent(product.name)}`} variant="ghost" size="xs" icon={Shirt}>Open</Button>} />
+            <CardHeader title="Product" action={<Button as={Link} to={`/products?product=${product.id}`} variant="ghost" size="xs" icon={Shirt}>Open</Button>} />
             <dl className="px-5 py-3">
               <Detail label="Category">{product.category}</Detail>
               <Detail label="Fabric">{product.fabric_type || null}</Detail>
@@ -150,7 +153,7 @@ export default function StockUnitPage() {
             {seller ? (
               <div className="space-y-1.5 px-5 py-4 text-sm">
                 <div className="font-medium text-zinc-900">{seller.name}</div>
-                {seller.phone && <div className="flex items-center gap-2 text-zinc-600"><Phone size={14} className="text-zinc-400" />{seller.phone}</div>}
+                {(seller.phones ?? []).map(n => <div key={n} className="flex items-center gap-2 text-zinc-600"><Phone size={14} className="text-zinc-400" />{n}</div>)}
                 {seller.email && <div className="flex items-center gap-2 text-zinc-600"><Mail size={14} className="text-zinc-400" />{seller.email}</div>}
                 {seller.address && <div className="flex items-center gap-2 text-zinc-600"><MapPin size={14} className="text-zinc-400" />{seller.address}</div>}
               </div>
@@ -179,7 +182,7 @@ export default function StockUnitPage() {
         </div>
       </div>
 
-      <PrintBarcodes items={printing ? [label] : null} title={`Label — ${product.name}`} onClose={() => setPrinting(false)} />
+      <PrintBarcodes items={printing ? [label] : null} title={`Label — ${unitTitle(product.name, unit.code, hideName)}`} onClose={() => setPrinting(false)} />
       {receipts}
     </div>
   )

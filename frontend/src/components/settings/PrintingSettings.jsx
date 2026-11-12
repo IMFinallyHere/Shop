@@ -158,6 +158,7 @@ export default function PrintingSettings({ initial, onSaved, onError }) {
           </div>
           <div className="mt-3 border-t border-zinc-100 pt-2">
             <Toggle label="Open print dialog right after checkout" checked={form.auto_print_after_bill} onChange={set('auto_print_after_bill')} />
+            <Toggle label="Print invoice barcode at the bottom of bills (scan it in search to open the bill)" checked={form.receipt_show_invoice_barcode} onChange={set('receipt_show_invoice_barcode')} />
           </div>
           <div className="mt-3">
             <Button size="sm" icon={Printer} onClick={() => withForm(() => setTestReceipt(sampleBill(user?.shop_name, initial?.prices_include_tax ?? true)))}>Print test receipt</Button>

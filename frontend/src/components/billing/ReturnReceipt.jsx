@@ -1,7 +1,10 @@
 import ReceiptFrame from './ReceiptFrame'
 import { formatReceiptDate, money } from '../../utils/format'
+import { variantPart } from '../../utils/variant'
+import usePrintSettings from '../../hooks/usePrintSettings'
 
 export default function ReturnReceipt({ ret, onClose }) {
+  const hideName = !!usePrintSettings().hide_product_name
   if (!ret) return null
   return (
     <ReceiptFrame title={`Return ${ret.number}`} docTitle="Credit Note" shopName={ret.shop_name} onClose={onClose}>
@@ -23,7 +26,16 @@ export default function ReturnReceipt({ ret, onClose }) {
         <tbody>
           {ret.items.map(it => (
             <tr key={it.id}>
-              <td className="py-[0.25em]">{it.product_name}<div className="font-mono text-[0.75em] text-gray-400">{it.code}</div></td>
+              <td className="py-[0.25em]">
+                {hideName ? (
+                  <>
+                    <span className="font-mono">{it.code}</span>
+                    <div className="text-[0.75em] text-gray-400">{variantPart(it.product_name)}</div>
+                  </>
+                ) : (
+                  <>{it.product_name}<div className="font-mono text-[0.75em] text-gray-400">{it.code}</div></>
+                )}
+              </td>
               <td className="py-[0.25em] text-right align-top">{money(it.refund_amount)}</td>
             </tr>
           ))}

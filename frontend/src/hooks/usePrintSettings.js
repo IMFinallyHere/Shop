@@ -7,7 +7,9 @@ export const PRINT_DEFAULTS = {
   label_show_name: true, label_show_variant: true, label_show_price: true, label_show_code_text: true,
   label_copies: 1,
   receipt_width_mm: 80, receipt_printable_mm: null, receipt_shop_name: '', receipt_address: '', receipt_phone: '', receipt_gstin: '',
-  receipt_footer: 'Thank you, visit again!', auto_print_after_bill: false,
+  receipt_footer: 'Thank you, visit again!', auto_print_after_bill: false, receipt_show_invoice_barcode: true,
+  one_time_stock_default: false, hide_product_name: false,
+  require_category: false, require_seller: false, require_cost_price: false,
 }
 
 // A thermal head doesn't cover the whole roll: 80 mm paper typically prints 72 mm (576 dots),

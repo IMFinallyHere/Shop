@@ -490,6 +490,23 @@ Optional later: enable `ufw` (22/80/443), Cloudflare real-IP for logs, swap file
 - Videos moved out of releases: `/opt/shop/media/videos` (nginx `/videos/`, 7-day cache,
   captions as text/vtt); `deploy/upload-videos.sh` after re-recording.
 
+## Phase 22 — Product & add-stock improvements  🚧 local only (not committed; user verifies first)
+- [x] One-time products: `Product.is_one_time` + internal `has_had_stock`; `inventory.stock.recount`
+      sets a sold-out one-time product inactive (only once it has had stock) and restocking
+      reactivates it. Settings default `one_time_stock_default`. Products list shows active only;
+      an **Inactive** chip (`?inactive=1`) lists the rest.
+- [x] New product modal also adds first stock (wide two-column layout, stock optional; if the
+      stock call fails the product is kept and the Add stock dialog opens with the lines).
+- [x] Settings → Products: `hide_product_name` (server names the product, e.g. "Silk Sarees #12",
+      and the name input/column are hidden), `require_category` / `require_seller` /
+      `require_cost_price` (enforced in `ProductSerializer` / `AddStockSerializer`).
+- [x] Deleting a product with sold units returns a 400 message (was a 500), shown inside the dialog.
+- [x] Add-stock lines: Margin % column (markup on cost, margin ⇄ price) and duplicate-row button.
+- [x] Bill receipts print a CODE128 `INV-xxxxx` barcode (Settings → Printing toggle
+      `receipt_show_invoice_barcode`); scanning it in the global search opens the bill.
+- [x] Sellers can have several phone numbers (`Seller.phones`, no labels); `phone` stays the primary.
+- Migrations: `inventory/0011`, `inventory/0012` (sellers' phones, fills from the old `phone`), `shopsettings/0009`.
+
 ## Local development database (Docker)  ✅
 - `docker-compose.yml` runs `postgres:17-alpine` (`shop-db-1`, volume `shop_pgdata`,
   port 5432); it reads `DB_NAME/DB_USER/DB_PASSWORD` from `.env`, which now points at
@@ -571,6 +588,10 @@ Optional later: enable `ufw` (22/80/443), Cloudflare real-IP for logs, swap file
 
 - **2026-10-12** Phase 15: printer setup — label size/content and receipt width/header in
   Settings → Printing; labels and receipts print at exact size on thermal rolls.
+
+- **2026-11-12** Phase 22: one-time products + Inactive chip, add stock from the New product
+  modal, hide-name / mandatory-field settings, delete guard for sold products, margin and
+  duplicate-row in add stock, invoice barcode on receipts. Not committed yet.
 
 ## Bootstrap (run once `.env` DB_* is filled)
 ```bash

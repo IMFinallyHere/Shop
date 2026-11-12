@@ -23,7 +23,7 @@ export default function ThermalLabel({ item, settings, className = '' }) {
       className={`thermal-label flex flex-col overflow-hidden bg-white text-black ${className}`}
       style={{ width: `${W}mm`, height: `${H}mm`, padding: '1.5mm 2.5mm', fontFamily: 'Arial, Helvetica, sans-serif', lineHeight: 1.15 }}
     >
-      {settings.label_show_name && item.product_name && (
+      {settings.label_show_name && !settings.hide_product_name && item.product_name && (
         <div className="truncate font-bold" style={{ fontSize: `${big}pt` }}>{item.product_name}</div>
       )}
       {(variant || price) && (
@@ -35,7 +35,7 @@ export default function ThermalLabel({ item, settings, className = '' }) {
       <div className="min-h-0 flex-1" style={{ marginTop: '0.8mm' }}>
         <svg ref={svgRef} className="block h-full w-full" />
       </div>
-      {settings.label_show_code_text && (
+      {(settings.label_show_code_text || settings.hide_product_name) && (
         <div className="text-center tracking-wider" style={{ fontSize: `${small}pt`, fontFamily: 'ui-monospace, Menlo, monospace' }}>{item.code}</div>
       )}
     </div>

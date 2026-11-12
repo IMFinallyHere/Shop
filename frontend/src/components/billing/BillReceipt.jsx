@@ -1,9 +1,12 @@
 import ReceiptFrame from './ReceiptFrame'
 import { formatReceiptDate, money } from '../../utils/format'
+import { variantPart } from '../../utils/variant'
+import usePrintSettings from '../../hooks/usePrintSettings'
 
 const pct = (rate) => `${Number(rate)}%`
 
 export default function BillReceipt({ bill, autoPrint = false, onClose }) {
+  const hideName = !!usePrintSettings().hide_product_name  // shops that hide names print only our code
   if (!bill) return null
   // Bills since per-piece GST carry a summary by rate; older ones show one tax line.
   const summary = bill.gst_summary ?? []
@@ -12,7 +15,7 @@ export default function BillReceipt({ bill, autoPrint = false, onClose }) {
   const cgst = gst.reduce((s, r) => s + Number(r.cgst), 0)
   const sgst = gst.reduce((s, r) => s + Number(r.sgst), 0)
   return (
-    <ReceiptFrame title={`Bill ${bill.number}`} docTitle="Tax Invoice" shopName={bill.shop_name} autoPrint={autoPrint} onClose={onClose}>
+    <ReceiptFrame title={`Bill ${bill.number}`} docTitle="Tax Invoice" shopName={bill.shop_name} autoPrint={autoPrint} barcodeValue={bill.number} onClose={onClose}>
       <div className="mb-[0.8em] flex justify-between text-[0.85em] text-gray-500">
         <span>{bill.number}</span>
         <span>{formatReceiptDate(bill.created_at)}</span>
@@ -31,10 +34,14 @@ export default function BillReceipt({ bill, autoPrint = false, onClose }) {
           {bill.items.map(it => (
             <tr key={it.id}>
               <td className="py-[0.25em]">
-                <span className={it.returned ? 'text-gray-400 line-through' : ''}>{it.product_name}</span>
+                {hideName ? (
+                  <span className={`font-mono ${it.returned ? 'text-gray-400 line-through' : ''}`}>{it.code}</span>
+                ) : (
+                  <span className={it.returned ? 'text-gray-400 line-through' : ''}>{it.product_name}</span>
+                )}
                 {it.returned && <span className="ml-1 text-[0.75em] text-red-500">returned</span>}
                 <div className="text-[0.75em] text-gray-400">
-                  <span className="font-mono">{it.code}</span>
+                  {hideName ? <span>{variantPart(it.product_name)}</span> : <span className="font-mono">{it.code}</span>}
                   {perLine && gst.length > 0 && it.tax_rate != null && <span> · GST {pct(it.tax_rate)}</span>}
                 </div>
               </td>

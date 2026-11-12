@@ -1,6 +1,8 @@
 from datetime import timedelta
 
 from django.db import IntegrityError, transaction
+from django.db.models import ProtectedError, TextField
+from django.db.models.functions import Cast
 from django.db.models import (
     Count, DateTimeField, Exists, ExpressionWrapper, F, OuterRef, Prefetch, Q, Subquery,
 )
@@ -72,10 +74,12 @@ class SellerViewSet(AllRowsMixin, viewsets.ModelViewSet):
     perms = {"list": ANY_STAFF, "retrieve": ANY_STAFF}
     serializer_class = SellerSerializer
     filter_backends = [SearchFilter]
-    search_fields = ["name", "phone", "email"]
+    search_fields = ["name", "phones_text", "email"]  # phones_text: every number, not just the primary
 
     def get_queryset(self):
-        return Seller.objects.annotate(product_count=Count("products")).order_by("name", "id")
+        return Seller.objects.annotate(
+            product_count=Count("products"), phones_text=Cast("phones", TextField()),
+        ).order_by("name", "id")
 
 
 class ProductViewSet(viewsets.ModelViewSet):
@@ -107,7 +111,31 @@ class ProductViewSet(viewsets.ModelViewSet):
             qs = qs.filter(category_id=params["category"])
         if params.get("seller"):
             qs = qs.filter(seller_id=params["seller"])
+        # ?id=N is exactly one product, active or not (links from search and stock pages).
+        if params.get("id", "").isdigit():
+            return qs.filter(pk=int(params["id"]))
+        # The list shows active products; ?inactive=1 shows only the inactive ones and
+        # ?inactive=all shows both. Detail routes (edit, add stock, delete) must still
+        # reach inactive products.
+        if self.action == "list" and params.get("inactive") != "all":
+            qs = qs.filter(is_active=params.get("inactive") not in ("1", "true"))
         return qs
+
+    def destroy(self, request, *args, **kwargs):
+        product = self.get_object()
+        if StockItem.objects.filter(variant__product=product, status=StockItem.SOLD).exists():
+            return Response(
+                {"detail": "This product has sold units on bills and can't be deleted. Mark it inactive instead."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            with transaction.atomic():
+                return super().destroy(request, *args, **kwargs)
+        except ProtectedError:
+            return Response(
+                {"detail": "This product is used on bills or returns and can't be deleted."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
     @action(detail=True, methods=["post"], url_path="add-stock")
     def add_stock(self, request, pk=None):

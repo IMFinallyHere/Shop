@@ -10,6 +10,7 @@ PostgreSQL ``COPY`` so a million units load in about a minute. Defaults: 20k pro
 "Perf " name prefix so they're easy to tell apart. Refuses to run on a shop that
 already has products.
 """
+import json
 import random
 import uuid
 from datetime import timedelta
@@ -119,8 +120,9 @@ class Command(BaseCommand):
              ((i, name, desc, now) for i, (name, desc) in enumerate(cats, start=1)))
         n_cat = len(cats)
         n_sel = 200
-        copy("inventory_seller", ["id", "name", "phone", "email", "address", "notes", "created_at"],
-             ((i, f"Seller {i:03d} Textiles", f"94{i:08d}", "", "", "", now) for i in range(1, n_sel + 1)))
+        copy("inventory_seller", ["id", "name", "phone", "phones", "email", "address", "notes", "created_at"],
+             ((i, f"Seller {i:03d} Textiles", f"94{i:08d}", json.dumps([f"94{i:08d}"]), "", "", "", now)
+              for i in range(1, n_sel + 1)))
         reset_sequence("inventory_category")
         reset_sequence("inventory_seller")
 
@@ -128,9 +130,11 @@ class Command(BaseCommand):
         n_prod = o["products"]
         base_names = [p[0] for p in PRODUCTS]
         copy("inventory_product",
-             ["id", "name", "sku", "category_id", "seller_id", "fabric_type", "is_active", "created_at", "updated_at"],
+             ["id", "name", "sku", "category_id", "seller_id", "fabric_type", "is_active", "created_at", "updated_at",
+              "stock_quantity", "is_one_time", "has_had_stock"],  # counts are filled by recount_all() below
              ((i, f"{rng.choice(WORDS)} {rng.choice(base_names)} {i}", f"SKU{i:06d}", rng.randint(1, n_cat),
-               rng.randint(1, n_sel), rng.choice(FABRICS), True, now, now) for i in range(1, n_prod + 1)))
+               rng.randint(1, n_sel), rng.choice(FABRICS), True, now, now, 0, False, True)
+              for i in range(1, n_prod + 1)))
         self.log(f"{n_prod} products")
 
         combos = [(c, s) for c in colors for s in sizes]
@@ -152,8 +156,9 @@ class Command(BaseCommand):
                     codes.add(code)
                     unit_rows.append([vid, bid, code, "in_stock", now, price])
         del codes
-        copy("inventory_productvariant", ["id", "product_id", "color_id", "size_id", "low_stock_threshold", "created_at"],
-             var_rows)
+        copy("inventory_productvariant",
+             ["id", "product_id", "color_id", "size_id", "low_stock_threshold", "created_at", "stock_quantity"],
+             (r + (0,) for r in var_rows))
         copy("inventory_stockbatch", ["id", "variant_id", "cost_price", "price", "quantity", "created_at"], batch_rows)
         self.log(f"{len(var_rows)} variants / batches")
 

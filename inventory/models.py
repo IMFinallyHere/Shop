@@ -25,11 +25,19 @@ class Seller(models.Model):
     """A supplier the shop buys stock from (selectable when adding products)."""
 
     name = models.CharField(max_length=120)
-    phone = models.CharField(max_length=20, blank=True)
+    phone = models.CharField(max_length=20, blank=True, help_text="Primary number: always phones[0]")
+    phones = models.JSONField(default=list, blank=True, help_text="All numbers, primary first")
     email = models.EmailField(blank=True)
     address = models.CharField(max_length=255, blank=True)
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        # `phone` (searched, shown in lists) stays the first of `phones`; a lone `phone` seeds the list.
+        if not self.phones and self.phone:
+            self.phones = [self.phone]
+        self.phone = self.phones[0] if self.phones else ""
+        super().save(*args, **kwargs)
 
     class Meta:
         ordering = ["name"]
@@ -45,7 +53,7 @@ class Seller(models.Model):
 class Product(models.Model):
     """A cloth product (e.g. "Kurti A"). Color/size live on :class:`ProductVariant`."""
 
-    name = models.CharField(max_length=150)
+    name = models.CharField(max_length=150, blank=True)  # blank: filled by the server when names are hidden
     sku = models.CharField(max_length=64, blank=True, help_text="Optional manufacturer code")
     category = models.ForeignKey(
         Category, null=True, blank=True, on_delete=models.SET_NULL, related_name="products"
@@ -55,6 +63,9 @@ class Product(models.Model):
     )
     fabric_type = models.CharField(max_length=80, blank=True)
     is_active = models.BooleanField(default=True)
+    # One-time: goes inactive when its stock sells out (only after it has had stock once).
+    is_one_time = models.BooleanField(default=False)
+    has_had_stock = models.BooleanField(default=False, editable=False)
     # Denormalized from in-stock units (kept current by inventory.stock.recount) so
     # lists can sort/filter on them without aggregating every unit.
     stock_quantity = models.PositiveIntegerField(default=0, editable=False)

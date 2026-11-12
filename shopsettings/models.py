@@ -34,6 +34,14 @@ class ShopSettings(models.Model):
 
     # Products: fill a suggested clothing name when "New product" opens (always editable).
     auto_product_names = models.BooleanField(default=False)
+    # New products start as "one-time" (they go inactive once their stock sells out).
+    one_time_stock_default = models.BooleanField(default=False)
+    # Don't ask for a product name; the server names products from category/fabric.
+    hide_product_name = models.BooleanField(default=False)
+    # Make these mandatory when adding a product / its stock.
+    require_category = models.BooleanField(default=False)
+    require_seller = models.BooleanField(default=False)
+    require_cost_price = models.BooleanField(default=False)
 
     # Stock-unit labels: one label per page at this physical size (thermal roll).
     label_width_mm = models.PositiveSmallIntegerField(default=50, validators=[MinValueValidator(20), MaxValueValidator(110)])
@@ -57,6 +65,9 @@ class ShopSettings(models.Model):
     receipt_gstin = models.CharField(max_length=20, blank=True)
     receipt_footer = models.CharField(max_length=200, blank=True, default="Thank you, visit again!")
     auto_print_after_bill = models.BooleanField(default=False, help_text="Open the print dialog right after checkout")
+    receipt_show_invoice_barcode = models.BooleanField(
+        default=True, help_text="Print a scannable invoice-number barcode at the bottom of bills"
+    )
 
     updated_at = models.DateTimeField(auto_now=True)
 

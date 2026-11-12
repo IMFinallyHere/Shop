@@ -31,6 +31,15 @@ def recount(variant_ids=(), product_ids=()):
             price_min=Subquery(units.annotate(p=Min("batch__price")).values("p")),
             price_max=Subquery(units.annotate(p=Max("batch__price")).values("p")),
         )
+        # One-time products: inactive once sold out, but only after they've had stock;
+        # restocking brings them back.
+        Product.objects.filter(id__in=product_ids, stock_quantity__gt=0, has_had_stock=False).update(has_had_stock=True)
+        Product.objects.filter(
+            id__in=product_ids, is_one_time=True, has_had_stock=True, stock_quantity=0, is_active=True
+        ).update(is_active=False)
+        Product.objects.filter(
+            id__in=product_ids, is_one_time=True, stock_quantity__gt=0, is_active=False
+        ).update(is_active=True)
 
 
 RECOUNT_ALL_SQL = [

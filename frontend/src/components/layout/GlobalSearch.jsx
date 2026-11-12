@@ -4,6 +4,7 @@ import clsx from 'clsx'
 import { ArrowLeft, CornerDownLeft, Loader2, Search } from 'lucide-react'
 import { search } from '../../api/search'
 import useReceipts from '../../hooks/useReceipts'
+import usePrintSettings from '../../hooks/usePrintSettings'
 import ResultRow from '../search/ResultRow'
 import { groupResults, targetPath } from '../search/results'
 
@@ -13,6 +14,7 @@ const isMac = typeof navigator !== 'undefined' && /Mac/.test(navigator.platform)
 // Top-bar search over units, bills, returns, customers, products and sellers.
 // "/" or ⌘/Ctrl+K focuses it; a scanned barcode + Enter jumps straight to the unit.
 export default function GlobalSearch() {
+  const hideName = !!usePrintSettings().hide_product_name
   const navigate = useNavigate()
   const { openBill, openReturn, receipts } = useReceipts()
   const inputRef = useRef(null)
@@ -27,9 +29,9 @@ export default function GlobalSearch() {
   const loading = searchable && result.q !== term
   // Each group carries the flat index of its first item, for keyboard highlighting.
   const groups = useMemo(() => {
-    const list = result.q === term ? groupResults(result.data) : []
+    const list = result.q === term ? groupResults(result.data, hideName) : []
     return list.map((g, i) => ({ ...g, offset: list.slice(0, i).reduce((n, x) => n + x.items.length, 0) }))
-  }, [result, term])
+  }, [result, term, hideName])
   const flat = useMemo(() => groups.flatMap(g => g.items.map(item => ({ item, icon: g.icon }))), [groups])
 
   // Debounced fetch; stale responses are ignored by comparing the query they were for.

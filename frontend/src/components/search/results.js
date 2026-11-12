@@ -1,5 +1,6 @@
 import { Boxes, Receipt, Shirt, Truck, Undo2, Users } from 'lucide-react'
 import { formatDate, money, moneyShort } from '../../utils/format'
+import { productLabel, unitTitle } from '../../utils/names'
 
 export const UNIT_STATUS = {
   in_stock: { tone: 'success', label: 'In stock' },
@@ -9,8 +10,9 @@ export const UNIT_STATUS = {
 
 // How each result type is shown and where it leads. `target` is handled by useSearchNavigation.
 export const GROUPS = [
-  { key: 'units', label: 'Stock units', icon: Boxes, item: u => ({
-    id: u.code, title: u.product_name, subtitle: [u.label, u.code].filter(Boolean).join(' · '),
+  { key: 'units', label: 'Stock units', icon: Boxes, item: (u, hide) => ({
+    id: u.code, title: unitTitle(u.product_name, u.code, hide),
+    subtitle: (hide ? [u.label] : [u.label, u.code]).filter(Boolean).join(' · '),
     meta: moneyShort(u.price), status: u.status, target: { type: 'unit', code: u.code } }) },
   { key: 'bills', label: 'Bills', icon: Receipt, item: b => ({
     id: b.id, title: `${b.number} · ${b.customer_name || 'Walk-in'}`,
@@ -22,23 +24,24 @@ export const GROUPS = [
     meta: money(r.amount), target: { type: 'return', id: r.id } }) },
   { key: 'customers', label: 'Customers', icon: Users, item: c => ({
     id: c.id, title: c.name, subtitle: c.phone, target: { type: 'customer', id: c.id } }) },
-  { key: 'products', label: 'Products', icon: Shirt, item: p => ({
-    id: p.id, title: p.name, subtitle: [p.category, `${p.in_stock} in stock`].filter(Boolean).join(' · '),
-    target: { type: 'product', name: p.name } }) },
+  { key: 'products', label: 'Products', icon: Shirt, item: (p, hide) => ({
+    id: p.id, title: hide ? productLabel({ id: p.id, category_name: p.category }) : p.name,
+    subtitle: [p.category, `${p.in_stock} in stock`].filter(Boolean).join(' · '),
+    target: { type: 'product', id: p.id } }) },
   { key: 'sellers', label: 'Sellers', icon: Truck, item: s => ({
-    id: s.id, title: s.name, subtitle: [s.phone, `${s.products} product${s.products !== 1 ? 's' : ''}`].filter(Boolean).join(' · '),
+    id: s.id, title: s.name, subtitle: [(s.phones ?? [s.phone]).filter(Boolean).join(', '), `${s.products} product${s.products !== 1 ? 's' : ''}`].filter(Boolean).join(' · '),
     target: { type: 'seller', id: s.id, name: s.name } }) },
 ]
 
 // Non-empty groups with their display items, in GROUPS order.
-export const groupResults = (data) => GROUPS
-  .map(g => ({ ...g, items: (data?.[g.key] ?? []).map(g.item) }))
+export const groupResults = (data, hide = false) => GROUPS
+  .map(g => ({ ...g, items: (data?.[g.key] ?? []).map(x => g.item(x, hide)) }))
   .filter(g => g.items.length > 0)
 
 // Where a non-modal target navigates to (bills/returns open a receipt instead).
 export const targetPath = (t) => ({
   unit: `/stock/${encodeURIComponent(t.code)}`,
   customer: `/customers/${t.id}`,
-  product: `/products?q=${encodeURIComponent(t.name ?? '')}`,
+  product: `/products?product=${t.id}`,  // by id, so a hidden name never lands in the URL
   seller: `/products?seller=${t.id}&seller_name=${encodeURIComponent(t.name ?? '')}`,
 })[t.type]

@@ -37,7 +37,7 @@ function labelCard(inner, { product_name, price }) {
   const ctx = c.getContext('2d')
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H)
   ctx.fillStyle = '#111827'; ctx.font = 'bold 15px sans-serif'
-  ctx.fillText((product_name ?? '').slice(0, 28), pad, pad + 12)
+  ctx.fillText((product_name ?? '').slice(0, 28), pad, pad + 12)  // callers pass the code when names are hidden
   if (price != null && price !== '') {
     ctx.font = '13px sans-serif'; ctx.fillStyle = '#374151'
     ctx.fillText(`Rs. ${price}`, pad, pad + 32)

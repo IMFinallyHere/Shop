@@ -19,6 +19,8 @@ import { useToast } from '../components/ui/Toast'
 import { downloadCode128 } from '../utils/barcode'
 import { variantLabel } from '../utils/variant'
 import { moneyShort } from '../utils/format'
+import usePrintSettings from '../hooks/usePrintSettings'
+import { unitTitle } from '../utils/names'
 
 const STATUSES = [
   { value: 'in_stock', label: 'In stock' },
@@ -34,6 +36,7 @@ const STATUS_BADGE = {
 const PAGE_SIZE = 20
 
 export default function StockPage() {
+  const hideName = !!usePrintSettings().hide_product_name
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('in_stock')
@@ -73,7 +76,7 @@ export default function StockPage() {
         {items.map(it => (
           <Tr key={it.id}>
             <Td>
-              <Link to={`/stock/${it.code}`} className="font-medium text-zinc-900 hover:text-brand-700 hover:underline">{it.product_name}</Link>
+              <Link to={`/stock/${it.code}`} className="font-medium text-zinc-900 hover:text-brand-700 hover:underline">{unitTitle(it.product_name, it.code, hideName)}</Link>
               <div className="text-xs text-zinc-500">{variantLabel(it) || 'Default'}</div>
             </Td>
             <Td className="font-mono text-xs">{it.code}</Td>

@@ -11,6 +11,8 @@ import EmptyState from '../components/ui/EmptyState'
 import ErrorAlert from '../components/common/ErrorAlert'
 import SalesChart from '../components/dashboard/SalesChart'
 import { formatDateTime, money, moneyShort } from '../utils/format'
+import usePrintSettings from '../hooks/usePrintSettings'
+import { productLabel } from '../utils/names'
 import SetupChecklist from '../onboarding/SetupChecklist'
 import { useOnboarding } from '../onboarding/OnboardingContext'
 
@@ -20,6 +22,7 @@ const greeting = () => {
 }
 
 export default function DashboardPage() {
+  const hideName = !!usePrintSettings().hide_product_name
   const { user } = useAuth()
   const { refresh: refreshOnboarding } = useOnboarding()
   // Checklist steps tick off from the shop's data; re-check on every visit.
@@ -101,7 +104,7 @@ export default function DashboardPage() {
             <CardHeader
               title="Low stock"
               subtitle={data && (data.low_stock_count ? `${data.low_stock_count} variant${data.low_stock_count !== 1 ? 's' : ''} at or below threshold` : 'All variants above threshold')}
-              action={data?.low_stock_count > 0 && <Button as={Link} to="/products?low=1" variant="ghost" size="xs">View all <ArrowRight size={14} /></Button>}
+              action={data?.low_stock_count > 0 && <Button as={Link} to="/products?view=low" variant="ghost" size="xs">View all <ArrowRight size={14} /></Button>}
             />
             {data && data.low_stock.length === 0 ? (
               <EmptyState icon={CheckCircle2} title="Stock looks healthy" description="Nothing needs restocking right now." />
@@ -111,7 +114,7 @@ export default function DashboardPage() {
                   <li key={v?.variant_id ?? i} className="flex items-center gap-3 px-5 py-2.5">
                     {v ? (<>
                       <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-medium text-zinc-800">{v.product_name}</div>
+                        <div className="truncate text-sm font-medium text-zinc-800">{hideName ? productLabel({ id: v.product_id }) : v.product_name}</div>
                         {v.label && <div className="flex items-center gap-1.5 text-xs text-zinc-500"><Swatch hex={v.color_hex} />{v.label}</div>}
                       </div>
                       <Badge tone={v.stock === 0 ? 'danger' : 'warning'}>

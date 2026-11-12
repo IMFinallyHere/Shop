@@ -2,8 +2,8 @@
 import re
 from decimal import Decimal
 
-from django.db.models import Count, Exists, OuterRef, Q, Sum
-from django.db.models.functions import Lower
+from django.db.models import Count, Exists, OuterRef, Q, Sum, TextField
+from django.db.models.functions import Cast, Lower
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -107,9 +107,11 @@ class SearchView(APIView):
         )
         out["products"] = [{"id": p.id, "name": p.name, "category": p.category.name if p.category else None,
                             "in_stock": p.stock_quantity} for p in products]
-        sellers = Seller.objects.filter(Q(name__icontains=q) | Q(phone__icontains=q)).annotate(
+        sellers = Seller.objects.annotate(phones_text=Cast("phones", TextField())).filter(
+            Q(name__icontains=q) | Q(phones_text__icontains=q)).annotate(
             n_products=Count("products")).order_by("name")[:LIMIT]
-        out["sellers"] = [{"id": s.id, "name": s.name, "phone": s.phone, "products": s.n_products} for s in sellers]
+        out["sellers"] = [{"id": s.id, "name": s.name, "phone": s.phone, "phones": s.phones or ([s.phone] if s.phone else []),
+                           "products": s.n_products} for s in sellers]
         return Response(out)
 
 
@@ -185,6 +187,7 @@ class UnitHistoryView(APIView):
             "batch": {"id": str(b.id), "cost_price": _s(b.cost_price), "price": str(b.price),
                       "margin": None if b.cost_price is None else str(b.price - b.cost_price), "quantity": b.quantity, "created_at": b.created_at},
             "seller": seller and {"id": seller.id, "name": seller.name, "phone": seller.phone,
+                                  "phones": seller.phones or ([seller.phone] if seller.phone else []),
                                   "email": seller.email, "address": seller.address},
             "timeline": timeline,
             "customers": customers,

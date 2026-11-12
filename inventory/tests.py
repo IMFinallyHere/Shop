@@ -181,3 +181,111 @@ class InventoryTestCase(TestCase):
         bella_units = bella.get("/api/stock-items/", HTTP_HOST="bella.localhost").data
         self.assertEqual(len(acme_codes), 1)
         self.assertEqual(bella_units["count"], 0)
+
+    # --- one-time products, inactive filter, delete guard, mandatory fields, hidden names ---
+
+    def settings(self, c, **kw):
+        resp = c.put("/api/shop-settings/", kw, format="json", HTTP_HOST="acme.localhost")
+        self.assertEqual(resp.status_code, 200, resp.data)
+
+    def new_product(self, c, **kw):
+        resp = c.post("/api/products/", {"name": "P", **kw}, format="json", HTTP_HOST="acme.localhost")
+        self.assertEqual(resp.status_code, 201, resp.data)
+        return resp.data["id"]
+
+    def test_one_time_product_goes_inactive_when_sold_out_and_returns_on_restock(self):
+        c = self.client_for("acme.localhost", "acme@test.com")
+        pid = self.new_product(c, name="Once", is_one_time=True)
+        # Nothing acts until it has had stock: still active with zero units.
+        self.assertTrue(c.get(f"/api/products/{pid}/", HTTP_HOST="acme.localhost").data["is_active"])
+        added = self.add_stock(c, pid, {"quantity": 2, "price": "100"})
+        for unit in added.data["items"]:
+            c.post(f"/api/stock-items/{unit['id']}/remove/", HTTP_HOST="acme.localhost")
+        self.assertFalse(c.get(f"/api/products/{pid}/", HTTP_HOST="acme.localhost").data["is_active"])
+        ids = lambda q: [p["id"] for p in c.get(f"/api/products/{q}", HTTP_HOST="acme.localhost").data["results"]]  # noqa: E731
+        self.assertNotIn(pid, ids(""))
+        self.assertIn(pid, ids("?inactive=1"))
+        self.add_stock(c, pid, {"quantity": 1, "price": "100"})
+        self.assertTrue(c.get(f"/api/products/{pid}/", HTTP_HOST="acme.localhost").data["is_active"])
+        self.assertIn(pid, ids(""))
+
+    def test_regular_product_stays_active_when_sold_out(self):
+        c = self.client_for("acme.localhost", "acme@test.com")
+        pid = self.new_product(c, name="Regular")
+        unit = self.add_stock(c, pid, {"quantity": 1, "price": "100"}).data["items"][0]
+        c.post(f"/api/stock-items/{unit['id']}/remove/", HTTP_HOST="acme.localhost")
+        self.assertTrue(c.get(f"/api/products/{pid}/", HTTP_HOST="acme.localhost").data["is_active"])
+
+    def test_product_with_sold_units_cannot_be_deleted(self):
+        c = self.client_for("acme.localhost", "acme@test.com")
+        pid = self.new_product(c, name="Sold")
+        unit = self.add_stock(c, pid, {"quantity": 1, "price": "100"}).data["items"][0]
+        with schema_context("acme"):
+            StockItem.objects.filter(pk=unit["id"]).update(status=StockItem.SOLD)
+        resp = c.delete(f"/api/products/{pid}/", HTTP_HOST="acme.localhost")
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("sold units", resp.data["detail"])
+        with schema_context("acme"):
+            self.assertTrue(Product.objects.filter(pk=pid).exists())
+        # An untouched product still deletes.
+        other = self.new_product(c, name="Fresh")
+        self.assertEqual(c.delete(f"/api/products/{other}/", HTTP_HOST="acme.localhost").status_code, 204)
+
+    def test_mandatory_category_seller_and_cost_price(self):
+        c = self.client_for("acme.localhost", "acme@test.com")
+        self.settings(c, require_category=True, require_seller=True, require_cost_price=True)
+        bad = c.post("/api/products/", {"name": "X"}, format="json", HTTP_HOST="acme.localhost")
+        self.assertEqual(bad.status_code, 400)
+        self.assertEqual(set(bad.data), {"category", "seller"})
+        cat = c.post("/api/categories/", {"name": "Req Cat"}, format="json", HTTP_HOST="acme.localhost").data["id"]
+        sel = c.post("/api/sellers/", {"name": "Req Seller"}, format="json", HTTP_HOST="acme.localhost").data["id"]
+        pid = self.new_product(c, category=cat, seller=sel)
+        no_cost = self.add_stock(c, pid, {"quantity": 1, "price": "10"})
+        self.assertEqual(no_cost.status_code, 400)
+        self.assertEqual(self.add_stock(c, pid, {"quantity": 1, "price": "10", "cost_price": "5"}).status_code, 201)
+        # Editing something else on an old product isn't blocked by the new rules.
+        self.settings(c, require_category=False, require_seller=False, require_cost_price=False)
+        old = self.new_product(c, name="Old")
+        self.settings(c, require_category=True)
+        self.assertEqual(c.patch(f"/api/products/{old}/", {"is_active": False}, format="json", HTTP_HOST="acme.localhost").status_code, 200)
+        self.settings(c, require_category=False)
+
+    def test_hidden_product_name_is_generated(self):
+        c = self.client_for("acme.localhost", "acme@test.com")
+        self.assertEqual(c.post("/api/products/", {"name": ""}, format="json", HTTP_HOST="acme.localhost").status_code, 400)
+        self.settings(c, hide_product_name=True)
+        cat = c.post("/api/categories/", {"name": "Sarees"}, format="json", HTTP_HOST="acme.localhost").data["id"]
+        resp = c.post("/api/products/", {"category": cat, "fabric_type": "Silk"}, format="json", HTTP_HOST="acme.localhost")
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data["name"], f"Silk Sarees #{resp.data['id']}")
+        bare = c.post("/api/products/", {}, format="json", HTTP_HOST="acme.localhost")
+        self.assertEqual(bare.data["name"], f"Product #{bare.data['id']}")
+        self.settings(c, hide_product_name=False)
+
+    def test_product_list_can_be_narrowed_to_one_product_even_if_inactive(self):
+        c = self.client_for("acme.localhost", "acme@test.com")
+        pid = self.new_product(c, name="Pinned")
+        self.new_product(c, name="Other")
+        c.patch(f"/api/products/{pid}/", {"is_active": False}, format="json", HTTP_HOST="acme.localhost")
+        got = c.get(f"/api/products/?id={pid}", HTTP_HOST="acme.localhost").data["results"]
+        self.assertEqual([p["id"] for p in got], [pid])
+        self.assertEqual(c.get("/api/products/?id=abc", HTTP_HOST="acme.localhost").status_code, 200)
+
+    def test_seller_with_several_phone_numbers(self):
+        c = self.client_for("acme.localhost", "acme@test.com")
+        h = {"format": "json", "HTTP_HOST": "acme.localhost"}
+        made = c.post("/api/sellers/", {"name": "Multi", "phones": ["9000000001", " 9000000002 ", "", "9000000001"]}, **h)
+        self.assertEqual(made.status_code, 201, made.data)
+        self.assertEqual(made.data["phones"], ["9000000001", "9000000002"])  # trimmed, blanks and repeats dropped
+        self.assertEqual(made.data["phone"], "9000000001")  # primary = first
+        sid = made.data["id"]
+        # Any number finds the seller, in the list and in global search.
+        by_second = c.get("/api/sellers/?search=9000000002", HTTP_HOST="acme.localhost").data["results"]
+        self.assertEqual([s["id"] for s in by_second], [sid])
+        hit = c.get("/api/search/?q=9000000002", HTTP_HOST="acme.localhost").data["sellers"]
+        self.assertEqual([s["id"] for s in hit], [sid])
+        # Older clients sending only `phone` still work; clearing the list clears the primary too.
+        self.assertEqual(c.patch(f"/api/sellers/{sid}/", {"phone": "9111111111"}, **h).data["phones"], ["9111111111"])
+        cleared = c.patch(f"/api/sellers/{sid}/", {"phones": []}, **h).data
+        self.assertEqual((cleared["phones"], cleared["phone"]), ([], ""))
+        self.assertEqual(c.post("/api/sellers/", {"name": "Too many", "phones": [str(i) for i in range(7)]}, **h).status_code, 400)

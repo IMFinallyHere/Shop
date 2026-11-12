@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import clsx from 'clsx'
 import { X } from 'lucide-react'
 
-const sizeClass = { sm: 'max-w-sm', md: 'max-w-md', lg: 'max-w-lg', xl: 'max-w-2xl', '2xl': 'max-w-4xl' }
+const sizeClass = { sm: 'max-w-sm', md: 'max-w-md', lg: 'max-w-lg', xl: 'max-w-2xl', '2xl': 'max-w-4xl', '3xl': 'max-w-6xl' }
 
 // `footer` renders in a pinned bar under the scrolling body (typically Cancel / Save).
 export default function Modal({ isOpen, onClose, title, description, children, footer, size = 'md' }) {

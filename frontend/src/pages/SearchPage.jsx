@@ -3,6 +3,7 @@ import { Search } from 'lucide-react'
 import { search } from '../api/search'
 import useQuery from '../hooks/useQuery'
 import useReceipts from '../hooks/useReceipts'
+import usePrintSettings from '../hooks/usePrintSettings'
 import ErrorAlert from '../components/common/ErrorAlert'
 import Spinner from '../components/common/Spinner'
 import PageHeader from '../components/ui/PageHeader'
@@ -12,12 +13,13 @@ import ResultRow from '../components/search/ResultRow'
 import { groupResults, targetPath } from '../components/search/results'
 
 export default function SearchPage() {
+  const hideName = !!usePrintSettings().hide_product_name
   const [params] = useSearchParams()
   const q = (params.get('q') ?? '').trim()
   const navigate = useNavigate()
   const { openBill, openReturn, receipts } = useReceipts()
   const { data, loading, error } = useQuery(() => search(q), q)
-  const groups = groupResults(data)
+  const groups = groupResults(data, hideName)
 
   const go = (t) => (t.type === 'bill' ? openBill(t.id) : t.type === 'return' ? openReturn(t.id) : navigate(targetPath(t)))
 

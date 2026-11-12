@@ -9,6 +9,7 @@ import { checkout, getStoreCredit, quoteBill } from '../api/billing'
 import { getPaymentMethods } from '../api/shopsettings'
 import BillReceipt from '../components/billing/BillReceipt'
 import usePrintSettings from '../hooks/usePrintSettings'
+import { unitTitle } from '../utils/names'
 import ErrorAlert from '../components/common/ErrorAlert'
 import ConfirmDialog from '../components/common/ConfirmDialog'
 import Button from '../components/ui/Button'
@@ -46,6 +47,7 @@ export default function POSPage() {
   const [saving, setSaving] = useState(false)
   const [receipt, setReceipt] = useState(null)
   const printSettings = usePrintSettings()
+  const hideName = !!printSettings.hide_product_name
   const [creditBalance, setCreditBalance] = useState(0)   // this shop's store credit for the phone
   const [creditUse, setCreditUse] = useState('')
   const [confirmClear, setConfirmClear] = useState(false)
@@ -207,15 +209,15 @@ export default function POSPage() {
                 <li key={l.code} className={clsx('group flex items-center gap-4 px-5 py-3', l.code === lastAdded && 'animate-flash')}>
                   <span className="w-5 text-right text-xs tabular-nums text-zinc-400">{cart.length - i}</span>
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium text-zinc-900">{l.product_name}</div>
+                    <div className={clsx('truncate text-sm font-medium text-zinc-900', hideName && 'font-mono')}>{unitTitle(l.product_name, l.code, hideName)}</div>
                     <div className="flex items-center gap-1.5 text-xs text-zinc-500">
-                      {l.variant && <span>{l.variant} ·</span>}
-                      <span className="font-mono">{l.code}</span>
+                      {l.variant && <span>{l.variant}{!hideName && ' ·'}</span>}
+                      {!hideName && <span className="font-mono">{l.code}</span>}
                       {rateByCode[l.code] > 0 && <span>· GST {rateByCode[l.code]}%</span>}
                     </div>
                   </div>
                   <div className="text-sm font-semibold tabular-nums text-zinc-900">{money(l.unit_price)}</div>
-                  <button onClick={() => removeLine(l.code)} className="rounded-md p-1.5 text-zinc-300 hover:bg-red-50 hover:text-red-600 group-hover:text-zinc-400" aria-label={`Remove ${l.product_name}`}>
+                  <button onClick={() => removeLine(l.code)} className="rounded-md p-1.5 text-zinc-300 hover:bg-red-50 hover:text-red-600 group-hover:text-zinc-400" aria-label={`Remove ${unitTitle(l.product_name, l.code, hideName)}`}>
                     <X size={16} />
                   </button>
                 </li>

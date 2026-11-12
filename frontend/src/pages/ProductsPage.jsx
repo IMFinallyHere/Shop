@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Layers, PackagePlus, Pencil, Plus, Shirt, Trash2, Truck, X } from 'lucide-react'
+import { Archive, Layers, PackagePlus, Pencil, Plus, Shirt, Trash2, Truck, X } from 'lucide-react'
 import {
   getProducts, createProduct, updateProduct, deleteProduct, addStock,
   updateVariant, deleteVariant, getCategories, getSellers,
@@ -23,19 +23,24 @@ import Pagination from '../components/ui/Pagination'
 import SegmentedControl from '../components/ui/SegmentedControl'
 import { Table, Td, Tr } from '../components/ui/Table'
 import { useToast } from '../components/ui/Toast'
-import { EMPTY_LINE, variantLabel } from '../utils/variant'
+import { EMPTY_LINE, toStockPayload, variantLabel } from '../utils/variant'
 import { moneyShort } from '../utils/format'
 import { newBaseName, productName } from '../utils/productNames'
 import usePrintSettings from '../hooks/usePrintSettings'
+import { productLabel } from '../utils/names'
 
-const EMPTY = { name: '', sku: '', category: '', seller: '', fabric_type: '' }
+const EMPTY = { name: '', sku: '', category: '', seller: '', fabric_type: '', is_one_time: false }
 const KNOWN = ['name', 'sku', 'category', 'seller', 'fabric_type']
 const PAGE_SIZE = 20
 
 export default function ProductsPage() {
   const [params, setParams] = useSearchParams()
-  const lowOnly = params.get('low') === '1'
   const sellerId = params.get('seller')
+  const productId = params.get('product')  // a link to exactly one product (from search / a stock unit)
+  // One view at a time: active (default) · low · inactive · all. `?low=1` is the older dashboard link.
+  const view = params.get('view') ?? (params.get('low') === '1' ? 'low' : 'active')
+  const lowOnly = view === 'low'
+  const inactiveOnly = view === 'inactive'
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState(params.get('q') ?? '')
   const [saving, setSaving] = useState(false)
@@ -55,8 +60,11 @@ export default function ProductsPage() {
   const toast = useToast()
 
   const { data, loading, error: loadError, reload } = useQuery(
-    () => getProducts({ page, search, ...(lowOnly ? { low_stock: 1 } : {}), ...(sellerId ? { seller: sellerId } : {}) }),
-    `${page}|${search}|${lowOnly}|${sellerId}`,
+    () => getProducts({
+      page, search, ...(lowOnly ? { low_stock: 1 } : {}), ...(sellerId ? { seller: sellerId } : {}), ...(productId ? { id: productId } : {}),
+      ...(inactiveOnly ? { inactive: 1 } : view === 'all' ? { inactive: 'all' } : {}),
+    }),
+    `${page}|${search}|${view}|${sellerId}|${productId}`,
   )
   const { rows: products, count } = asList(data)
   // Look the selected product up in the latest list so modals stay in sync after reloads.
@@ -68,12 +76,12 @@ export default function ProductsPage() {
     getSellers({ all: 1 }).then(r => setSellers(r.data.results ?? r.data)).catch(() => {})
   }, [])
 
-  // Filters live in the URL (dashboard and search link here with ?low=1, ?q=, ?seller=).
-  const setParam = (key, value) => {
-    setParams(p => { const next = new URLSearchParams(p); value ? next.set(key, value) : next.delete(key); return next })
+  // Filters live in the URL (dashboard and search link here with ?view=low, ?q=, ?seller=).
+  const setView = (v) => {
+    setParams(p => { const next = new URLSearchParams(p); next.delete('low'); v === 'active' ? next.delete('view') : next.set('view', v); return next })
     setPage(1)
   }
-  const setLowOnly = (v) => setParam('low', v ? '1' : null)
+  const clearProduct = () => setParams(p => { const next = new URLSearchParams(p); next.delete('product'); return next })
   const clearSeller = () => setParams(p => { const next = new URLSearchParams(p); next.delete('seller'); next.delete('seller_name'); return next })
   const select = (p) => { setSelectedId(p.id); setSnapshot(p) }
 
@@ -91,12 +99,21 @@ export default function ProductsPage() {
   const nameFor = (base, d) => productName(base, {
     categoryName: categories.find(c => String(c.id) === String(d.category))?.name, fabric: d.fabric_type,
   })
+  const hideName = !!shopSettings.hide_product_name
+  const shown = (p) => (hideName ? productLabel(p) : p?.name ?? '')  // never the stored name when hidden
+  const loadStockOptions = () => {
+    // Fetched on open so colors/sizes just added in Settings show up.
+    getColors({ active: 1 }).then(r => setColors(r.data)).catch(() => setError('Failed to load colors.'))
+    getSizes({ active: 1 }).then(r => setSizes(r.data)).catch(() => setError('Failed to load sizes.'))
+  }
   const openCreate = () => {
-    const base = shopSettings.auto_product_names ? newBaseName() : ''
+    const base = shopSettings.auto_product_names && !hideName ? newBaseName() : ''
     const name = base ? nameFor(base, EMPTY) : ''
     setBaseName(base); setSuggested(name)
-    setFormData({ ...EMPTY, name })
-    setFieldErrors({}); setModal('create')
+    setFormData({ ...EMPTY, name, is_one_time: !!shopSettings.one_time_stock_default })
+    setFieldErrors({}); setError('')
+    setLines([{ ...EMPTY_LINE }]); setLineErrors([]); loadStockOptions()
+    setModal('create')
   }
   // While the name is still our suggestion, picking a category or typing a fabric updates
   // it ("Gulmohar 27" → "Gulmohar 27 Linen Pant"). Once the user types a name, it's theirs.
@@ -118,15 +135,16 @@ export default function ProductsPage() {
   }
   const openEdit = (p) => {
     select(p)
-    setFormData({ name: p.name, sku: p.sku, category: p.category ?? '', seller: p.seller ?? '', fabric_type: p.fabric_type })
+    setFormData({
+      name: p.name, sku: p.sku, category: p.category ?? '', seller: p.seller ?? '', fabric_type: p.fabric_type,
+      is_one_time: p.is_one_time, is_active: p.is_active,
+    })
     setFieldErrors({}); setModal('edit')
   }
-  const openDelete = (p) => { select(p); setModal('delete') }
+  const openDelete = (p) => { select(p); setError(''); setModal('delete') }
   const openAddStock = (p) => {
     select(p); setLines([{ ...EMPTY_LINE }]); setLineErrors([]); setError(''); setModal('addstock')
-    // Fetched on open so colors/sizes just added in Settings show up.
-    getColors({ active: 1 }).then(r => setColors(r.data)).catch(() => setError('Failed to load colors.'))
-    getSizes({ active: 1 }).then(r => setSizes(r.data)).catch(() => setError('Failed to load sizes.'))
+    loadStockOptions()
   }
   const openVariants = (p) => { select(p); setError(''); setModal('variants') }
   const closeModal = () => { setModal(null); setSelectedId(null); setSnapshot(null); setError(''); setFieldErrors({}) }
@@ -150,32 +168,73 @@ export default function ProductsPage() {
     } finally { setSaving(false) }
   }
 
-  const handleCreate = () => save(() => createProduct(clean(formData)), 'Product created')
   const handleEdit = () => save(() => updateProduct(selected.id, clean(formData)), 'Product updated')
 
+  // A stock line counts once anything but the helper margin is filled in; blank rows are ignored
+  // when adding stock from the New product modal.
+  const isUsed = (l) => Object.entries(l).some(([k, v]) => k !== 'margin' && v !== '')
+  const lineOk = (l) => Number(l.quantity) >= 1 && l.price !== '' && (!shopSettings.require_cost_price || l.cost_price !== '')
+
+  // New product, plus its first stock when any lines are filled in.
+  const handleCreate = async () => {
+    setSaving(true); setError(''); setFieldErrors({}); setLineErrors([])
+    let product
+    try {
+      product = (await createProduct(clean(formData))).data
+    } catch (e) {
+      const { fields, general } = parseErrors(e.response?.data)
+      setFieldErrors(fields)
+      setError(general || (Object.keys(fields).length ? '' : 'Something went wrong.'))
+      setSaving(false)
+      return
+    }
+    const used = lines.filter(isUsed)
+    try {
+      if (used.length) {
+        const { data } = await addStock(product.id, toStockPayload(used))
+        toast(`Product created · ${data.items.length} unit${data.items.length !== 1 ? 's' : ''} added`)
+        setPrintItems(data.items)
+      } else {
+        toast('Product created')
+      }
+      reload(); closeModal()
+    } catch (e) {
+      // The product exists now; carry on in the add-stock dialog so nothing typed is lost.
+      reload(); select(product); setLines(used); setModal('addstock')
+      toast('Product created, but its stock was not added', 'error')
+      showStockError(e)
+    } finally { setSaving(false) }
+  }
+
   const handleDelete = async () => {
-    setSaving(true)
+    setSaving(true); setError('')
     try { await deleteProduct(selected.id); reload(); closeModal(); toast('Product deleted') }
-    catch (e) { setError(e.response?.data?.detail || 'Failed to delete.') }
-    finally { setSaving(false) }
+    catch (e) {
+      // Shown inside the dialog (e.g. the product has sold units and can't be deleted).
+      const msg = e.response?.data?.detail || 'Could not delete this product.'
+      setError(msg); toast(msg, 'error')
+    } finally { setSaving(false) }
+  }
+
+  const showStockError = (e) => {
+    const errs = e.response?.data?.lines
+    if (Array.isArray(errs) && typeof errs[0] === 'object') {
+      // Per-line field errors: [{ quantity: ['…'] }, {}, …]
+      setLineErrors(errs.map(le => Object.fromEntries(Object.entries(le || {}).map(([k, v]) => [k, Array.isArray(v) ? v[0] : v]))))
+    } else {
+      setError((Array.isArray(errs) ? errs[0] : errs) || e.response?.data?.detail || 'Failed to add stock.')
+    }
   }
 
   const handleAddStock = async () => {
     setSaving(true); setError(''); setLineErrors([])
     try {
-      const payload = lines.map(l => ({ ...l, color: l.color || null, size: l.size || null, cost_price: l.cost_price === '' ? null : l.cost_price }))
-      const { data } = await addStock(selected.id, payload)
+      const { data } = await addStock(selected.id, toStockPayload(lines))
       reload(); closeModal()
       toast(`${data.items.length} unit${data.items.length !== 1 ? 's' : ''} added`)
       setPrintItems(data.items)  // open the print view for everything just added
     } catch (e) {
-      const errs = e.response?.data?.lines
-      if (Array.isArray(errs) && typeof errs[0] === 'object') {
-        // Per-line field errors: [{ quantity: ['…'] }, {}, …]
-        setLineErrors(errs.map(le => Object.fromEntries(Object.entries(le || {}).map(([k, v]) => [k, Array.isArray(v) ? v[0] : v]))))
-      } else {
-        setError((Array.isArray(errs) ? errs[0] : errs) || e.response?.data?.detail || 'Failed to add stock.')
-      }
+      showStockError(e)
     } finally { setSaving(false) }
   }
 
@@ -190,8 +249,13 @@ export default function ProductsPage() {
     catch (e) { setError(e.response?.data?.detail || 'Failed to delete variant.') }
   }
 
-  const linesValid = lines.length > 0 && lines.every(l => Number(l.quantity) >= 1 && l.price !== '')  // color, size and cost are optional
+  const linesValid = lines.length > 0 && lines.every(lineOk)  // color and size are optional (cost too, unless Settings says so)
   const totalUnits = lines.reduce((s, l) => s + (Number(l.quantity) || 0), 0)
+  const usedLines = lines.filter(isUsed)
+  const createStockValid = usedLines.every(lineOk)  // no stock lines is fine: add it later
+  const createUnits = usedLines.reduce((s, l) => s + (Number(l.quantity) || 0), 0)
+  const missingRequired = (shopSettings.require_category && !formData.category) || (shopSettings.require_seller && !formData.seller)
+    || (!hideName && !formData.name.trim())
 
   const priceRange = (p) => p.price_min == null ? '—'
     : p.price_min === p.price_max ? moneyShort(p.price_min) : `${moneyShort(p.price_min)} – ${moneyShort(p.price_max)}`
@@ -208,7 +272,15 @@ export default function ProductsPage() {
 
       <Toolbar>
         <SearchInput value={search} onChange={v => { setSearch(v); setPage(1) }} placeholder="Search products…" />
-        <SegmentedControl options={[{ value: false, label: 'All' }, { value: true, label: 'Low stock' }]} value={lowOnly} onChange={setLowOnly} />
+        <SegmentedControl
+          options={[{ value: 'active', label: 'Active' }, { value: 'low', label: 'Low stock' }, { value: 'inactive', label: 'Inactive' }, { value: 'all', label: 'All' }]}
+          value={view} onChange={setView} />
+        {productId && (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-50 py-1 pl-3 pr-1.5 text-sm text-brand-700 ring-1 ring-inset ring-brand-200">
+            <Shirt size={14} /> {products[0] ? shown(products[0]) : 'One product'}
+            <button onClick={clearProduct} className="rounded-full p-0.5 hover:bg-brand-100" aria-label="Show all products"><X size={14} /></button>
+          </span>
+        )}
         {sellerId && (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-50 py-1 pl-3 pr-1.5 text-sm text-brand-700 ring-1 ring-inset ring-brand-200">
             <Truck size={14} /> {params.get('seller_name') || 'Seller'}
@@ -220,9 +292,11 @@ export default function ProductsPage() {
       <ErrorAlert message={(!modal && error) || (loadError && 'Failed to load products.')} onDismiss={() => setError('')} />
 
       <Table
-        columns={[{ label: 'Product' }, { label: 'Variants' }, { label: 'Category' }, { label: 'Price' }, { label: 'In stock' }, { label: '', className: 'w-12' }]}
+        columns={[{ label: hideName ? 'Details' : 'Product' }, { label: 'Variants' }, { label: 'Category' }, { label: 'Price' }, { label: 'In stock' }, { label: '', className: 'w-12' }]}
         loading={loading} isEmpty={products.length === 0}
-        empty={lowOnly
+        empty={inactiveOnly
+          ? { icon: Archive, title: 'No inactive products', description: 'One-time products show up here once their stock sells out.' }
+          : lowOnly
           ? { icon: Shirt, title: 'Nothing is low on stock', description: 'Every variant is above its low-stock threshold.' }
           : { icon: Shirt, title: search ? 'No matching products' : 'No products yet', description: search ? 'Try a different search.' : 'Create a product, then add stock to print barcodes.',
               action: !search && <Button variant="primary" icon={Plus} onClick={openCreate}>New product</Button> }}
@@ -230,8 +304,16 @@ export default function ProductsPage() {
         {products.map(p => (
           <Tr key={p.id}>
             <Td>
-              <div className="font-medium text-zinc-900">{p.name}</div>
-              <div className="text-xs text-zinc-500">{[p.fabric_type, p.sku, p.seller_name].filter(Boolean).join(' · ') || '—'}</div>
+              {hideName ? (
+                <div className="font-medium text-zinc-900">{productLabel(p)}</div>
+              ) : (
+                <div className="font-medium text-zinc-900">{p.name}</div>
+              )}
+              <div className="flex flex-wrap items-center gap-1.5 text-xs text-zinc-500">
+                {(hideName ? [p.sku, p.seller_name] : [p.fabric_type, p.sku, p.seller_name]).filter(Boolean).join(' · ') || '—'}
+                {p.is_one_time && <Badge tone="neutral">One-time</Badge>}
+                {!p.is_active && <Badge tone="warning">Inactive</Badge>}
+              </div>
             </Td>
             <Td>
               {p.variants.length ? (
@@ -271,18 +353,37 @@ export default function ProductsPage() {
       </Table>
       <Pagination page={page} pageSize={PAGE_SIZE} count={count} onChange={setPage} />
 
-      <Modal isOpen={modal === 'create'} onClose={closeModal} title="New product" size="lg" footer={formFooter(handleCreate, 'Create product')}>
+      <Modal isOpen={modal === 'create'} onClose={closeModal} title="New product" size="3xl"
+        description="Add the product and its first stock together. Stock is optional: you can add it later."
+        footer={<>
+          <Button onClick={closeModal}>Cancel</Button>
+          <Button variant="primary" onClick={handleCreate} loading={saving} disabled={missingRequired || !createStockValid}>
+            {createUnits > 0 ? `Create & add ${createUnits} unit${createUnits !== 1 ? 's' : ''}` : 'Create product'}
+          </Button>
+        </>}>
         <ErrorAlert message={error} />
-        <ProductForm data={formData} onChange={onCreateChange} categories={categories} sellers={sellers} errors={fieldErrors}
-          onSuggestName={shopSettings.auto_product_names ? rerollName : undefined} />
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
+          <section aria-label="Product details">
+            <h3 className="mb-3 text-sm font-semibold text-zinc-900">Product</h3>
+            <ProductForm data={formData} onChange={onCreateChange} categories={categories} sellers={sellers} errors={fieldErrors}
+              hideName={hideName} requireCategory={shopSettings.require_category} requireSeller={shopSettings.require_seller} compact
+              onSuggestName={shopSettings.auto_product_names && !hideName ? rerollName : undefined} />
+          </section>
+          <section aria-label="Stock" className="min-w-0 lg:border-l lg:border-zinc-100 lg:pl-6">
+            <h3 className="mb-3 text-sm font-semibold text-zinc-900">Stock <span className="font-normal text-zinc-500">(optional)</span></h3>
+            <AddStockLines lines={lines} onChange={setLines} colors={colors} sizes={sizes} errors={lineErrors}
+              requireCost={shopSettings.require_cost_price} />
+          </section>
+        </div>
       </Modal>
 
       <Modal isOpen={modal === 'edit'} onClose={closeModal} title="Edit product" size="lg" footer={formFooter(handleEdit, 'Save changes')}>
         <ErrorAlert message={error} />
-        <ProductForm data={formData} onChange={setFormData} categories={categories} sellers={sellers} errors={fieldErrors} />
+        <ProductForm data={formData} onChange={setFormData} categories={categories} sellers={sellers} errors={fieldErrors}
+          hideName={hideName} requireCategory={shopSettings.require_category} requireSeller={shopSettings.require_seller} showActive />
       </Modal>
 
-      <Modal isOpen={modal === 'addstock'} onClose={closeModal} title={`Add stock · ${selected?.name ?? ''}`} size="2xl"
+      <Modal isOpen={modal === 'addstock'} onClose={closeModal} title={`Add stock · ${selected ? shown(selected) : ''}`} size="2xl"
         description="One line per color and size. Every unit gets its own barcode — you can print them next."
         footer={<>
           <Button onClick={closeModal}>Cancel</Button>
@@ -291,19 +392,20 @@ export default function ProductsPage() {
           </Button>
         </>}>
         <ErrorAlert message={error} />
-        <AddStockLines lines={lines} onChange={setLines} variants={selected?.variants ?? []} colors={colors} sizes={sizes} errors={lineErrors} />
+        <AddStockLines lines={lines} onChange={setLines} variants={selected?.variants ?? []} colors={colors} sizes={sizes} errors={lineErrors}
+          requireCost={shopSettings.require_cost_price} />
       </Modal>
 
-      <Modal isOpen={modal === 'variants'} onClose={closeModal} title={`Variants · ${selected?.name ?? ''}`} size="xl"
+      <Modal isOpen={modal === 'variants'} onClose={closeModal} title={`Variants · ${selected ? shown(selected) : ''}`} size="xl"
         description="Change the low-stock alert level per variant. A variant can be deleted once it has no units.">
         <ErrorAlert message={error} onDismiss={() => setError('')} />
         <VariantList variants={selected?.variants ?? []} onThreshold={handleThreshold} onDelete={handleDeleteVariant} />
       </Modal>
 
-      <ConfirmDialog isOpen={modal === 'delete'} onClose={closeModal} onConfirm={handleDelete} loading={saving}
-        title="Delete product" message={`Delete "${selected?.name}"? This removes the product and all its stock units.`} />
+      <ConfirmDialog isOpen={modal === 'delete'} onClose={closeModal} onConfirm={handleDelete} loading={saving} error={error}
+        title="Delete product" message={`Delete "${selected ? shown(selected) : ''}"? This removes the product and all its stock units.`} />
 
-      <PrintBarcodes items={printItems} title={`New stock — ${printItems?.[0]?.product_name ?? ''}`} onClose={() => setPrintItems(null)} />
+      <PrintBarcodes items={printItems} title={`New stock — ${hideName ? '' : printItems?.[0]?.product_name ?? ''}`} onClose={() => setPrintItems(null)} />
     </div>
   )
 }

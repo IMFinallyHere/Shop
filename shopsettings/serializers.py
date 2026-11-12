@@ -34,11 +34,13 @@ class ShopSettingsSerializer(serializers.ModelSerializer):
         model = ShopSettings
         fields = [
             "tax_slabs", "prices_include_tax", "auto_product_names",
+            "one_time_stock_default", "hide_product_name", "require_category", "require_seller",
+            "require_cost_price",
             "label_width_mm", "label_height_mm", "label_show_name", "label_show_variant",
             "label_show_price", "label_show_code_text", "label_copies",
             "receipt_width_mm", "receipt_printable_mm", "receipt_shop_name", "receipt_address",
             "receipt_phone", "receipt_gstin", "receipt_footer", "auto_print_after_bill",
-            "updated_at",
+            "receipt_show_invoice_barcode", "updated_at",
         ]
 
     def validate_tax_slabs(self, rows):

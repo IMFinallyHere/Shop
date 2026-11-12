@@ -227,3 +227,15 @@ class ShopSettingsTestCase(TestCase):
         # The same owner in another shop starts fresh there.
         self.assertFalse(self.client_for("bella.localhost", "bella@test.com").get(
             "/api/onboarding/", HTTP_HOST="bella.localhost").data["tour_done"])
+
+    def test_product_and_invoice_barcode_settings(self):
+        a = self.client_for("acme.localhost", "acme@test.com")
+        h = {"format": "json", "HTTP_HOST": "acme.localhost"}
+        keys = ["one_time_stock_default", "hide_product_name", "require_category", "require_seller", "require_cost_price"]
+        got = a.get("/api/shop-settings/", HTTP_HOST="acme.localhost").data
+        self.assertTrue(all(got[k] is False for k in keys))
+        self.assertTrue(got["receipt_show_invoice_barcode"])
+        resp = a.put("/api/shop-settings/", {**{k: True for k in keys}, "receipt_show_invoice_barcode": False}, **h)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertTrue(all(resp.data[k] for k in keys))
+        self.assertFalse(resp.data["receipt_show_invoice_barcode"])

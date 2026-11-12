@@ -18,6 +18,8 @@ import SegmentedControl from '../components/ui/SegmentedControl'
 import { Table, Td, Tr } from '../components/ui/Table'
 import { useToast } from '../components/ui/Toast'
 import { formatDate, formatDateTime, money } from '../utils/format'
+import usePrintSettings from '../hooks/usePrintSettings'
+import { unitTitle } from '../utils/names'
 
 const PAGE_SIZE = 20
 
@@ -28,6 +30,7 @@ const parseBillNumber = (v) => {
 }
 
 export default function ReturnsPage() {
+  const hideName = !!usePrintSettings().hide_product_name
   const [params, setParams] = useSearchParams()
   const [scan, setScan] = useState('')
   const [bill, setBill] = useState(null)
@@ -166,8 +169,8 @@ export default function ReturnsPage() {
                     selected.has(i.id) && 'bg-brand-50/60 hover:bg-brand-50')}>
                     <input type="checkbox" disabled={i.returned} checked={selected.has(i.id)} onChange={() => toggle(i.id)} className="h-4 w-4 accent-brand-600" />
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium text-zinc-900">{i.product_name}</div>
-                      <div className="font-mono text-xs text-zinc-500">{i.code}</div>
+                      <div className="truncate text-sm font-medium text-zinc-900">{unitTitle(i.product_name, i.code, hideName)}</div>
+                      {!hideName && <div className="font-mono text-xs text-zinc-500">{i.code}</div>}
                     </div>
                     {i.returned
                       ? <Badge>Returned</Badge>

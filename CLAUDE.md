@@ -39,6 +39,29 @@ Tenancy rules:
 - A new tenant app goes in `TENANT_APPS`. A model shared by every shop goes in `SHARED_APPS`.
 - Tax is applied on the server from shop settings. The server ignores any tax the client sends.
 
+Product and stock rules (all switched in Settings → Products / Printing, stored on `ShopSettings`):
+- **One-time products** (`Product.is_one_time`): `inventory.stock.recount` makes one inactive when
+  its stock hits 0, but only after it has had stock (`has_had_stock`); restocking reactivates it.
+  The product list returns **active only**; `?inactive=1` returns only the inactive ones and `?inactive=all` both. Detail routes
+  (edit, add stock, delete) still reach inactive products. `one_time_stock_default` presets new products.
+- `hide_product_name`: the name is optional; the server fills one ("Silk Sarees #12") on create.
+  The UI then never shows the stored name (`frontend/src/utils/names.js`): unit-level places (stock
+  list, POS cart, returns, search, labels, bill/return receipts) show our unit code plus colour/size;
+  product-level places show a neutral label like "Silk Sarees #12" (`productLabel`). Links to one
+  product use `/products?product=<id>` (backend `?id=`), so a hidden name never lands in a URL.
+  When adding a new screen that shows product names, honour `hide_product_name`.
+- `require_category`, `require_seller` (`ProductSerializer`) and `require_cost_price`
+  (`AddStockSerializer`) are enforced on the server. On edit, only fields being changed are checked.
+- Sellers have several phone numbers: `Seller.phones` (list, primary first, up to 6). `Seller.phone` is
+  kept as `phones[0]` (`Seller.save` and `SellerSerializer.validate`), so lists and search keep working;
+  seller search matches any number (`phones_text` cast). Raw inserts (e.g. `seed_large` COPY) must write `phones`.
+- Deleting a product that has sold units returns 400 with a message (the bill FK is `PROTECT`).
+- The New product modal creates the product, then calls `add-stock` if any stock lines are filled in.
+  The add-stock **Margin %** column is markup on cost (`price = cost × (1 + m/100)`) and is UI-only,
+  never sent to the API (`frontend/src/utils/variant.js`).
+- Bill receipts print a CODE128 `INV-xxxxx` barcode (`receipt_show_invoice_barcode`). Scanning it in
+  the global search opens the bill (`billing/search.py` `BILL_NO`).
+
 ## Dev commands
 
 ```bash
