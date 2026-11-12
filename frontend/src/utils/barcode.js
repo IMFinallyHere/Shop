@@ -19,6 +19,22 @@ export function drawCode128Svg(svg, code) {
   svg.removeAttribute('style')
 }
 
+// Code128 drawn with a whole number of printer dots per bar, so every bar of the same width prints
+// the same width (a stretched SVG gives 2- and 3-dot bars at random). 0.25 mm is the smallest bar
+// that scans reliably, which is 2 dots at 203 dpi and 3 at 300 dpi; it shrinks to fit narrow labels.
+// Returns { canvas, widthMm } where the canvas is 1 pixel per dot (show it with image-rendering: pixelated).
+export function drawCode128Dots(code, dpi, maxWidthMm) {
+  const probe = document.createElement('canvas')
+  JsBarcode(probe, code, { format: 'CODE128', width: 1, height: 1, margin: 0, displayValue: false })
+  const modules = probe.width
+  const wanted = Math.max(1, Math.round(0.25 * dpi / 25.4))
+  const fits = Math.floor((maxWidthMm * dpi / 25.4) / modules)
+  const dotsPerBar = Math.max(1, Math.min(wanted, fits))
+  const canvas = document.createElement('canvas')
+  JsBarcode(canvas, code, { format: 'CODE128', width: dotsPerBar, height: 1, margin: 0, displayValue: false })
+  return { canvas, widthMm: canvas.width * 25.4 / dpi }
+}
+
 function triggerDownload(canvas, filename) {
   const a = document.createElement('a')
   a.href = canvas.toDataURL('image/png')

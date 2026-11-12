@@ -31,7 +31,7 @@ export default function PrintBarcodes({ items, title = 'Barcodes', autoPrint = f
       printOnOpen
       autoPrint={autoPrint}
       ready={settings.loaded}
-      direct={{ kind: 'label', selector: '.thermal-label', size: () => ({ width: Number(settings.label_width_mm), height: Number(settings.label_height_mm) }) }}
+      direct={{ kind: 'label', crisp: true, selector: '.thermal-label', size: () => ({ width: Number(settings.label_width_mm), height: Number(settings.label_height_mm) }) }}
       onPrint={() => addEvent('label_printed')}
       onClose={onClose}
       actions={<Link to="/settings?tab=printing" className="no-print hidden items-center gap-1 self-center text-xs text-zinc-500 hover:text-zinc-800 sm:inline-flex" onClick={onClose}><Settings size={14} />Label settings</Link>}

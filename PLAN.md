@@ -505,6 +505,8 @@ Optional later: enable `ufw` (22/80/443), Cloudflare real-IP for logs, swap file
 - [x] Bill receipts print a CODE128 `INV-xxxxx` barcode (Settings → Printing toggle
       `receipt_show_invoice_barcode`); scanning it in the global search opens the bill.
 - [x] Sellers can have several phone numbers (`Seller.phones`, no labels); `phone` stays the primary.
+- [x] Labels: crisp 1:1 dot printing (dpi setting per laptop), integer-dot barcode (5 mm tall), big bold
+      price without ".00", open bold font so "Green" no longer prints as "groon". Not yet verified on paper.
 - Migrations: `inventory/0011`, `inventory/0012` (sellers' phones, fills from the old `phone`), `shopsettings/0009`.
 
 ## Local development database (Docker)  ✅

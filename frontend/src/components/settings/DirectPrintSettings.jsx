@@ -84,7 +84,7 @@ export default function DirectPrintSettings({ onTestReceipt, onTestLabel }) {
           title="Label printer" hint="Barcode stickers"
           printer={prefs.labelPrinter} printers={options(prefs.labelPrinter)} disabled={!prefs.enabled}
           onPrinter={v => update({ labelPrinter: v })}
-          profile={prefs.profiles.label} onProfile={v => setProfile('label', v)} onTest={onTestLabel}
+          profile={prefs.profiles.label} onProfile={v => setProfile('label', v)} onTest={onTestLabel} showDpi
         />
       </div>
 
@@ -116,7 +116,7 @@ const ORIENTATIONS = [['portrait', 'Portrait'], ['landscape', 'Landscape'], ['au
 const ROTATIONS = [0, 90, 180, 270]
 
 // One printer + its profile (how it wants pages), saved on this laptop.
-function PrinterCard({ title, hint, printer, printers, disabled, onPrinter, profile, onProfile, onTest }) {
+function PrinterCard({ title, hint, printer, printers, disabled, onPrinter, profile, onProfile, onTest, showDpi = false }) {
   const num = (k) => (e) => onProfile({ [k]: e.target.value === '' ? 0 : Math.max(0, Math.min(30, Number(e.target.value))) })
   const off = disabled || !printer
   return (
@@ -160,6 +160,16 @@ function PrinterCard({ title, hint, printer, printers, disabled, onPrinter, prof
             </Select>
           )}
         </Field>
+        {showDpi && (
+          <Field label="Printer resolution" hint="Labels print one dot per printer dot. TVS LP 46 is 203 dpi.">
+            {id => (
+              <Select id={id} value={profile.dpi ?? 203} onChange={e => onProfile({ dpi: Number(e.target.value) })}>
+                <option value={203}>203 dpi (most label printers)</option>
+                <option value={300}>300 dpi</option>
+              </Select>
+            )}
+          </Field>
+        )}
         <Field label="Top margin (mm)">{id => <Input id={id} type="number" min="0" max="30" step="0.5" value={profile.top} onChange={num('top')} />}</Field>
         <Field label="Left margin (mm)">{id => <Input id={id} type="number" min="0" max="30" step="0.5" value={profile.left} onChange={num('left')} />}</Field>
       </fieldset>

@@ -25,3 +25,10 @@ export const formatReceiptDate = (d) => (d ? new Date(d).toLocaleString('en-IN',
 export const displayName = (u) => [u?.first_name, u?.last_name].filter(Boolean).join(' ') || u?.email || ''
 
 export const initials = (name) => (name || '').split(/[\s@.]/).filter(Boolean).slice(0, 2).map(s => s[0].toUpperCase()).join('')
+
+// Price on a label: whole rupees without ".00" (₹1275), paise kept when real (₹1275.50).
+export const labelPrice = (v) => {
+  const n = Number(v)
+  if (v == null || v === '' || !Number.isFinite(n)) return ''
+  return `₹${Number.isInteger(n) ? n : n.toFixed(2)}`
+}

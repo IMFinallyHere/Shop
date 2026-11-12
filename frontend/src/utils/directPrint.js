@@ -14,7 +14,8 @@ const DOTS_PER_PX = 203 / 96  // thermal heads are 203 dpi; render at twice that
 //   rotation:    0 | 90 | 180 | 270 degrees, for drivers that feed sideways
 //   fit:         'page' = scale to the page; 'actual' = true size (mm), no scaling
 //   top / left:  margins in mm, to nudge a print that lands off the sticker or roll
-export const DEFAULT_PROFILE = { paper: 'exact', orientation: 'portrait', rotation: 0, fit: 'page', top: 0, left: 0 }
+//   dpi:         the printer's resolution (203 or 300), used by labels to print one image dot per printer dot
+export const DEFAULT_PROFILE = { paper: 'exact', orientation: 'portrait', rotation: 0, fit: 'page', top: 0, left: 0, dpi: 203 }
 
 export const DEFAULT_PREFS = {
   enabled: false, skipPreview: false, receiptPrinter: '', labelPrinter: '',
@@ -84,16 +85,66 @@ export async function listPrinters() {
 
 let fontCss = null  // web fonts embedded once per page load, not per print
 
+// The label printer's resolution on this laptop (dots per inch).
+export const labelDpi = () => Number(getDirectPrefs().profiles.label.dpi) || DEFAULT_PROFILE.dpi
+
+const loadImage = (src) => new Promise((resolve, reject) => {
+  const img = new Image()
+  img.onload = () => resolve(img)
+  img.onerror = () => reject(new Error('Could not render the label'))
+  img.src = src
+})
+
+// Crisp labels: render at 4x the printer's dots, average down to exactly one pixel per printer
+// dot, then threshold to pure black/white ourselves. Sent 1:1, so neither QZ nor the driver
+// resamples (resampling is what closed the "e" in "Green" and made bar widths uneven).
+async function rasterizeLabel(node, { widthMm, heightMm, dpi, toPng, fontCss }) {
+  const dotsW = Math.round(widthMm * dpi / 25.4)
+  const dotsH = Math.round(heightMm * dpi / 25.4)
+  const SUPER = 4
+  node.classList.add('raster')
+  let big
+  try {
+    big = await toPng(node, {
+      pixelRatio: (dotsW * SUPER) / node.offsetWidth, backgroundColor: '#fff', fontEmbedCSS: fontCss, style: { margin: '0' },
+    })
+  } finally {
+    node.classList.remove('raster')
+  }
+  const img = await loadImage(big)
+  const canvas = document.createElement('canvas')
+  canvas.width = dotsW; canvas.height = dotsH
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, dotsW, dotsH)
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'
+  ctx.drawImage(img, 0, 0, dotsW, dotsH)
+  const px = ctx.getImageData(0, 0, dotsW, dotsH)
+  for (let i = 0; i < px.data.length; i += 4) {
+    const v = px.data[i] < 140 ? 0 : 255  // darker than ~45% grey prints black
+    px.data[i] = px.data[i + 1] = px.data[i + 2] = v
+  }
+  ctx.putImageData(px, 0, 0)
+  return canvas.toDataURL('image/png')
+}
+
 // Prints each node as one page of `size(node)` mm ({ width, height }) using this
 // kind's profile (see DEFAULT_PROFILE).
-export async function printNodes(printer, nodes, size, { jobName = 'Shop print', profile = DEFAULT_PROFILE } = {}) {
+export async function printNodes(printer, nodes, size, { jobName = 'Shop print', profile = DEFAULT_PROFILE, crisp = false } = {}) {
   const [qz, { toPng, getFontEmbedCSS }] = await Promise.all([connect(), import('html-to-image')])
   if (!nodes.length) throw new Error('Nothing to print')
   fontCss ??= await getFontEmbedCSS(nodes[0]).catch(() => '')
 
   const pixelRatio = DOTS_PER_PX * 2
   const pages = []
+  const { width, height } = size(nodes[0])
+  const p = { ...DEFAULT_PROFILE, ...profile }
+  const dpi = Number(p.dpi) || DEFAULT_PROFILE.dpi
   for (const node of nodes) {
+    if (crisp) {
+      const png = await rasterizeLabel(node, { widthMm: width, heightMm: height, dpi, toPng, fontCss })
+      pages.push(png.replace(/^data:image\/png;base64,/, ''))
+      continue
+    }
     node.classList.add('raster')  // thermal styles: solid black, no shadows/outlines
     try {
       // margin: 0 — the copy keeps the node's on-screen margins (the receipt is centred
@@ -105,8 +156,6 @@ export async function printNodes(printer, nodes, size, { jobName = 'Shop print',
     }
   }
 
-  const { width, height } = size(nodes[0])
-  const p = { ...DEFAULT_PROFILE, ...profile }
   const options = {
     units: 'mm', colorType: 'blackwhite', jobName,
     margins: { top: Number(p.top) || 0, left: Number(p.left) || 0, right: 0, bottom: 0 },
@@ -116,7 +165,7 @@ export async function printNodes(printer, nodes, size, { jobName = 'Shop print',
   }
   if (p.paper === 'exact') options.size = { width, height, custom: true }
   // True size: tell QZ how many image pixels make a millimetre.
-  if (p.fit === 'actual') options.density = Math.round(96 * pixelRatio / 25.4)
+  if (p.fit === 'actual') options.density = crisp ? dpi : Math.round(96 * pixelRatio / 25.4)
   const config = qz.configs.create(printer, options)
   await qz.print(config, pages.map(data => ({ type: 'pixel', format: 'image', flavor: 'base64', data })))
 }

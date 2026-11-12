@@ -27,7 +27,8 @@ const pageCss = (width, height) => {
 // just before printing (continuous receipt rolls). `autoPrint` prints once `ready`.
 // `css` is for any extra rules the caller needs.
 //
-// `direct` = { kind: 'receipt' | 'label', selector, size: node => ({ width, height }) mm }
+// `direct` = { kind: 'receipt' | 'label', selector, size: node => ({ width, height }) mm, crisp? }
+// (`crisp`: print one image dot per printer dot, for labels - see utils/directPrint.js)
 // lets Print go straight to this laptop's printer for that kind through QZ Tray (Settings →
 // Printing → Direct printing), falling back to the browser dialog if that fails. With
 // "Skip the preview" on, sheets that print on open (`autoPrint` / `printOnOpen`) print
@@ -83,7 +84,7 @@ export default function PrintSheet({
     setBusy(true)
     try {
       const nodes = [...(rootRef.current?.querySelectorAll(d.selector) ?? [])]
-      await printNodes(printer, nodes, d.size, { jobName: title, profile: prefs.profiles[d.kind] })
+      await printNodes(printer, nodes, d.size, { jobName: title, profile: prefs.profiles[d.kind], crisp: !!d.crisp })
       onPrintRef.current?.()
       toast(`Printed on ${printer}`)
       if (instant) onCloseRef.current()

@@ -59,6 +59,12 @@ Product and stock rules (all switched in Settings → Products / Printing, store
 - The New product modal creates the product, then calls `add-stock` if any stock lines are filled in.
   The add-stock **Margin %** column is markup on cost (`price = cost × (1 + m/100)`) and is UI-only,
   never sent to the API (`frontend/src/utils/variant.js`).
+- **Labels print one image dot per printer dot** (`utils/directPrint.js` `rasterizeLabel`, used when
+  `direct.crisp` is set, i.e. labels only): render at 4x, average down to the printer's dpi
+  (per-laptop `dpi` in the label profile, default 203, TVS LP 46), threshold to pure black/white, send 1:1
+  so QZ never resamples. The barcode is a canvas with a whole number of dots per bar
+  (`drawCode128Dots`, 2 dots = 0.25 mm at 203 dpi), centred on a whole dot. Never stretch a barcode
+  SVG for labels: uneven bars scan badly. Label prices drop ".00" (`labelPrice`); layout is in `ThermalLabel.jsx`.
 - Bill receipts print a CODE128 `INV-xxxxx` barcode (`receipt_show_invoice_barcode`). Scanning it in
   the global search opens the bill (`billing/search.py` `BILL_NO`).
 
