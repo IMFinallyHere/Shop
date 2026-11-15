@@ -13,6 +13,7 @@ import ConfirmDialog from '../components/common/ConfirmDialog'
 import ProductForm from '../components/forms/ProductForm'
 import PrintBarcodes from '../components/inventory/PrintBarcodes'
 import AddStockLines from '../components/inventory/AddStockLines'
+import QuickAddDialog from '../components/inventory/QuickAddDialog'
 import VariantList from '../components/inventory/VariantList'
 import SearchInput from '../components/common/SearchInput'
 import ErrorAlert from '../components/common/ErrorAlert'
@@ -52,6 +53,17 @@ export default function ProductsPage() {
   const shopSettings = usePrintSettings()  // shared shop-settings cache (includes auto_product_names)
   const [categories, setCategories] = useState([])
   const [sellers, setSellers] = useState([])
+  // "Add new" in the Category / Seller dropdowns opens the full form; resolves with the new id (null if cancelled).
+  const [quick, setQuick] = useState(null)  // { kind, name, resolve }
+  const askCreate = (kind) => (name) => new Promise(resolve => setQuick({ kind, name, resolve }))
+  const onCreateCategory = askCreate('category')
+  const onCreateSeller = askCreate('seller')
+  const quickDone = (record) => {
+    const setList = quick.kind === 'seller' ? setSellers : setCategories
+    setList(l => [...l, record].sort((a, b) => a.name.localeCompare(b.name)))
+    quick.resolve(record.id); setQuick(null)
+  }
+  const quickCancel = () => { quick.resolve(null); setQuick(null) }
   const [lines, setLines] = useState([{ ...EMPTY_LINE }])
   const [lineErrors, setLineErrors] = useState([])
   const [colors, setColors] = useState([])
@@ -270,6 +282,7 @@ export default function ProductsPage() {
   const createStockValid = usedLines.every(lineOk)  // no stock lines is fine: add it later
   const createUnits = usedLines.reduce((s, l) => s + (Number(l.quantity) || 0), 0)
   const missingRequired = (shopSettings.require_category && !formData.category) || (shopSettings.require_seller && !formData.seller)
+    || (shopSettings.require_sku && !String(formData.sku ?? '').trim())
     || (!hideName && !formData.name.trim())
 
   const priceRange = (p) => p.price_min == null ? '—'
@@ -384,7 +397,8 @@ export default function ProductsPage() {
           <section aria-label="Product details">
             <h3 className="mb-3 text-sm font-semibold text-zinc-900">Product</h3>
             <ProductForm data={formData} onChange={onCreateChange} categories={categories} sellers={sellers} errors={fieldErrors}
-              hideName={hideName} requireCategory={shopSettings.require_category} requireSeller={shopSettings.require_seller} compact
+              hideName={hideName} requireCategory={shopSettings.require_category} requireSeller={shopSettings.require_seller} requireSku={shopSettings.require_sku} compact
+              onCreateCategory={onCreateCategory} onCreateSeller={onCreateSeller}
               onSuggestName={shopSettings.auto_product_names && !hideName ? rerollName : undefined} />
           </section>
           <section aria-label="Stock" className="min-w-0 lg:border-l lg:border-zinc-100 lg:pl-6">
@@ -395,10 +409,13 @@ export default function ProductsPage() {
         </div>
       </Modal>
 
+      {quick && <QuickAddDialog kind={quick.kind} initialName={quick.name} onCreated={quickDone} onClose={quickCancel} />}
+
       <Modal isOpen={modal === 'edit'} onClose={closeModal} title="Edit product" size="lg" footer={formFooter(handleEdit, 'Save changes')}>
         <ErrorAlert message={error} />
         <ProductForm data={formData} onChange={setFormData} categories={categories} sellers={sellers} errors={fieldErrors}
-          hideName={hideName} requireCategory={shopSettings.require_category} requireSeller={shopSettings.require_seller} showActive />
+          hideName={hideName} requireCategory={shopSettings.require_category} requireSeller={shopSettings.require_seller} requireSku={shopSettings.require_sku} showActive
+          onCreateCategory={onCreateCategory} onCreateSeller={onCreateSeller} />
       </Modal>
 
       <Modal isOpen={modal === 'addstock'} onClose={closeModal} title={`Add stock · ${selected ? shown(selected) : ''}`} size="2xl"

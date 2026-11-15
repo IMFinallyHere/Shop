@@ -2,11 +2,11 @@ import { Shuffle } from 'lucide-react'
 import { Checkbox, Field, Input, Select } from '../ui/Field'
 
 // onSuggestName (optional): shows a button that fills a suggested clothing name.
-// hideName: the shop doesn't name products (the server does). requireCategory/requireSeller
+// hideName: the shop doesn't name products (the server does). requireCategory/requireSeller/requireSku
 // come from Settings. showActive: edit mode only, to deactivate/reactivate a product.
 export default function ProductForm({
-  data, onChange, categories, sellers, errors = {}, onSuggestName,
-  hideName = false, requireCategory = false, requireSeller = false, showActive = false, compact = false,
+  data, onChange, categories, sellers, errors = {}, onSuggestName, onCreateCategory, onCreateSeller,
+  hideName = false, requireCategory = false, requireSeller = false, requireSku = false, showActive = false, compact = false,
 }) {
   const set = (k) => (e) => onChange({ ...data, [k]: e.target.value })
 
@@ -16,10 +16,10 @@ export default function ProductForm({
     </Field>
   )
 
-  const select = (name, label, options, required = false) => (
+  const select = (name, label, options, required = false, onCreate, createLabel) => (
     <Field label={label} required={required} error={errors[name]}>
       {id => (
-        <Select id={id} value={data[name] ?? ''} onChange={set(name)} invalid={!!errors[name]}>
+        <Select id={id} value={data[name] ?? ''} onChange={set(name)} invalid={!!errors[name]} onCreate={onCreate} createLabel={createLabel}>
           <option value="">{required ? '— Select —' : '— None —'}</option>
           {options.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
         </Select>
@@ -41,12 +41,12 @@ export default function ProductForm({
         </div>
       )}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {select('category', 'Category', categories, requireCategory)}
-        {select('seller', 'Seller', sellers, requireSeller)}
+        {select('category', 'Category', categories, requireCategory, onCreateCategory, 'category')}
+        {select('seller', 'Seller', sellers, requireSeller, onCreateSeller, 'seller')}
       </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {field('fabric_type', 'Fabric', { placeholder: 'e.g. Cotton' })}
-        {field('sku', 'SKU', { placeholder: 'Optional' })}
+        {field('sku', 'SKU', { required: requireSku, placeholder: requireSku ? 'Required' : 'Optional' })}
       </div>
       <Checkbox label={<span className="font-medium text-zinc-900">One-time stock</span>}
         description="Moves to Inactive once its stock sells out. Adding stock again brings it back."

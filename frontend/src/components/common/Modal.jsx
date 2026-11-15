@@ -3,17 +3,20 @@ import { createPortal } from 'react-dom'
 import clsx from 'clsx'
 import { X } from 'lucide-react'
 
+const openModals = []  // stack of open modals; Escape closes only the top one
 const sizeClass = { sm: 'max-w-sm', md: 'max-w-md', lg: 'max-w-lg', xl: 'max-w-2xl', '2xl': 'max-w-4xl', '3xl': 'max-w-6xl' }
 
 // `footer` renders in a pinned bar under the scrolling body (typically Cancel / Save).
 export default function Modal({ isOpen, onClose, title, description, children, footer, size = 'md' }) {
   useEffect(() => {
     if (!isOpen) return
-    const onKey = (e) => { if (e.key === 'Escape') onClose?.() }
+    const token = {}
+    openModals.push(token)
+    const onKey = (e) => { if (e.key === 'Escape' && openModals[openModals.length - 1] === token) onClose?.() }
     document.addEventListener('keydown', onKey)
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = prev }
+    return () => { document.removeEventListener('keydown', onKey); openModals.splice(openModals.indexOf(token), 1); document.body.style.overflow = prev }
   }, [isOpen, onClose])
 
   if (!isOpen) return null

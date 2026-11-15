@@ -9,7 +9,8 @@ import ErrorAlert from '../components/common/ErrorAlert'
 import PageHeader from '../components/ui/PageHeader'
 import Button from '../components/ui/Button'
 import Badge from '../components/ui/Badge'
-import { Field, Input } from '../components/ui/Field'
+import CategoryForm from '../components/forms/CategoryForm'
+import { EMPTY_CATEGORY, parseApiErrors } from '../utils/inventoryForms'
 import Pagination from '../components/ui/Pagination'
 import { Table, Td, Tr } from '../components/ui/Table'
 import { useToast } from '../components/ui/Toast'
@@ -22,23 +23,23 @@ export default function CategoriesPage() {
   const { rows: items, count } = asList(data)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [fieldError, setFieldError] = useState('')
+  const [fieldErrors, setFieldErrors] = useState({})
   const [modal, setModal] = useState(null)
   const [selected, setSelected] = useState(null)
-  const [form, setForm] = useState({ name: '', description: '' })
+  const [form, setForm] = useState(EMPTY_CATEGORY)
   const toast = useToast()
 
-  const openCreate = () => { setForm({ name: '', description: '' }); setFieldError(''); setModal('create') }
-  const openEdit = (c) => { setSelected(c); setForm({ name: c.name, description: c.description }); setFieldError(''); setModal('edit') }
+  const openCreate = () => { setForm({ ...EMPTY_CATEGORY }); setFieldErrors({}); setModal('create') }
+  const openEdit = (c) => { setSelected(c); setForm({ name: c.name, description: c.description }); setFieldErrors({}); setModal('edit') }
   const openDelete = (c) => { setSelected(c); setModal('delete') }
-  const close = () => { setModal(null); setSelected(null); setError(''); setFieldError('') }
+  const close = () => { setModal(null); setSelected(null); setError(''); setFieldErrors({}) }
 
   const save = async () => {
-    setSaving(true); setError(''); setFieldError('')
+    setSaving(true); setError(''); setFieldErrors({})
     try {
       await (modal === 'edit' ? updateCategory(selected.id, form) : createCategory(form))
       toast(modal === 'edit' ? 'Category updated' : 'Category created'); reload(); close()
-    } catch (e) { setFieldError(e.response?.data?.name?.[0] || ''); if (!e.response?.data?.name) setError('Failed to save.') }
+    } catch (e) { const { fields, general } = parseApiErrors(e); setFieldErrors(fields); setError(general) }
     finally { setSaving(false) }
   }
   const handleDelete = async () => {
@@ -78,15 +79,7 @@ export default function CategoriesPage() {
       <Modal isOpen={modal === 'create' || modal === 'edit'} onClose={close} title={modal === 'edit' ? 'Edit category' : 'New category'} size="sm"
         footer={<><Button onClick={close}>Cancel</Button><Button variant="primary" onClick={save} loading={saving}>Save</Button></>}>
         <ErrorAlert message={error} />
-        <form className="space-y-4" onSubmit={e => { e.preventDefault(); save() }}>
-          <Field label="Name" required error={fieldError}>
-            {id => <Input id={id} autoFocus value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} invalid={!!fieldError} />}
-          </Field>
-          <Field label="Description">
-            {id => <Input id={id} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Optional" />}
-          </Field>
-          <button type="submit" hidden />
-        </form>
+        <CategoryForm form={form} onChange={setForm} errors={fieldErrors} onSubmit={save} />
       </Modal>
 
       <ConfirmDialog isOpen={modal === 'delete'} onClose={close} onConfirm={handleDelete} loading={saving}

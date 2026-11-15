@@ -1,7 +1,7 @@
 import { Children, isValidElement, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import clsx from 'clsx'
-import { Check, ChevronDown, Search } from 'lucide-react'
+import { Check, ChevronDown, Plus, Search } from 'lucide-react'
 
 // A styled replacement for <select> (the native popup can't be styled). Same usage:
 //   <Select id={id} value={v} onChange={e => set(e.target.value)}>
@@ -9,6 +9,10 @@ import { Check, ChevronDown, Search } from 'lucide-react'
 //     <option value="1" data-hex="#111">Black</option>      ← data-hex shows a swatch
 //   </Select>
 // onChange gets { target: { value } } like a native select. Long lists get a search box.
+// `onCreate(name)` (optional) makes it creatable: typing a name with no exact match offers
+// "Add <name>" (click, or Enter when nothing else matches). It closes the menu and calls
+// onCreate, which may open its own form; resolve with the new option's value to select it,
+// or null if cancelled.
 // Keyboard: ↑/↓ (opens), Enter/Space to pick, Esc to close, typing jumps/filters.
 
 const SEARCH_FROM = 9  // show the search box from this many options
@@ -48,7 +52,7 @@ function Swatch({ hex }) {
 
 export default function Select({
   id, value, onChange, children, disabled = false, invalid = false, className,
-  placeholder = 'Select…', 'aria-label': ariaLabel, name, required,
+  placeholder = 'Select…', 'aria-label': ariaLabel, name, required, onCreate, createLabel = 'one',
 }) {
   const options = useMemo(() => readOptions(children), [children])
   const current = options.find(o => o.value === String(value ?? ''))
@@ -61,7 +65,7 @@ export default function Select({
   const searchRef = useRef(null)
   const typeahead = useRef({ text: '', at: 0 })
   const listId = useId()
-  const searchable = options.length >= SEARCH_FROM
+  const searchable = options.length >= SEARCH_FROM || !!onCreate
 
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -121,6 +125,15 @@ export default function Select({
     listRef.current?.querySelector(`[data-index="${active}"]`)?.scrollIntoView({ block: 'nearest' })
   }, [open, active])
 
+  const q = query.trim()
+  const canCreate = !!onCreate && q !== '' && !options.some(o => o.label.trim().toLowerCase() === q.toLowerCase())
+  const doCreate = () => {
+    if (!canCreate) return
+    const text = q
+    close(false)
+    Promise.resolve(onCreate(text)).then(v => { if (v != null) onChange?.({ target: { value: String(v), name } }) }).catch(() => {})
+  }
+
   const loadMore = () => setCount(c => (c < matches.length ? c + PAGE : c))
   const onListScroll = (e) => {
     const el = e.currentTarget
@@ -155,7 +168,10 @@ export default function Select({
     else if (e.key === 'ArrowUp') { e.preventDefault(); move(-1) }
     else if (e.key === 'Home') { e.preventDefault(); setActive(0) }
     else if (e.key === 'End') { e.preventDefault(); setCount(matches.length); setActive(matches.length - 1) }
-    else if (e.key === 'Enter' || (e.key === ' ' && !searchable)) { e.preventDefault(); choose(shown[active]) }
+    else if (e.key === 'Enter' || (e.key === ' ' && !searchable)) {
+      e.preventDefault()
+      if (canCreate && !shown.length) doCreate(); else choose(shown[active])
+    }
     else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close() }  // don't close the modal too
     else if (e.key === 'Tab') close(false)
   }
@@ -191,14 +207,14 @@ export default function Select({
             <div className="flex items-center gap-2 border-b border-zinc-100 px-3 py-2">
               <Search size={14} className="shrink-0 text-zinc-400" />
               <input
-                ref={searchRef} value={query} placeholder="Search…" aria-label="Search options"
+                ref={searchRef} value={query} placeholder={onCreate ? `Search or add ${createLabel}…` : 'Search…'} aria-label="Search options"
                 onChange={e => { setQuery(e.target.value); setActive(0); setCount(PAGE) }}
                 className="w-full bg-transparent text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none"
               />
             </div>
           )}
           <ul id={listId} role="listbox" aria-label={ariaLabel} onScroll={onListScroll} className="overflow-y-auto overscroll-contain p-1">
-            {shown.length === 0 && <li className="px-2.5 py-2 text-sm text-zinc-400">No matches</li>}
+            {shown.length === 0 && !canCreate && <li className="px-2.5 py-2 text-sm text-zinc-400">No matches</li>}
             {shown.map((o, i) => {
               const selected = o.value === current?.value
               return (
@@ -219,6 +235,13 @@ export default function Select({
               )
             })}
           </ul>
+          {canCreate && (
+            <button type="button" onMouseDown={e => e.preventDefault()} onClick={doCreate}
+              className="flex w-full shrink-0 items-center gap-2 border-t border-zinc-100 px-3 py-2.5 text-left text-sm font-medium text-brand-600 hover:bg-brand-50">
+              <Plus size={15} className="shrink-0" />
+              <span className="min-w-0 flex-1 truncate">Add “{q}” as new {createLabel}…</span>
+            </button>
+          )}
         </div>,
         document.body,
       )}

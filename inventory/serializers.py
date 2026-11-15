@@ -1,3 +1,5 @@
+import re
+
 from rest_framework import serializers
 
 from shopsettings.models import Color, ShopSettings, Size
@@ -14,6 +16,12 @@ class CategorySerializer(serializers.ModelSerializer):
 
 
 MAX_SELLER_PHONES = 6
+# Digits with an optional leading +, and spaces, dashes or brackets between them; 7-15 digits.
+PHONE_CHARS = re.compile(r"^\+?[\d\s\-()]+$")
+
+
+def is_valid_phone(number):
+    return bool(PHONE_CHARS.match(number)) and 7 <= sum(ch.isdigit() for ch in number) <= 15
 
 
 class SellerSerializer(serializers.ModelSerializer):
@@ -29,14 +37,21 @@ class SellerSerializer(serializers.ModelSerializer):
     def validate_phones(self, numbers):
         out = []
         for n in (x.strip() for x in numbers):
-            if n and n not in out:  # drop blanks and repeats
+            if not n:
+                continue
+            if not is_valid_phone(n):
+                raise serializers.ValidationError(f'"{n}" is not a valid phone number. Use digits, and optionally +, spaces or dashes.')
+            if n not in out:  # drop repeats
                 out.append(n)
         return out
 
     def validate(self, attrs):
         # Keep `phone` = first of `phones`. Clients that still send only `phone` set the whole list.
         if "phones" not in attrs and "phone" in attrs:
-            attrs["phones"] = self.validate_phones([attrs["phone"]])
+            try:
+                attrs["phones"] = self.validate_phones([attrs["phone"]])
+            except serializers.ValidationError as e:
+                raise serializers.ValidationError({"phone": e.detail}) from e
         if "phones" in attrs:
             attrs["phone"] = attrs["phones"][0] if attrs["phones"] else ""
         return attrs
@@ -111,6 +126,8 @@ class ProductSerializer(serializers.ModelSerializer):
             errors["category"] = "Category is required."
         if s.require_seller and touched("seller") and not get("seller"):
             errors["seller"] = "Seller is required."
+        if s.require_sku and touched("sku") and not (get("sku") or "").strip():
+            errors["sku"] = "SKU is required."
         if not s.hide_product_name and touched("name") and not (get("name") or "").strip():
             errors["name"] = "Name is required."
         if errors:

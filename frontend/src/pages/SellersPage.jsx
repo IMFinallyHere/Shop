@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Pencil, Plus, Trash2, Truck, X } from 'lucide-react'
+import { Pencil, Plus, Trash2, Truck } from 'lucide-react'
 import { getSellers, createSeller, updateSeller, deleteSeller } from '../api/inventory'
 import useQuery, { asList } from '../hooks/useQuery'
 import ActionMenu from '../components/common/ActionMenu'
@@ -9,13 +9,12 @@ import ErrorAlert from '../components/common/ErrorAlert'
 import PageHeader from '../components/ui/PageHeader'
 import Button from '../components/ui/Button'
 import Badge from '../components/ui/Badge'
-import { Field, Input, Textarea } from '../components/ui/Field'
+import SellerForm from '../components/forms/SellerForm'
+import { EMPTY_SELLER as EMPTY, parseApiErrors, sellerBody, sellerErrors } from '../utils/inventoryForms'
 import Pagination from '../components/ui/Pagination'
 import { Table, Td, Tr } from '../components/ui/Table'
 import { useToast } from '../components/ui/Toast'
 
-const EMPTY = { name: '', phones: [''], email: '', address: '', notes: '' }
-const MAX_PHONES = 6  // the API accepts up to 6 numbers per seller
 
 const PAGE_SIZE = 20
 
@@ -25,24 +24,26 @@ export default function SellersPage() {
   const { rows: items, count } = asList(data)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [fieldError, setFieldError] = useState('')
+  const [fieldErrors, setFieldErrors] = useState({})
   const [modal, setModal] = useState(null)
   const [selected, setSelected] = useState(null)
   const [form, setForm] = useState(EMPTY)
   const toast = useToast()
 
-  const openCreate = () => { setForm({ ...EMPTY }); setFieldError(''); setModal('create') }
-  const openEdit = (s) => { setSelected(s); setForm({ name: s.name, phones: s.phones?.length ? s.phones : [''], email: s.email, address: s.address, notes: s.notes }); setFieldError(''); setModal('edit') }
+  const openCreate = () => { setForm({ ...EMPTY }); setFieldErrors({}); setModal('create') }
+  const openEdit = (s) => { setSelected(s); setForm({ name: s.name, phones: s.phones?.length ? s.phones : [''], email: s.email, address: s.address, notes: s.notes }); setFieldErrors({}); setModal('edit') }
   const openDelete = (s) => { setSelected(s); setModal('delete') }
-  const close = () => { setModal(null); setSelected(null); setError(''); setFieldError('') }
+  const close = () => { setModal(null); setSelected(null); setError(''); setFieldErrors({}) }
 
   const save = async () => {
-    setSaving(true); setError(''); setFieldError('')
+    const local = sellerErrors(form)
+    if (Object.keys(local).length) { setFieldErrors(local); setError(''); return }
+    setSaving(true); setError(''); setFieldErrors({})
     try {
-      const body = { ...form, phones: form.phones.map(n => n.trim()).filter(Boolean) }  // blank rows are ignored
+      const body = sellerBody(form)
       await (modal === 'edit' ? updateSeller(selected.id, body) : createSeller(body))
       toast(modal === 'edit' ? 'Seller updated' : 'Seller added'); reload(); close()
-    } catch (e) { setFieldError(e.response?.data?.name?.[0] || ''); if (!e.response?.data?.name) setError('Failed to save.') }
+    } catch (e) { const { fields, general } = parseApiErrors(e); setFieldErrors(fields); setError(general) }
     finally { setSaving(false) }
   }
   const handleDelete = async () => {
@@ -50,10 +51,6 @@ export default function SellersPage() {
     try { await deleteSeller(selected.id); toast('Seller deleted'); reload(); close() }
     catch { setError('Failed to delete.') } finally { setSaving(false) }
   }
-
-  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
-  const setPhone = (i, v) => setForm({ ...form, phones: form.phones.map((n, j) => (j === i ? v : n)) })
-  const removePhone = (i) => setForm({ ...form, phones: form.phones.length > 1 ? form.phones.filter((_, j) => j !== i) : [''] })
 
   return (
     <div>
@@ -90,33 +87,7 @@ export default function SellersPage() {
       <Modal isOpen={modal === 'create' || modal === 'edit'} onClose={close} title={modal === 'edit' ? 'Edit seller' : 'New seller'}
         footer={<><Button onClick={close}>Cancel</Button><Button variant="primary" onClick={save} loading={saving}>Save</Button></>}>
         <ErrorAlert message={error} />
-        <div className="space-y-4">
-          <Field label="Name" required error={fieldError}>
-            {id => <Input id={id} autoFocus value={form.name} onChange={set('name')} invalid={!!fieldError} />}
-          </Field>
-          <div>
-            <div className="mb-1.5 text-sm font-medium text-zinc-700">Phone numbers</div>
-            <div className="space-y-2">
-              {form.phones.map((n, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <Input type="tel" value={n} onChange={e => setPhone(i, e.target.value)} maxLength={20}
-                    placeholder={i === 0 ? 'Primary number' : 'Another number'} aria-label={`Phone number ${i + 1}`} />
-                  <button type="button" onClick={() => removePhone(i)} aria-label={`Remove phone number ${i + 1}`}
-                    className="rounded-md p-2 text-zinc-400 hover:bg-red-50 hover:text-red-600"><X size={15} /></button>
-                </div>
-              ))}
-            </div>
-            {form.phones.length < MAX_PHONES && (
-              <button type="button" onClick={() => setForm({ ...form, phones: [...form.phones, ''] })}
-                className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:text-brand-700">
-                <Plus size={15} /> Add another number
-              </button>
-            )}
-          </div>
-          <Field label="Email">{id => <Input id={id} type="email" value={form.email} onChange={set('email')} />}</Field>
-          <Field label="Address">{id => <Input id={id} value={form.address} onChange={set('address')} />}</Field>
-          <Field label="Notes">{id => <Textarea id={id} rows={2} value={form.notes} onChange={set('notes')} />}</Field>
-        </div>
+        <SellerForm form={form} onChange={setForm} errors={fieldErrors} />
       </Modal>
 
       <ConfirmDialog isOpen={modal === 'delete'} onClose={close} onConfirm={handleDelete} loading={saving}

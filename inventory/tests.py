@@ -237,6 +237,13 @@ class InventoryTestCase(TestCase):
         bad = c.post("/api/products/", {"name": "X"}, format="json", HTTP_HOST="acme.localhost")
         self.assertEqual(bad.status_code, 400)
         self.assertEqual(set(bad.data), {"category", "seller"})
+        # SKU is its own switch.
+        self.settings(c, require_sku=True)
+        no_sku = c.post("/api/products/", {"name": "X"}, format="json", HTTP_HOST="acme.localhost")
+        self.assertIn("sku", no_sku.data)
+        blank_sku = c.post("/api/products/", {"name": "X", "sku": "   "}, format="json", HTTP_HOST="acme.localhost")
+        self.assertIn("sku", blank_sku.data)
+        self.settings(c, require_sku=False)
         cat = c.post("/api/categories/", {"name": "Req Cat"}, format="json", HTTP_HOST="acme.localhost").data["id"]
         sel = c.post("/api/sellers/", {"name": "Req Seller"}, format="json", HTTP_HOST="acme.localhost").data["id"]
         pid = self.new_product(c, category=cat, seller=sel)
@@ -246,9 +253,9 @@ class InventoryTestCase(TestCase):
         # Editing something else on an old product isn't blocked by the new rules.
         self.settings(c, require_category=False, require_seller=False, require_cost_price=False)
         old = self.new_product(c, name="Old")
-        self.settings(c, require_category=True)
+        self.settings(c, require_category=True, require_sku=True)
         self.assertEqual(c.patch(f"/api/products/{old}/", {"is_active": False}, format="json", HTTP_HOST="acme.localhost").status_code, 200)
-        self.settings(c, require_category=False)
+        self.settings(c, require_category=False, require_sku=False)
 
     def test_hidden_product_name_is_generated(self):
         c = self.client_for("acme.localhost", "acme@test.com")
@@ -288,4 +295,12 @@ class InventoryTestCase(TestCase):
         self.assertEqual(c.patch(f"/api/sellers/{sid}/", {"phone": "9111111111"}, **h).data["phones"], ["9111111111"])
         cleared = c.patch(f"/api/sellers/{sid}/", {"phones": []}, **h).data
         self.assertEqual((cleared["phones"], cleared["phone"]), ([], ""))
-        self.assertEqual(c.post("/api/sellers/", {"name": "Too many", "phones": [str(i) for i in range(7)]}, **h).status_code, 400)
+        # Letters and too-short/long numbers are refused, with the offending number named.
+        for bad in ("fsdfds", "12345", "9" * 16, "98x6543210"):
+            resp = c.post("/api/sellers/", {"name": "Bad phone", "phones": ["9000000001", bad]}, **h)
+            self.assertEqual(resp.status_code, 400, bad)
+            self.assertIn("phones", resp.data)
+        self.assertEqual(c.post("/api/sellers/", {"name": "Bad legacy", "phone": "abc"}, **h).status_code, 400)
+        ok = c.post("/api/sellers/", {"name": "Fmt", "phones": ["+91 98765-43210", "(022) 2345 6789"]}, **h)
+        self.assertEqual(ok.status_code, 201, ok.data)
+        self.assertEqual(c.post("/api/sellers/", {"name": "Too many", "phones": [f"90000000{i:02d}" for i in range(7)]}, **h).status_code, 400)
