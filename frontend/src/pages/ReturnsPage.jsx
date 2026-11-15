@@ -169,8 +169,8 @@ export default function ReturnsPage() {
               {bill.items.map(i => (
                 <li key={i.id}>
                   <label className={clsx('flex items-center gap-3 rounded-lg px-3 py-2.5',
-                    i.returned ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-zinc-50',
-                    selected.has(i.id) && 'bg-brand-50/60 hover:bg-brand-50')}>
+                    i.returned ? 'cursor-not-allowed opacity-50' : 'cursor-pointer item-hover',
+                    selected.has(i.id) && 'bg-brand-50')}>
                     <input type="checkbox" disabled={i.returned} checked={selected.has(i.id)} onChange={() => toggle(i.id)} className="h-4 w-4 accent-brand-600" />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-medium text-zinc-900">{unitTitle(i.product_name, i.code, hideName)}</div>

@@ -38,7 +38,7 @@ export function Table({ columns, loading, isEmpty, empty, children, className, s
 }
 
 export function Tr({ className, children, ...props }) {
-  return <tr className={clsx('transition-colors hover:bg-zinc-50/70', className)} {...props}>{children}</tr>
+  return <tr className={clsx('row-hover transition-colors', className)} {...props}>{children}</tr>
 }
 
 export function Td({ className, children, ...props }) {

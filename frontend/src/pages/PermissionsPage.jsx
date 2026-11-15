@@ -49,7 +49,7 @@ export default function PermissionsPage() {
             const open = expanded[group] || !!search
             return (
               <div key={group} className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-card">
-                <button onClick={() => toggleGroup(group)} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-zinc-50">
+                <button onClick={() => toggleGroup(group)} className="flex w-full items-center gap-3 px-4 py-3 text-left item-hover">
                   <ChevronRight size={16} className={clsx('text-zinc-400 transition-transform', open && 'rotate-90')} />
                   <span className="text-sm font-medium text-zinc-800">{group}</span>
                   <span className="ml-auto rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-500">{perms.length}</span>

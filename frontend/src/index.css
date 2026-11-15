@@ -22,3 +22,17 @@
   }
   .input-error { @apply border-red-400 focus:border-red-500 focus:ring-red-500/20; }
 }
+
+/* Row / option highlights. A pale grey tint alone vanishes on low-contrast screens, so we use an
+   indigo tint (hue survives better than lightness) plus a left accent bar that does not depend on
+   grey-on-white contrast. Use `item-hover` for hoverable list rows and menu items, `item-active`
+   for the keyboard/mouse-active option, `row-hover` on table rows. */
+@layer components {
+  .item-hover:hover, .item-active, .row-hover:hover { @apply bg-brand-100; }
+  .item-hover:hover, .item-active { box-shadow: inset 3px 0 0 theme('colors.brand.600'); }
+  .row-hover:hover > :first-child { box-shadow: inset 3px 0 0 theme('colors.brand.600'); }
+  .item-hover:hover, .item-active, .row-hover:hover { @apply text-zinc-900; }
+}
+@media (forced-colors: active) {
+  .item-hover:hover, .item-active, .row-hover:hover { background: Highlight; color: HighlightText; forced-color-adjust: none; }
+}

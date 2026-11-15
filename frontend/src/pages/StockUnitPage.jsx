@@ -166,7 +166,7 @@ export default function StockUnitPage() {
               <ul className="divide-y divide-zinc-100">
                 {customers.map(c => (
                   <li key={c.id}>
-                    <Link to={`/customers/${c.id}`} className="flex items-center gap-3 px-5 py-3 hover:bg-zinc-50">
+                    <Link to={`/customers/${c.id}`} className="flex items-center gap-3 px-5 py-3 item-hover">
                       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-50 text-xs font-semibold text-brand-700">{initials(c.name) || <UserRound size={15} />}</span>
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-sm font-medium text-zinc-900">{c.name}</div>

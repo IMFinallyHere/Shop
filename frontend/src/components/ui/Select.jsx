@@ -223,7 +223,7 @@ export default function Select({
                   onMouseEnter={() => setActive(i)} onMouseDown={e => e.preventDefault()} onClick={() => choose(o)}
                   className={clsx(
                     'flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm',
-                    o.disabled ? 'cursor-not-allowed text-zinc-300' : i === active ? 'bg-zinc-100 text-zinc-900' : 'text-zinc-700',
+                    o.disabled ? 'cursor-not-allowed text-zinc-300' : i === active ? 'item-active' : 'text-zinc-700',
                     selected && 'font-medium text-brand-700',
                     o.value === '' && !selected && 'text-zinc-500',
                   )}
@@ -237,7 +237,7 @@ export default function Select({
           </ul>
           {canCreate && (
             <button type="button" onMouseDown={e => e.preventDefault()} onClick={doCreate}
-              className="flex w-full shrink-0 items-center gap-2 border-t border-zinc-100 px-3 py-2.5 text-left text-sm font-medium text-brand-600 hover:bg-brand-50">
+              className="flex w-full shrink-0 items-center gap-2 border-t border-zinc-100 px-3 py-2.5 text-left text-sm font-medium text-brand-600 item-hover">
               <Plus size={15} className="shrink-0" />
               <span className="min-w-0 flex-1 truncate">Add “{q}” as new {createLabel}…</span>
             </button>

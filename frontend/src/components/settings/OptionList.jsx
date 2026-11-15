@@ -118,7 +118,7 @@ export default function OptionList({ items, api, onChange, onError, placeholder,
         className="max-h-[60vh] divide-y divide-zinc-100 overflow-y-auto overscroll-contain rounded-lg border border-zinc-200">
         {visible.map(([o, i]) => (
           <div key={o.id} className={clsx('group flex items-center gap-3 px-3 py-2 transition-colors duration-700',
-            flash === o.id ? 'bg-brand-50' : 'bg-white hover:bg-zinc-50/60')}>
+            flash === o.id ? 'bg-brand-50' : 'bg-white row-hover')}>
             {reorder && !filtering && (
               <div className="flex flex-col">
                 <button onClick={() => move(i, -1)} disabled={i === 0} className="text-zinc-400 hover:text-zinc-800 disabled:opacity-20" aria-label="Move up"><ChevronUp size={14} /></button>

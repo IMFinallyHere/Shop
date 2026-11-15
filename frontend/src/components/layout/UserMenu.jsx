@@ -72,10 +72,10 @@ export default function UserMenu() {
           </div>
           <div className="my-1 border-t border-zinc-100" />
           {ready && (<>
-            <button onClick={() => { setOpen(false); navigate('/help') }} className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-100">
+            <button onClick={() => { setOpen(false); navigate('/help') }} className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-zinc-700 item-hover">
               <LifeBuoy size={15} className="text-zinc-400" /> {t('menu.help')}
             </button>
-            <button onClick={() => { setOpen(false); runTour() }} className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-100">
+            <button onClick={() => { setOpen(false); runTour() }} className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-zinc-700 item-hover">
               <Compass size={15} className="text-zinc-400" /> {t('menu.tour')}
             </button>
             <div className="flex items-center justify-between gap-2 px-3 py-2 text-sm text-zinc-700">
@@ -91,10 +91,10 @@ export default function UserMenu() {
             </div>
             <div className="my-1 border-t border-zinc-100" />
           </>)}
-          <button onClick={openPassword} className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-100">
+          <button onClick={openPassword} className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-zinc-700 item-hover">
             <KeyRound size={15} className="text-zinc-400" /> Change password
           </button>
-          <button onClick={handleLogout} className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-100">
+          <button onClick={handleLogout} className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-zinc-700 item-hover">
             <LogOut size={15} className="text-zinc-400" /> Log out
           </button>
         </div>

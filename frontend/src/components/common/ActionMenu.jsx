@@ -43,7 +43,7 @@ export default function ActionMenu({ actions }) {
       onClick={() => { onClick(); setOpen(false) }}
       className={clsx(
         'flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors',
-        variant === 'danger' ? 'text-red-600 hover:bg-red-50' : 'text-zinc-700 hover:bg-zinc-100',
+        variant === 'danger' ? 'text-red-600 hover:bg-red-100' : 'text-zinc-700 item-hover',
       )}
     >
       {Icon && <Icon size={15} className={variant === 'danger' ? '' : 'text-zinc-400'} />}

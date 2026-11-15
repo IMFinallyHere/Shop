@@ -10,7 +10,7 @@ export default function ResultRow({ item, icon: Icon, active, onSelect, onHover 
       onMouseDown={e => e.preventDefault()}  // keep input focus
       onClick={onSelect}
       onMouseEnter={onHover}
-      className={clsx('flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors', active ? 'bg-brand-50' : 'hover:bg-zinc-50')}
+      className={clsx('flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors', active ? 'item-active' : 'item-hover')}
     >
       <span className={clsx('flex h-8 w-8 shrink-0 items-center justify-center rounded-md', active ? 'bg-white text-brand-600' : 'bg-zinc-100 text-zinc-500')}>
         <Icon size={16} />
