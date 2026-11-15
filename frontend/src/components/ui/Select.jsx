@@ -12,6 +12,7 @@ import { Check, ChevronDown, Search } from 'lucide-react'
 // Keyboard: ↑/↓ (opens), Enter/Space to pick, Esc to close, typing jumps/filters.
 
 const SEARCH_FROM = 9  // show the search box from this many options
+const PAGE = 10  // rows rendered at a time; scrolling to the bottom loads the next PAGE (search covers the rest)
 
 function readOptions(children) {
   const out = []
@@ -62,10 +63,15 @@ export default function Select({
   const listId = useId()
   const searchable = options.length >= SEARCH_FROM
 
-  const shown = useMemo(() => {
+  const matches = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return q ? options.filter(o => o.label.toLowerCase().includes(q)) : options
+    if (!q) return options
+    // Names that start with the text first, then the rest that merely contain it.
+    const hits = options.filter(o => o.label.toLowerCase().includes(q))
+    return [...hits.filter(o => o.label.toLowerCase().startsWith(q)), ...hits.filter(o => !o.label.toLowerCase().startsWith(q))]
   }, [options, query])
+  const [count, setCount] = useState(PAGE)
+  const shown = useMemo(() => matches.slice(0, count), [matches, count])
 
   const place = () => {
     const r = triggerRef.current?.getBoundingClientRect()
@@ -78,7 +84,9 @@ export default function Select({
   const openList = () => {
     if (disabled) return
     place(); setQuery('')
-    setActive(Math.max(0, options.findIndex(o => o.value === current?.value)))
+    const at = Math.max(0, options.findIndex(o => o.value === current?.value))
+    setCount(Math.max(PAGE, Math.ceil((at + 1) / PAGE) * PAGE))  // make sure the selected row is rendered
+    setActive(at)
     setOpen(true)
   }
   const close = (refocus = true) => { setOpen(false); if (refocus) triggerRef.current?.focus() }
@@ -113,8 +121,16 @@ export default function Select({
     listRef.current?.querySelector(`[data-index="${active}"]`)?.scrollIntoView({ block: 'nearest' })
   }, [open, active])
 
+  const loadMore = () => setCount(c => (c < matches.length ? c + PAGE : c))
+  const onListScroll = (e) => {
+    const el = e.currentTarget
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 48) loadMore()
+  }
+
   const move = (step) => {
     if (!shown.length) return
+    // Arrowing past the last rendered row loads the next page instead of wrapping.
+    if (step > 0 && active >= shown.length - 1 && shown.length < matches.length) { loadMore(); setActive(shown.length); return }
     let i = active
     for (let n = 0; n < shown.length; n++) {
       i = (i + step + shown.length) % shown.length
@@ -138,7 +154,7 @@ export default function Select({
     if (e.key === 'ArrowDown') { e.preventDefault(); move(1) }
     else if (e.key === 'ArrowUp') { e.preventDefault(); move(-1) }
     else if (e.key === 'Home') { e.preventDefault(); setActive(0) }
-    else if (e.key === 'End') { e.preventDefault(); setActive(shown.length - 1) }
+    else if (e.key === 'End') { e.preventDefault(); setCount(matches.length); setActive(matches.length - 1) }
     else if (e.key === 'Enter' || (e.key === ' ' && !searchable)) { e.preventDefault(); choose(shown[active]) }
     else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close() }  // don't close the modal too
     else if (e.key === 'Tab') close(false)
@@ -176,12 +192,12 @@ export default function Select({
               <Search size={14} className="shrink-0 text-zinc-400" />
               <input
                 ref={searchRef} value={query} placeholder="Search…" aria-label="Search options"
-                onChange={e => { setQuery(e.target.value); setActive(0) }}
+                onChange={e => { setQuery(e.target.value); setActive(0); setCount(PAGE) }}
                 className="w-full bg-transparent text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none"
               />
             </div>
           )}
-          <ul id={listId} role="listbox" aria-label={ariaLabel} className="overflow-y-auto overscroll-contain p-1">
+          <ul id={listId} role="listbox" aria-label={ariaLabel} onScroll={onListScroll} className="overflow-y-auto overscroll-contain p-1">
             {shown.length === 0 && <li className="px-2.5 py-2 text-sm text-zinc-400">No matches</li>}
             {shown.map((o, i) => {
               const selected = o.value === current?.value

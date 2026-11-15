@@ -81,7 +81,7 @@ export default function SettingsPage() {
         )}
 
         {tab === 'colors' && (
-          <Section title="Colors" description="Offered when adding stock. Click a swatch to change it. Colors in use can be turned off but not deleted.">
+          <Section title="Colors" description="Offered when adding stock. Search the list, or type a new name and press Add. Click a swatch to change it. Colors in use can be turned off but not deleted.">
             <OptionList items={colors} api={colorApi} onChange={refreshColors} onError={setError} placeholder="Add a color (e.g. Maroon)" withHex />
           </Section>
         )}
