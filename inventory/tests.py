@@ -304,3 +304,59 @@ class InventoryTestCase(TestCase):
         ok = c.post("/api/sellers/", {"name": "Fmt", "phones": ["+91 98765-43210", "(022) 2345 6789"]}, **h)
         self.assertEqual(ok.status_code, 201, ok.data)
         self.assertEqual(c.post("/api/sellers/", {"name": "Too many", "phones": [f"90000000{i:02d}" for i in range(7)]}, **h).status_code, 400)
+
+    def test_edit_unit_color_size_for_one_unit_or_whole_batch(self):
+        c = self.client_for("acme.localhost", "acme@test.com")
+        h = {"HTTP_HOST": "acme.localhost"}
+        pid = c.post("/api/products/", {"name": "Shirt"}, format="json", **h).data["id"]
+        items = self.add_stock(c, pid, self.line(c, "Black", "M", 3, "100", "250")).data["items"]
+        red = self.opt(c, "colors", "Red")
+        # One unit only: it moves to a Red/M variant keeping its price; the others stay.
+        one = c.post(f"/api/stock-items/{items[0]['id']}/edit/", {"color": red, "size": items[0]["size"], "apply_to": "unit"}, format="json", **h)
+        self.assertEqual(one.status_code, 200, one.data)
+        self.assertEqual((one.data["color_name"], one.data["price"], one.data["cost_price"]), ("Red", "250.00", "100.00"))
+        by = {(v["color_name"], v["size_name"]): v["stock_quantity"] for v in c.get(f"/api/products/{pid}/", **h).data["variants"]}
+        self.assertEqual(by, {("Black", "M"): 2, ("Red", "M"): 1})
+        # Whole batch: the two remaining Black units become Red too (merging into Red/M).
+        rest = c.post(f"/api/stock-items/{items[1]['id']}/edit/", {"color": red, "size": items[1]["size"], "apply_to": "batch"}, format="json", **h)
+        self.assertEqual(rest.status_code, 200, rest.data)
+        by = {(v["color_name"], v["size_name"]): v["stock_quantity"] for v in c.get(f"/api/products/{pid}/", **h).data["variants"]}
+        self.assertEqual(by, {("Black", "M"): 0, ("Red", "M"): 3})
+
+    def test_update_batches_edits_current_stock(self):
+        c = self.client_for("acme.localhost", "acme@test.com")
+        h = {"HTTP_HOST": "acme.localhost"}
+        pid = c.post("/api/products/", {"name": "Saree"}, format="json", **h).data["id"]
+        self.add_stock(c, pid, self.line(c, "Navy", "Free", 3, "100", "250"))
+        rows = c.get(f"/api/products/{pid}/batches/", **h).data
+        self.assertEqual([(r["color_name"], r["quantity"], r["price"]) for r in rows], [("Navy", 3, "250.00")])
+        row = rows[0]
+        maroon = self.opt(c, "colors", "Maroon")
+        edited = {**row, "color": maroon, "quantity": 5, "price": "300", "cost_price": "120"}
+        resp = c.post(f"/api/products/{pid}/update-batches/", {"batches": [edited]}, format="json", **h)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(len(resp.data["added"]), 2)
+        now = c.get(f"/api/products/{pid}/batches/", **h).data
+        self.assertEqual([(r["color_name"], r["quantity"], r["price"], r["cost_price"]) for r in now], [("Maroon", 5, "300.00", "120.00")])
+        c.post(f"/api/products/{pid}/update-batches/", {"batches": [{**now[0], "quantity": 2}]}, format="json", **h)
+        self.assertEqual(c.get(f"/api/products/{pid}/", **h).data["stock_quantity"], 2)
+        # A sold unit keeps the old price: only live units are re-priced (split into a new batch).
+        unit = StockItem.objects.filter(batch_id=now[0]["id"], status="in_stock").first()
+        unit.status = "sold"; unit.save()
+        again = c.get(f"/api/products/{pid}/batches/", **h).data[0]
+        c.post(f"/api/products/{pid}/update-batches/", {"batches": [{**again, "price": "999"}]}, format="json", **h)
+        self.assertEqual(str(StockItem.objects.get(pk=unit.pk).batch.price), "300.00")
+        self.assertEqual(c.get(f"/api/products/{pid}/batches/", **h).data[0]["price"], "999.00")
+
+    def test_update_batches_can_empty_a_row_without_cost(self):
+        from shopsettings.models import ShopSettings
+        c = self.client_for("acme.localhost", "acme@test.com")
+        h = {"HTTP_HOST": "acme.localhost"}
+        pid = c.post("/api/products/", {"name": "Dupatta"}, format="json", **h).data["id"]
+        self.add_stock(c, pid, {"quantity": 2, "price": "100"})  # no cost
+        row = c.get(f"/api/products/{pid}/batches/", **h).data[0]
+        c.put("/api/shop-settings/", {**c.get("/api/shop-settings/", **h).data, "require_cost_price": True}, format="json", **h)
+        resp = c.post(f"/api/products/{pid}/update-batches/", {"batches": [{**row, "quantity": 0}]}, format="json", **h)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(c.get(f"/api/products/{pid}/", **h).data["stock_quantity"], 0)
+        self.assertEqual(c.get(f"/api/products/{pid}/batches/", **h).data, [])

@@ -149,13 +149,15 @@ class StockItemSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source="variant.product.category.name", read_only=True)
     color_name = serializers.CharField(source="variant.color.name", read_only=True, default=None)
     size_name = serializers.CharField(source="variant.size.name", read_only=True, default=None)
+    color = serializers.IntegerField(source="variant.color_id", read_only=True)
+    size = serializers.IntegerField(source="variant.size_id", read_only=True)
     price = serializers.DecimalField(source="batch.price", max_digits=10, decimal_places=2, read_only=True)
     cost_price = serializers.DecimalField(source="batch.cost_price", max_digits=10, decimal_places=2, read_only=True, allow_null=True)
 
     class Meta:
         model = StockItem
         fields = [
-            "id", "code", "product", "product_name", "category_name", "variant", "color_name", "size_name",
+            "id", "code", "product", "product_name", "category_name", "variant", "color", "color_name", "size", "size_name",
             "price", "cost_price", "status", "batch", "created_at",
         ]
 
@@ -168,6 +170,37 @@ class AddStockLineSerializer(serializers.Serializer):
     # Optional: what the shop paid, if it wants to track margins.
     cost_price = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0, required=False, allow_null=True, default=None)
     price = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0)
+
+
+class EditStockItemSerializer(serializers.Serializer):
+    """Change a unit's colour/size. ``apply_to`` is this one unit or its whole batch."""
+
+    color = serializers.PrimaryKeyRelatedField(queryset=Color.objects.all(), allow_null=True)
+    size = serializers.PrimaryKeyRelatedField(queryset=Size.objects.all(), allow_null=True)
+    apply_to = serializers.ChoiceField(choices=["unit", "batch"], default="unit")
+
+
+class StockBatchEditSerializer(serializers.Serializer):
+    """One current stock row (the in-stock units of a batch) edited in the product form."""
+
+    id = serializers.UUIDField()
+    color = serializers.PrimaryKeyRelatedField(queryset=Color.objects.all(), allow_null=True)
+    size = serializers.PrimaryKeyRelatedField(queryset=Size.objects.all(), allow_null=True)
+    quantity = serializers.IntegerField(min_value=0, max_value=1000)
+    cost_price = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0, allow_null=True)
+    price = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0)
+
+
+class UpdateBatchesSerializer(serializers.Serializer):
+    batches = StockBatchEditSerializer(many=True, allow_empty=False, max_length=200)
+
+    def validate_batches(self, rows):
+        if ShopSettings.load().require_cost_price:
+            # Rows being emptied (quantity 0) need no cost.
+            errors = [{} if r.get("cost_price") is not None or r["quantity"] == 0 else {"cost_price": ["Cost price is required."]} for r in rows]
+            if any(errors):
+                raise serializers.ValidationError(errors)
+        return rows
 
 
 class AddStockSerializer(serializers.Serializer):

@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Boxes, Download, History, Printer, Trash2 } from 'lucide-react'
+import { Boxes, Download, History, Pencil, Printer, Trash2 } from 'lucide-react'
 import { getStockItems, removeStockItem } from '../api/inventory'
 import useQuery, { asList } from '../hooks/useQuery'
 import BarcodeLabel from '../components/inventory/BarcodeLabel'
 import PrintBarcodes from '../components/inventory/PrintBarcodes'
+import EditUnitModal from '../components/inventory/EditUnitModal'
 import ActionMenu from '../components/common/ActionMenu'
 import ConfirmDialog from '../components/common/ConfirmDialog'
 import SearchInput from '../components/common/SearchInput'
@@ -44,6 +45,7 @@ export default function StockPage() {
   const [toRemove, setToRemove] = useState(null)
   const [removing, setRemoving] = useState(false)
   const [printItems, setPrintItems] = useState(null)
+  const [editing, setEditing] = useState(null)
   const toast = useToast()
   const navigate = useNavigate()
   const { data, loading, error: loadError, reload } = useQuery(() => getStockItems({ page, search, status }), `${page}|${search}|${status}`)
@@ -87,6 +89,7 @@ export default function StockPage() {
             <Td className="text-right">
               <ActionMenu actions={[
                 { label: 'View history', icon: History, onClick: () => navigate(`/stock/${it.code}`) },
+                { label: 'Edit color / size', icon: Pencil, onClick: () => setEditing(it) },
                 { label: 'Print label', icon: Printer, onClick: () => setPrintItems([it]) },
                 { label: 'Download barcode', icon: Download, onClick: () => downloadCode128(it) },
                 ...(it.status === 'in_stock'
@@ -102,6 +105,7 @@ export default function StockPage() {
       <ConfirmDialog isOpen={!!toRemove} onClose={() => setToRemove(null)} onConfirm={handleRemove} loading={removing} confirmLabel="Remove"
         title="Remove stock unit" message={`Remove unit ${toRemove?.code}? It will no longer count as in stock.`} />
 
+      <EditUnitModal unit={editing} onClose={() => setEditing(null)} onSaved={reload} />
       <PrintBarcodes items={printItems} title="Stock barcodes" onClose={() => setPrintItems(null)} />
     </div>
   )

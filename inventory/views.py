@@ -6,7 +6,7 @@ from django.db.models.functions import Cast
 from django.db.models import (
     Count, DateTimeField, Exists, ExpressionWrapper, F, OuterRef, Prefetch, Q, Subquery,
 )
-from rest_framework import status, viewsets
+from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.response import Response
@@ -16,6 +16,8 @@ from shopsettings.models import Color, Size
 from .models import LOW_STOCK, Category, Product, ProductVariant, Seller, StockBatch, StockItem, generate_stock_code
 from .serializers import (
     AddStockSerializer,
+    EditStockItemSerializer,
+    UpdateBatchesSerializer,
     CategorySerializer,
     ProductSerializer,
     ProductVariantSerializer,
@@ -85,7 +87,8 @@ class SellerViewSet(AllRowsMixin, viewsets.ModelViewSet):
 class ProductViewSet(viewsets.ModelViewSet):
     permission_classes = [ShopPermission]
     perm_model = "inventory.product"
-    perms = {"add_stock": "inventory.add_stockitem"}
+    perms = {"add_stock": "inventory.add_stockitem", "batches": "inventory.view_stockitem",
+             "update_batches": "inventory.change_stockitem"}
     serializer_class = ProductSerializer
     filter_backends = [OrderingFilter]
     ordering_fields = ["name", "price_min", "stock_quantity", "created_at"]
@@ -162,6 +165,62 @@ class ProductViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED,
         )
 
+    @action(detail=True, methods=["get"], url_path="batches")
+    def batches(self, request, pk=None):
+        """The product's current stock as editable rows: one per batch that still has units in stock."""
+        product = self.get_object()
+        rows = (
+            StockBatch.objects.filter(variant__product=product, items__status=StockItem.IN_STOCK)
+            .annotate(in_stock=Count("items", filter=Q(items__status=StockItem.IN_STOCK)))
+            .select_related("variant__color", "variant__size").order_by("created_at")
+        )
+        return Response([{
+            "id": str(b.id), "color": b.variant.color_id, "size": b.variant.size_id,
+            "color_name": b.variant.color.name if b.variant.color else None,
+            "size_name": b.variant.size.name if b.variant.size else None,
+            "quantity": b.in_stock, "cost_price": None if b.cost_price is None else str(b.cost_price),
+            "price": str(b.price),
+        } for b in rows])
+
+    @action(detail=True, methods=["post"], url_path="update-batches")
+    def update_batches(self, request, pk=None):
+        """Apply edits to current stock rows: colour/size, cost, price and quantity (add or remove units)."""
+        product = self.get_object()
+        ser = UpdateBatchesSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        touched, added = set(), []
+        with transaction.atomic():
+            for row in ser.validated_data["batches"]:
+                batch = StockBatch.objects.select_for_update().filter(pk=row["id"], variant__product=product).first()
+                if batch is None:
+                    raise serializers.ValidationError({"detail": "A stock row no longer exists. Reload and try again."})
+                live = list(batch.items.filter(status=StockItem.IN_STOCK).order_by("created_at", "id"))
+                variant, _ = ProductVariant.objects.get_or_create(product=product, color=row["color"], size=row["size"])
+                changed = (variant.id != batch.variant_id or row["cost_price"] != batch.cost_price
+                           or row["price"] != batch.price)
+                touched |= {batch.variant_id, variant.id}
+                if changed:
+                    if batch.items.exclude(status=StockItem.IN_STOCK).exists():
+                        # Sold/removed units keep the original price: split the live ones off.
+                        batch = StockBatch.objects.create(
+                            variant=variant, cost_price=row["cost_price"], price=row["price"], quantity=len(live))
+                        StockItem.objects.filter(id__in=[u.id for u in live]).update(batch=batch, variant=variant)
+                    else:
+                        batch.variant, batch.cost_price, batch.price = variant, row["cost_price"], row["price"]
+                        batch.save(update_fields=["variant", "cost_price", "price"])
+                        batch.items.update(variant=variant)
+                diff = row["quantity"] - len(live)
+                if diff > 0:
+                    added += create_units(variant, batch, diff)
+                    batch.quantity += diff
+                    batch.save(update_fields=["quantity"])
+                elif diff < 0:
+                    # Newest units go first.
+                    StockItem.objects.filter(id__in=[u.id for u in live[diff:]]).update(status=StockItem.REMOVED)
+            recount(variant_ids=touched)
+        items = StockItem.objects.select_related(*STOCK_ITEM_RELATED).filter(id__in=[u.id for u in added]).order_by("id")
+        return Response({"added": StockItemSerializer(items, many=True).data})
+
 
 def create_units(variant, batch, quantity):
     """Insert ``quantity`` units with fresh barcodes in one query (retrying a collision)."""
@@ -212,7 +271,8 @@ class StockItemViewSet(viewsets.ReadOnlyModelViewSet):
 
     permission_classes = [ShopPermission]
     perm_model = "inventory.stockitem"
-    perms = {"lookup": "inventory.view_stockitem", "remove": "inventory.change_stockitem"}
+    perms = {"lookup": "inventory.view_stockitem", "remove": "inventory.change_stockitem",
+             "edit": "inventory.change_stockitem"}
     serializer_class = StockItemSerializer
 
     def get_queryset(self):
@@ -275,4 +335,34 @@ class StockItemViewSet(viewsets.ReadOnlyModelViewSet):
             item.status = StockItem.REMOVED
             item.save(update_fields=["status"])
             recount(variant_ids=[item.variant_id])
+        return Response(StockItemSerializer(item).data)
+
+    @action(detail=True, methods=["post"], url_path="edit")
+    def edit(self, request, pk=None):
+        """Fix a unit's colour/size: just this unit, or every unit added in its batch."""
+        item = self.get_object()
+        ser = EditStockItemSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        data = ser.validated_data
+        old_variant_id = item.variant_id
+        with transaction.atomic():
+            target, _ = ProductVariant.objects.get_or_create(
+                product_id=item.variant.product_id, color=data["color"], size=data["size"]
+            )
+            if target.id != old_variant_id:
+                old = item.batch
+                if data["apply_to"] == "batch":
+                    old.variant = target
+                    old.save(update_fields=["variant"])
+                    old.items.update(variant=target)
+                else:
+                    # A batch belongs to one variant, so the unit moves into its own copy
+                    # of the batch (same cost and price) under the new colour/size.
+                    batch = StockBatch.objects.create(
+                        variant=target, cost_price=old.cost_price, price=old.price, quantity=1)
+                    StockBatch.objects.filter(pk=batch.pk).update(created_at=old.created_at)
+                    item.variant, item.batch = target, batch
+                    item.save(update_fields=["variant", "batch"])
+                recount(variant_ids=[old_variant_id, target.id])
+        item = StockItem.objects.select_related(*STOCK_ITEM_RELATED).get(pk=item.pk)
         return Response(StockItemSerializer(item).data)

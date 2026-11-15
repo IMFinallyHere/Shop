@@ -181,6 +181,7 @@ class UnitHistoryView(APIView):
                         "fabric_type": p.fabric_type, "sku": p.sku},
             "variant": {"id": v.id, "label": v.label, "color_name": v.color.name if v.color else None,
                         "size_name": v.size.name if v.size else None,
+                        "color": v.color_id, "size": v.size_id,
                         "color_hex": (v.color.hex or None) if v.color else None,
                         "low_stock_threshold": v.low_stock_threshold,
                         "in_stock": v.stock_quantity},

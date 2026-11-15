@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import clsx from 'clsx'
 import {
-  ArrowLeft, Boxes, Download, Mail, MapPin, PackagePlus, Phone, Printer, Receipt, Shirt, Trash2, Truck, Undo2, UserRound, Wallet,
+  ArrowLeft, Boxes, Download, Mail, MapPin, PackagePlus, Pencil, Phone, Printer, Receipt, Shirt, Trash2, Truck, Undo2, UserRound, Wallet,
 } from 'lucide-react'
 import { getUnitHistory } from '../api/search'
 import useQuery from '../hooks/useQuery'
@@ -10,6 +10,7 @@ import useReceipts from '../hooks/useReceipts'
 import usePrintSettings from '../hooks/usePrintSettings'
 import BarcodeLabel from '../components/inventory/BarcodeLabel'
 import PrintBarcodes from '../components/inventory/PrintBarcodes'
+import EditUnitModal from '../components/inventory/EditUnitModal'
 import Spinner from '../components/common/Spinner'
 import BackLink from '../components/ui/BackLink'
 import Button from '../components/ui/Button'
@@ -39,9 +40,10 @@ const EVENT = {
 
 export default function StockUnitPage() {
   const { code } = useParams()
-  const { data, loading, error } = useQuery(() => getUnitHistory(code), code)
+  const { data, loading, error, reload } = useQuery(() => getUnitHistory(code), code)
   const { openBill, openReturn, receipts } = useReceipts()
   const [printing, setPrinting] = useState(false)
+  const [editing, setEditing] = useState(false)
   const hideName = !!usePrintSettings().hide_product_name
 
   if (loading) return <Spinner />
@@ -74,6 +76,7 @@ export default function StockUnitPage() {
             <span>Selling at <span className="font-medium text-zinc-800">{money(batch.price)}</span></span>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
+            <Button size="sm" icon={Pencil} onClick={() => setEditing(true)}>Edit</Button>
             <Button size="sm" icon={Printer} onClick={() => setPrinting(true)}>Print label</Button>
             <Button size="sm" icon={Download} onClick={() => downloadCode128(label)}>Download barcode</Button>
           </div>
@@ -183,6 +186,8 @@ export default function StockUnitPage() {
       </div>
 
       <PrintBarcodes items={printing ? [label] : null} title={`Label — ${unitTitle(product.name, unit.code, hideName)}`} onClose={() => setPrinting(false)} />
+      <EditUnitModal unit={editing ? { ...unit, color: variant.color, size: variant.size, color_name: variant.color_name, size_name: variant.size_name } : null}
+        onClose={() => setEditing(false)} onSaved={reload} />
       {receipts}
     </div>
   )

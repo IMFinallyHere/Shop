@@ -6,6 +6,8 @@ export const createProduct = (data) => api.post('/products/', data)
 export const updateProduct = (id, data) => api.patch(`/products/${id}/`, data)
 export const deleteProduct = (id) => api.delete(`/products/${id}/`)
 // lines: [{ color, size, quantity, cost_price, price }] — each line becomes its own priced batch
+export const getProductBatches = (id) => api.get(`/products/${id}/batches/`)
+export const updateProductBatches = (id, batches) => api.post(`/products/${id}/update-batches/`, { batches })
 export const addStock = (id, lines) => api.post(`/products/${id}/add-stock/`, { lines })
 
 // Variants (color + size of a product)
@@ -15,6 +17,7 @@ export const deleteVariant = (id) => api.delete(`/variants/${id}/`)
 // Stock items (individual units)
 export const getStockItems = (params) => api.get('/stock-items/', { params })
 export const removeStockItem = (id) => api.post(`/stock-items/${id}/remove/`)
+export const editStockItem = (id, data) => api.post(`/stock-items/${id}/edit/`, data)
 export const lookupStockItem = (code) => api.get('/stock-items/lookup/', { params: { code } })
 
 // Categories
