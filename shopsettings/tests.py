@@ -99,14 +99,26 @@ class ShopSettingsTestCase(TestCase):
         self.assertEqual([c["name"] for c in seeded[:3]], ["Black", "White", "Off White"])
         self.assertEqual(seeded[0]["hex"], "#111111")
         self.assertEqual(len(a.get("/api/colors/", HTTP_HOST="acme.localhost").data), len(seeded))  # seeded once
-        bad = a.post("/api/colors/", {"name": "Teal", "hex": "teal"}, format="json", HTTP_HOST="acme.localhost")
+        bad = a.post("/api/colors/", {"name": "Shop Special", "hex": "notahex"}, format="json", HTTP_HOST="acme.localhost")
         self.assertEqual(bad.status_code, 400)
-        teal = a.post("/api/colors/", {"name": "Teal", "hex": "#008080"}, format="json", HTTP_HOST="acme.localhost")
+        teal = a.post("/api/colors/", {"name": "Shop Special", "hex": "#123456"}, format="json", HTTP_HOST="acme.localhost")
         self.assertEqual(teal.status_code, 201, teal.data)
         a.patch(f"/api/colors/{teal.data['id']}/", {"is_active": False}, format="json", HTTP_HOST="acme.localhost")
-        self.assertNotIn("Teal", [c["name"] for c in a.get("/api/colors/?active=1", HTTP_HOST="acme.localhost").data])
+        self.assertNotIn("Shop Special", [c["name"] for c in a.get("/api/colors/?active=1", HTTP_HOST="acme.localhost").data])
         # Unused colors can be deleted.
         self.assertEqual(a.delete(f"/api/colors/{teal.data['id']}/", HTTP_HOST="acme.localhost").status_code, 204)
+
+    def test_default_palette_is_full_unique_and_valid(self):
+        import re
+        from .models import DEFAULT_COLORS
+        names = [n.lower() for n, _ in DEFAULT_COLORS]
+        self.assertGreater(len(names), 300)
+        self.assertEqual(len(names), len(set(names)))  # no case-insensitive duplicates
+        self.assertTrue(all(h == "" or re.fullmatch(r"#[0-9a-f]{6}", h) for _, h in DEFAULT_COLORS))
+        a = self.client_for("acme.localhost", "acme@test.com")
+        seeded = a.get("/api/colors/", HTTP_HOST="acme.localhost").data
+        self.assertEqual(len(seeded), len(DEFAULT_COLORS))
+        self.assertEqual([c["position"] for c in seeded], list(range(len(seeded))))
 
     def test_print_settings_round_trip_and_bounds(self):
         a = self.client_for("acme.localhost", "acme@test.com")

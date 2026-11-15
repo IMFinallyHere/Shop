@@ -1,9 +1,11 @@
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
+from .fashion_colors import FASHION_COLORS
+
 DEFAULT_PAYMENT_METHODS = ["Cash", "UPI", "Card"]
 # Common clothing colours (name, swatch), seeded the first time a shop opens its colours.
-DEFAULT_COLORS = [
+_COMMON_COLORS = [
     ("Black", "#111111"), ("White", "#ffffff"), ("Off White", "#f5f1e6"), ("Cream", "#f3e5c0"),
     ("Beige", "#d9c3a0"), ("Grey", "#808080"), ("Navy", "#1f2a5a"), ("Blue", "#2563eb"),
     ("Sky Blue", "#7cc4ef"), ("Red", "#d0202a"), ("Maroon", "#7a1f2b"), ("Wine", "#5e1a33"),
@@ -12,6 +14,9 @@ DEFAULT_COLORS = [
     ("Purple", "#6b3fa0"), ("Brown", "#6f4a2e"), ("Gold", "#c9a227"), ("Silver", "#c0c0c0"),
     ("Multicolour", ""),
 ]
+# Everyday colours first, then the full fashion palette (names already above are skipped).
+_seen = {n.lower() for n, _ in _COMMON_COLORS}
+DEFAULT_COLORS = _COMMON_COLORS + [(n, h) for n, h in FASHION_COLORS if not (n.lower() in _seen or _seen.add(n.lower()))]
 DEFAULT_SIZES = ["XS", "S", "M", "L", "XL", "XXL", "XXXL", "Free Size"]
 
 
