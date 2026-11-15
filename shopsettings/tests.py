@@ -243,7 +243,7 @@ class ShopSettingsTestCase(TestCase):
     def test_product_and_invoice_barcode_settings(self):
         a = self.client_for("acme.localhost", "acme@test.com")
         h = {"format": "json", "HTTP_HOST": "acme.localhost"}
-        keys = ["one_time_stock_default", "hide_product_name", "require_category", "require_seller", "require_cost_price"]
+        keys = ["one_time_stock_default", "hide_product_name", "require_category", "require_seller", "require_sku", "require_cost_price"]
         got = a.get("/api/shop-settings/", HTTP_HOST="acme.localhost").data
         self.assertTrue(all(got[k] is False for k in keys))
         self.assertTrue(got["receipt_show_invoice_barcode"])

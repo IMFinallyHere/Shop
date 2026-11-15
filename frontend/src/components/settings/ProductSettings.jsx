@@ -14,6 +14,7 @@ const ROWS = [
     'Skip the name when adding products and hide the name column. Products are named automatically from fabric and category.'],
   ['require_category', 'Category is mandatory', 'A product can’t be saved without a category.'],
   ['require_seller', 'Seller is mandatory', 'A product can’t be saved without a seller.'],
+  ['require_sku', 'SKU is mandatory', 'A product can’t be saved without a SKU.'],
   ['require_cost_price', 'Cost price is mandatory', 'Every stock line needs a cost price.'],
 ]
 

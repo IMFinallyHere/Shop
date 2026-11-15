@@ -46,6 +46,7 @@ class ShopSettings(models.Model):
     # Make these mandatory when adding a product / its stock.
     require_category = models.BooleanField(default=False)
     require_seller = models.BooleanField(default=False)
+    require_sku = models.BooleanField(default=False)
     require_cost_price = models.BooleanField(default=False)
 
     # Stock-unit labels: one label per page at this physical size (thermal roll).

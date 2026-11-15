@@ -50,7 +50,7 @@ Product and stock rules (all switched in Settings → Products / Printing, store
   product-level places show a neutral label like "Silk Sarees #12" (`productLabel`). Links to one
   product use `/products?product=<id>` (backend `?id=`), so a hidden name never lands in a URL.
   When adding a new screen that shows product names, honour `hide_product_name`.
-- `require_category`, `require_seller` (`ProductSerializer`) and `require_cost_price`
+- `require_category`, `require_seller`, `require_sku` (`ProductSerializer`) and `require_cost_price`
   (`AddStockSerializer`) are enforced on the server. On edit, only fields being changed are checked.
 - Sellers have several phone numbers: `Seller.phones` (list, primary first, up to 6). `Seller.phone` is
   kept as `phones[0]` (`Seller.save` and `SellerSerializer.validate`), so lists and search keep working;
