@@ -12,7 +12,7 @@ from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.response import Response
 
 from accounts.permissions import ANY_STAFF, ShopPermission
-from shopsettings.models import Color, Size
+from shopsettings.models import Color, ShopSettings, Size
 from .models import LOW_STOCK, Category, Product, ProductVariant, Seller, StockBatch, StockItem, generate_stock_code
 from .serializers import (
     AddStockSerializer,
@@ -88,7 +88,7 @@ class ProductViewSet(viewsets.ModelViewSet):
     permission_classes = [ShopPermission]
     perm_model = "inventory.product"
     perms = {"add_stock": "inventory.add_stockitem", "batches": "inventory.view_stockitem",
-             "update_batches": "inventory.change_stockitem"}
+             "update_batches": "inventory.change_stockitem", "incomplete": "inventory.view_product"}
     serializer_class = ProductSerializer
     filter_backends = [OrderingFilter]
     ordering_fields = ["name", "price_min", "stock_quantity", "created_at"]
@@ -165,6 +165,52 @@ class ProductViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED,
         )
 
+    @action(detail=False, methods=["get"], url_path="incomplete")
+    def incomplete(self, request):
+        """Active products missing something the shop now requires (Settings), with what is missing."""
+        cfg = ShopSettings.load()
+        costless = StockBatch.objects.filter(
+            variant__product=OuterRef("pk"), cost_price__isnull=True, items__status=StockItem.IN_STOCK)
+        gaps = {}  # name -> Q matching products with that gap
+        if cfg.require_category:
+            gaps["category"] = Q(category__isnull=True)
+        if cfg.require_seller:
+            gaps["seller"] = Q(seller__isnull=True)
+        if cfg.require_sku:
+            gaps["sku"] = Q(sku__regex=r"^\s*$")
+        if not cfg.hide_product_name:
+            gaps["name"] = Q(name__regex=r"^\s*$")
+        qs = (Product.objects.filter(is_active=True).select_related("category", "seller")
+              .prefetch_related(Prefetch("variants", queryset=variants_queryset())).order_by("name", "id"))
+        if cfg.require_cost_price:
+            qs = qs.annotate(cost_missing=Exists(costless))
+            gaps["cost_price"] = Q(cost_missing=True)
+        if not gaps:
+            qs = qs.none()
+        else:
+            match = Q()
+            for q in gaps.values():
+                match |= q
+            qs = qs.filter(match)
+        page = self.paginate_queryset(qs)
+        rows = []
+        for p in page:
+            missing = [k for k, q in gaps.items() if k != "cost_price" and _gap(p, k)]
+            batches = []
+            if cfg.require_cost_price and p.cost_missing:
+                missing.append("cost_price")
+                batches = [{
+                    "id": str(b.id), "color": b.variant.color_id, "size": b.variant.size_id,
+                    "color_name": b.variant.color.name if b.variant.color else None,
+                    "size_name": b.variant.size.name if b.variant.size else None,
+                    "quantity": b.in_stock, "price": str(b.price),
+                } for b in StockBatch.objects.filter(variant__product=p, cost_price__isnull=True)
+                    .annotate(in_stock=Count("items", filter=Q(items__status=StockItem.IN_STOCK)))
+                    .filter(in_stock__gt=0).select_related("variant__color", "variant__size")]
+            # Everything about the product (for reference on the page) plus what is missing.
+            rows.append({**ProductSerializer(p).data, "missing": missing, "batches_missing_cost": batches})
+        return self.get_paginated_response(rows)
+
     @action(detail=True, methods=["get"], url_path="batches")
     def batches(self, request, pk=None):
         """The product's current stock as editable rows: one per batch that still has units in stock."""
@@ -220,6 +266,15 @@ class ProductViewSet(viewsets.ModelViewSet):
             recount(variant_ids=touched)
         items = StockItem.objects.select_related(*STOCK_ITEM_RELATED).filter(id__in=[u.id for u in added]).order_by("id")
         return Response({"added": StockItemSerializer(items, many=True).data})
+
+
+def _gap(product, key):
+    """Whether a product lacks the value for a required field."""
+    if key == "category":
+        return product.category_id is None
+    if key == "seller":
+        return product.seller_id is None
+    return not (getattr(product, key) or "").strip()
 
 
 def create_units(variant, batch, quantity):

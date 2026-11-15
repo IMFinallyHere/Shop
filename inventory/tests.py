@@ -360,3 +360,32 @@ class InventoryTestCase(TestCase):
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(c.get(f"/api/products/{pid}/", **h).data["stock_quantity"], 0)
         self.assertEqual(c.get(f"/api/products/{pid}/batches/", **h).data, [])
+
+    def test_incomplete_lists_products_missing_required_details(self):
+        c = self.client_for("acme.localhost", "acme@test.com")
+        h = {"HTTP_HOST": "acme.localhost"}
+        mk = lambda **kw: c.post("/api/products/", {"name": "P", **kw}, format="json", **h).data["id"]  # noqa: E731
+        old = mk(name="Old saree")                      # made before the rules existed
+        cat = c.post("/api/categories/", {"name": "Sarees"}, format="json", **h).data["id"]
+        full = mk(name="Full", sku="S1", category=cat)
+        quiet = mk(name="Quiet")                        # also lacks everything, but will be inactive
+        self.add_stock(c, old, {"quantity": 2, "price": "100"})   # no cost
+        self.assertEqual(c.get("/api/products/incomplete/", **h).data["count"], 0)  # no rules → nothing missing
+        settings = c.get("/api/shop-settings/", **h).data
+        c.put("/api/shop-settings/", {**settings, "require_sku": True, "require_category": True, "require_cost_price": True}, format="json", **h)
+        rows = {r["id"]: r for r in c.get("/api/products/incomplete/", **h).data["results"]}
+        self.assertEqual(set(rows), {old, quiet})
+        self.assertEqual(set(rows[old]["missing"]), {"sku", "category", "cost_price"})
+        self.assertEqual(rows[old]["batches_missing_cost"][0]["quantity"], 2)
+        # Fill the gaps one by one; the product leaves the list only when all are done.
+        self.assertEqual(c.patch(f"/api/products/{old}/", {"sku": "OLD1"}, format="json", **h).status_code, 200)
+        self.assertEqual(c.patch(f"/api/products/{old}/", {"category": cat}, format="json", **h).status_code, 200)
+        c.patch(f"/api/products/{quiet}/", {"is_active": False}, format="json", **h)
+        left = c.get("/api/products/incomplete/", **h).data["results"]
+        self.assertEqual([(r["id"], r["missing"]) for r in left], [(old, ["cost_price"])])
+        b = c.get(f"/api/products/{old}/batches/", **h).data[0]
+        c.post(f"/api/products/{old}/update-batches/", {"batches": [{**b, "cost_price": "60"}]}, format="json", **h)
+        self.assertEqual(c.get("/api/products/incomplete/", **h).data["count"], 0)
+        # The inactive product was skipped above, and a complete one never listed.
+        self.assertNotIn(quiet, [r["id"] for r in c.get("/api/products/incomplete/", **h).data["results"]])
+        self.assertNotIn(full, [r["id"] for r in c.get("/api/products/incomplete/", **h).data["results"]])

@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Archive, Layers, PackagePlus, Pencil, Plus, Printer, Shirt, Trash2, Truck, X } from 'lucide-react'
 import {
-  getProducts, createProduct, updateProduct, deleteProduct, addStock,
-  updateVariant, deleteVariant, getCategories, getSellers, getStockItems, getProductBatches, updateProductBatches,
+  getProducts, createProduct, deleteProduct, addStock,
+  updateVariant, deleteVariant, getCategories, getSellers, getStockItems,
 } from '../api/inventory'
 import { getColors, getSizes } from '../api/shopsettings'
 import useQuery, { asList } from '../hooks/useQuery'
@@ -12,7 +12,7 @@ import Modal from '../components/common/Modal'
 import ConfirmDialog from '../components/common/ConfirmDialog'
 import ProductForm from '../components/forms/ProductForm'
 import PrintBarcodes from '../components/inventory/PrintBarcodes'
-import CurrentStockRows from '../components/inventory/CurrentStockRows'
+import EditProductModal from '../components/inventory/EditProductModal'
 import AddStockLines from '../components/inventory/AddStockLines'
 import QuickAddDialog from '../components/inventory/QuickAddDialog'
 import VariantList from '../components/inventory/VariantList'
@@ -28,6 +28,7 @@ import { useToast } from '../components/ui/Toast'
 import { EMPTY_LINE, toStockPayload, variantLabel } from '../utils/variant'
 import { moneyShort } from '../utils/format'
 import { newBaseName, productName } from '../utils/productNames'
+import { refreshMissingCount } from '../hooks/useMissingCount'
 import usePrintSettings from '../hooks/usePrintSettings'
 import { productLabel } from '../utils/names'
 
@@ -66,9 +67,7 @@ export default function ProductsPage() {
   }
   const quickCancel = () => { quick.resolve(null); setQuick(null) }
   const [lines, setLines] = useState([{ ...EMPTY_LINE }])
-  const [current, setCurrent] = useState([])          // Edit product: the stock that exists now, editable
-  const [currentOrig, setCurrentOrig] = useState([])
-  const [currentErrors, setCurrentErrors] = useState({})
+  const [editing, setEditing] = useState(null)  // product open in the shared Edit product dialog
   const [lineErrors, setLineErrors] = useState([])
   const [colors, setColors] = useState([])
   const [sizes, setSizes] = useState([])
@@ -150,18 +149,7 @@ export default function ProductsPage() {
     setBaseName(base); setSuggested(name)
     setFormData(d => ({ ...d, name }))
   }
-  const openEdit = (p) => {
-    select(p)
-    setFormData({
-      name: p.name, sku: p.sku, category: p.category ?? '', seller: p.seller ?? '', fabric_type: p.fabric_type,
-      is_one_time: p.is_one_time, is_active: p.is_active,
-    })
-    setFieldErrors({}); setError('')
-    setLines([{ ...EMPTY_LINE }]); setLineErrors([]); loadStockOptions()
-    setCurrent([]); setCurrentOrig([]); setCurrentErrors({})
-    getProductBatches(p.id).then(r => { setCurrent(r.data); setCurrentOrig(r.data) }).catch(() => setError('Failed to load current stock.'))
-    setModal('edit')
-  }
+  const openEdit = (p) => setEditing(p)
   const openDelete = (p) => { select(p); setError(''); setModal('delete') }
   const openAddStock = (p) => {
     select(p); setLines([{ ...EMPTY_LINE }]); setLineErrors([]); setError(''); setModal('addstock')
@@ -247,55 +235,6 @@ export default function ProductsPage() {
     } else {
       setError((Array.isArray(errs) ? errs[0] : errs) || e.response?.data?.detail || 'Failed to add stock.')
     }
-  }
-
-  // Save product changes, plus any stock lines filled in (same layout as New product).
-  const handleEdit = async () => {
-    setSaving(true); setError(''); setFieldErrors({}); setLineErrors([])
-    try {
-      await updateProduct(selected.id, clean(formData))
-    } catch (e) {
-      const { fields, general } = parseErrors(e.response?.data)
-      setFieldErrors(fields)
-      setError(general || (Object.keys(fields).length ? '' : 'Something went wrong.'))
-      setSaving(false)
-      return
-    }
-    // Edited current stock rows (colour/size, qty, cost, price) go first.
-    const edited = current.filter((r, i) => r.removed || ['color', 'size', 'quantity', 'cost_price', 'price'].some(k => String(r[k] ?? '') !== String(currentOrig[i]?.[k] ?? '')))
-    let revived = []
-    if (edited.length) {
-      try {
-        const { data } = await updateProductBatches(selected.id, edited.map(r => ({
-          id: r.id, color: r.color || null, size: r.size || null, quantity: r.removed ? 0 : Number(r.quantity) || 0,
-          cost_price: r.cost_price === '' || r.cost_price == null ? null : r.cost_price, price: r.price,
-        })))
-        revived = data.added
-      } catch (e) {
-        const errs = e.response?.data?.batches
-        if (Array.isArray(errs)) {
-          const byId = {}
-          errs.forEach((le, j) => { if (le && Object.keys(le).length) byId[edited[j].id] = le })
-          setCurrentErrors(Object.fromEntries(current.map((r, i) => [i, Object.fromEntries(Object.entries(byId[r.id] || {}).map(([k, v]) => [k, Array.isArray(v) ? v[0] : v]))])))
-        }
-        setError(e.response?.data?.detail || 'Could not update the current stock. Product details were saved.')
-        reload(); setSaving(false)
-        return
-      }
-    }
-    const used = lines.filter(isUsed)
-    try {
-      let items = revived
-      if (used.length) items = [...items, ...(await addStock(selected.id, toStockPayload(used))).data.items]
-      toast(items.length ? `Product updated · ${items.length} unit${items.length !== 1 ? 's' : ''} added` : 'Product updated')
-      if (items.length) setPrintItems(items)
-      reload(); closeModal()
-    } catch (e) {
-      // The product changes are saved; carry on in the add-stock dialog so nothing typed is lost.
-      reload(); setLines(used); setModal('addstock')
-      toast('Product updated, but its stock was not added', 'error')
-      showStockError(e)
-    } finally { setSaving(false) }
   }
 
   const handleAddStock = async () => {
@@ -451,33 +390,8 @@ export default function ProductsPage() {
 
       {quick && <QuickAddDialog kind={quick.kind} initialName={quick.name} onCreated={quickDone} onClose={quickCancel} />}
 
-      <Modal isOpen={modal === 'edit'} onClose={closeModal} title="Edit product" size="3xl"
-        description="Change the product and its current stock, or add more stock below."
-        footer={<>
-          <Button onClick={closeModal}>Cancel</Button>
-          <Button variant="primary" onClick={handleEdit} loading={saving} disabled={missingRequired || !createStockValid || current.some(r => !r.removed && (r.quantity === '' || r.price === ''))}>
-            {createUnits > 0 ? `Save & add ${createUnits} unit${createUnits !== 1 ? 's' : ''}` : current.some(r => r.removed) ? 'Save & remove stock' : 'Save changes'}
-          </Button>
-        </>}>
-        <ErrorAlert message={error} />
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
-          <section aria-label="Product details">
-            <h3 className="mb-3 text-sm font-semibold text-zinc-900">Product</h3>
-            <ProductForm data={formData} onChange={setFormData} categories={categories} sellers={sellers} errors={fieldErrors}
-              hideName={hideName} requireCategory={shopSettings.require_category} requireSeller={shopSettings.require_seller} requireSku={shopSettings.require_sku} showActive compact
-              onCreateCategory={onCreateCategory} onCreateSeller={onCreateSeller} />
-          </section>
-          <section aria-label="Stock" className="min-w-0 lg:border-l lg:border-zinc-100 lg:pl-6">
-            <h3 className="mb-3 text-sm font-semibold text-zinc-900">Current stock</h3>
-            <CurrentStockRows rows={current} original={currentOrig} onChange={setCurrent} colors={colors} sizes={sizes} errors={currentErrors}
-              requireCost={shopSettings.require_cost_price} />
-            <p className="mt-1.5 text-xs text-zinc-500">Change a colour, size, quantity or price here. Lowering Qty removes the newest units. The dustbin removes a whole row (added by mistake) when you save. Sold units are never touched.</p>
-            <h3 className="mb-3 mt-6 text-sm font-semibold text-zinc-900">Add stock <span className="font-normal text-zinc-500">(optional)</span></h3>
-            <AddStockLines lines={lines} onChange={setLines} variants={selected?.variants ?? []} colors={colors} sizes={sizes} errors={lineErrors}
-              requireCost={shopSettings.require_cost_price} />
-          </section>
-        </div>
-      </Modal>
+      <EditProductModal product={editing} onClose={() => setEditing(null)}
+        onSaved={(units) => { reload(); refreshMissingCount(); if (units.length) setPrintItems(units) }} />
 
       <Modal isOpen={modal === 'addstock'} onClose={closeModal} title={`Add stock · ${selected ? shown(selected) : ''}`} size="2xl"
         description="One line per color and size. Every unit gets its own barcode — you can print them next."

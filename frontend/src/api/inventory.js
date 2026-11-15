@@ -6,6 +6,7 @@ export const createProduct = (data) => api.post('/products/', data)
 export const updateProduct = (id, data) => api.patch(`/products/${id}/`, data)
 export const deleteProduct = (id) => api.delete(`/products/${id}/`)
 // lines: [{ color, size, quantity, cost_price, price }] — each line becomes its own priced batch
+export const getIncompleteProducts = (params) => api.get('/products/incomplete/', { params })
 export const getProductBatches = (id) => api.get(`/products/${id}/batches/`)
 export const updateProductBatches = (id, batches) => api.post(`/products/${id}/update-batches/`, { batches })
 export const addStock = (id, lines) => api.post(`/products/${id}/add-stock/`, { lines })

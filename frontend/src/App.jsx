@@ -14,6 +14,7 @@ const ShopPickerPage = lazy(() => import('./pages/ShopPickerPage'))
 const PlatformAdminPage = lazy(() => import('./pages/PlatformAdminPage'))
 const DashboardPage = lazy(() => import('./pages/DashboardPage'))
 const ProductsPage = lazy(() => import('./pages/ProductsPage'))
+const MissingDetailsPage = lazy(() => import('./pages/MissingDetailsPage'))
 const StockPage = lazy(() => import('./pages/StockPage'))
 const CategoriesPage = lazy(() => import('./pages/CategoriesPage'))
 const SellersPage = lazy(() => import('./pages/SellersPage'))
@@ -60,6 +61,7 @@ function AppRoutes() {
           <Route element={<DashboardLayout />}>
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/products" element={<ProductsPage />} />
+            <Route path="/products/missing" element={<MissingDetailsPage />} />
             <Route path="/stock" element={<StockPage />} />
             <Route path="/stock/:code" element={<StockUnitPage />} />
             <Route path="/categories" element={<CategoriesPage />} />

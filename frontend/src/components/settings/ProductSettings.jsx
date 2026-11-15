@@ -3,6 +3,7 @@ import Section from './Section'
 import Switch from '../ui/Switch'
 import { updateShopSettings } from '../../api/shopsettings'
 import { setPrintSettings } from '../../hooks/usePrintSettings'
+import { refreshMissingCount } from '../../hooks/useMissingCount'
 import { useToast } from '../ui/Toast'
 import { newBaseName, productName } from '../../utils/productNames'
 
@@ -30,6 +31,7 @@ export default function ProductSettings({ initial, onSaved, onError }) {
     try {
       const { data } = await updateShopSettings({ [key]: v })
       setPrintSettings(data)  // shared settings cache read by the Products page
+      refreshMissingCount()   // a new "required" rule can leave products with gaps
       onSaved?.(data)
       toast(message ?? 'Saved')
     } catch {

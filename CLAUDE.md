@@ -55,6 +55,10 @@ Product and stock rules (all switched in Settings → Products / Printing, store
 - Sellers have several phone numbers: `Seller.phones` (list, primary first, up to 6). `Seller.phone` is
   kept as `phones[0]` (`Seller.save` and `SellerSerializer.validate`), so lists and search keep working;
   seller search matches any number (`phones_text` cast). Raw inserts (e.g. `seed_large` COPY) must write `phones`.
+- **Missing details** (`/products/missing`, sidebar link with a count, hidden at 0): products made before a
+  `require_*` rule was switched on. `GET /products/incomplete/` lists active products lacking a required
+  category, seller, SKU, name, or cost on in-stock batches, with a `missing` list. The page saves only those
+  fields (`PATCH` product + `update-batches` for cost), and the product leaves the list once complete.
 - Deleting a product that has sold units returns 400 with a message (the bill FK is `PROTECT`).
 - The New product modal creates the product, then calls `add-stock` if any stock lines are filled in.
   The add-stock **Margin %** column is markup on cost (`price = cost × (1 + m/100)`) and is UI-only,

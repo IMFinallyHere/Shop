@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, ScanBarcode, Receipt, Undo2, Users, Shirt, Boxes, FolderTree, Truck,
-  Settings, UserCog, ShieldCheck, KeyRound, HandCoins,
+  Settings, UserCog, ShieldCheck, KeyRound, HandCoins, ClipboardList,
 } from 'lucide-react'
 
 export const NAV = [
@@ -18,7 +18,8 @@ export const NAV = [
   {
     section: 'Inventory',
     items: [
-      { to: '/products', label: 'Products', icon: Shirt, perm: 'inventory.view_product' },
+      { to: '/products', label: 'Products', icon: Shirt, perm: 'inventory.view_product', end: true },
+      { to: '/products/missing', label: 'Missing details', icon: ClipboardList, perm: 'inventory.view_product', badge: 'missing' },
       { to: '/stock', label: 'Stock', icon: Boxes, perm: 'inventory.view_stockitem' },
       { to: '/categories', label: 'Categories', icon: FolderTree, perm: 'inventory.view_category' },
       { to: '/sellers', label: 'Sellers', icon: Truck, perm: 'inventory.view_seller' },
@@ -35,8 +36,11 @@ export const NAV = [
   },
 ]
 
+// Longest match wins, so /products/missing is "Missing details", not "Products".
 export const findNavItem = (pathname) =>
-  NAV.flatMap(s => s.items).find(i => pathname === i.to || pathname.startsWith(i.to + '/'))
+  NAV.flatMap(s => s.items)
+    .filter(i => pathname === i.to || pathname.startsWith(i.to + '/'))
+    .sort((a, b) => b.to.length - a.to.length)[0]
 
 // Pages outside the menu that still need a permission.
 const EXTRA_PERMS = { '/search': 'billing.view_bill' }
