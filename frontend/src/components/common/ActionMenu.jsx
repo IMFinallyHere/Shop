@@ -4,7 +4,8 @@ import clsx from 'clsx'
 import { MoreHorizontal } from 'lucide-react'
 
 // actions: [{ label, icon: LucideIcon, onClick, variant?: 'danger' }]
-export default function ActionMenu({ actions }) {
+export default function ActionMenu({ actions: all }) {
+  const actions = all.filter(Boolean)
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState({ top: 0, left: 0 })
   const triggerRef = useRef(null)
@@ -34,6 +35,8 @@ export default function ActionMenu({ actions }) {
     }
   }, [open])
 
+  if (actions.length === 0) return null
+
   const defaults = actions.filter(a => a.variant !== 'danger')
   const dangers = actions.filter(a => a.variant === 'danger')
 
@@ -59,7 +62,7 @@ export default function ActionMenu({ actions }) {
         className={clsx('rounded-md p-1.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700', open && 'bg-zinc-100 text-zinc-700')}
         aria-label="Actions"
       >
-        <MoreHorizontal size={16} />
+        <MoreHorizontal size={20} />
       </button>
 
       {open && createPortal(

@@ -11,7 +11,7 @@ from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.response import Response
 
-from accounts.permissions import ANY_STAFF, ShopPermission
+from accounts.permissions import ANY_STAFF, ShopPermission, can_view_cost
 from shopsettings.models import Color, ShopSettings, Size
 from .models import LOW_STOCK, Category, Product, ProductVariant, Seller, StockBatch, StockItem, generate_stock_code
 from .serializers import (
@@ -44,6 +44,13 @@ def option_variant_ids(q):
     if not colors and not sizes:
         return None
     return Q(color_id__in=colors) | Q(size_id__in=sizes)
+
+
+class CostContextMixin:
+    """Tells the serializers whether this user may see cost prices (see CostHiddenMixin)."""
+
+    def get_serializer_context(self):
+        return {**super().get_serializer_context(), "can_view_cost": can_view_cost(self.request.user)}
 
 
 class AllRowsMixin:
@@ -84,7 +91,7 @@ class SellerViewSet(AllRowsMixin, viewsets.ModelViewSet):
         ).order_by("name", "id")
 
 
-class ProductViewSet(viewsets.ModelViewSet):
+class ProductViewSet(CostContextMixin, viewsets.ModelViewSet):
     permission_classes = [ShopPermission]
     perm_model = "inventory.product"
     perms = {"add_stock": "inventory.add_stockitem", "batches": "inventory.view_stockitem",
@@ -144,8 +151,9 @@ class ProductViewSet(viewsets.ModelViewSet):
     def add_stock(self, request, pk=None):
         """Add units for one or more color/size lines, each line its own priced batch."""
         product = self.get_object()
-        serializer = AddStockSerializer(data=request.data)
+        serializer = AddStockSerializer(data=request.data, context=self.get_serializer_context())
         serializer.is_valid(raise_exception=True)
+        see_cost = can_view_cost(request.user)
         ids, variant_ids = [], []
         with transaction.atomic():
             for line in serializer.validated_data["lines"]:
@@ -153,7 +161,7 @@ class ProductViewSet(viewsets.ModelViewSet):
                     product=product, color=line["color"], size=line["size"]
                 )
                 batch = StockBatch.objects.create(
-                    variant=variant, cost_price=line["cost_price"], price=line["price"],
+                    variant=variant, cost_price=line["cost_price"] if see_cost else None, price=line["price"],
                     quantity=line["quantity"],
                 )
                 ids += [u.id for u in create_units(variant, batch, line["quantity"])]
@@ -161,7 +169,7 @@ class ProductViewSet(viewsets.ModelViewSet):
             recount(variant_ids=variant_ids)
         items = StockItem.objects.select_related(*STOCK_ITEM_RELATED).filter(id__in=ids).order_by("id")
         return Response(
-            {"count": len(items), "items": StockItemSerializer(items, many=True).data},
+            {"count": len(items), "items": StockItemSerializer(items, many=True, context=self.get_serializer_context()).data},
             status=status.HTTP_201_CREATED,
         )
 
@@ -169,6 +177,7 @@ class ProductViewSet(viewsets.ModelViewSet):
     def incomplete(self, request):
         """Active products missing something the shop now requires (Settings), with what is missing."""
         cfg = ShopSettings.load()
+        need_cost = cfg.require_cost_price and can_view_cost(request.user)  # others can't fill it in
         costless = StockBatch.objects.filter(
             variant__product=OuterRef("pk"), cost_price__isnull=True, items__status=StockItem.IN_STOCK)
         gaps = {}  # name -> Q matching products with that gap
@@ -182,7 +191,7 @@ class ProductViewSet(viewsets.ModelViewSet):
             gaps["name"] = Q(name__regex=r"^\s*$")
         qs = (Product.objects.filter(is_active=True).select_related("category", "seller")
               .prefetch_related(Prefetch("variants", queryset=variants_queryset())).order_by("name", "id"))
-        if cfg.require_cost_price:
+        if need_cost:
             qs = qs.annotate(cost_missing=Exists(costless))
             gaps["cost_price"] = Q(cost_missing=True)
         if not gaps:
@@ -197,7 +206,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         for p in page:
             missing = [k for k, q in gaps.items() if k != "cost_price" and _gap(p, k)]
             batches = []
-            if cfg.require_cost_price and p.cost_missing:
+            if need_cost and p.cost_missing:
                 missing.append("cost_price")
                 batches = [{
                     "id": str(b.id), "color": b.variant.color_id, "size": b.variant.size_id,
@@ -208,7 +217,7 @@ class ProductViewSet(viewsets.ModelViewSet):
                     .annotate(in_stock=Count("items", filter=Q(items__status=StockItem.IN_STOCK)))
                     .filter(in_stock__gt=0).select_related("variant__color", "variant__size")]
             # Everything about the product (for reference on the page) plus what is missing.
-            rows.append({**ProductSerializer(p).data, "missing": missing, "batches_missing_cost": batches})
+            rows.append({**ProductSerializer(p, context=self.get_serializer_context()).data, "missing": missing, "batches_missing_cost": batches})
         return self.get_paginated_response(rows)
 
     @action(detail=True, methods=["get"], url_path="batches")
@@ -220,26 +229,32 @@ class ProductViewSet(viewsets.ModelViewSet):
             .annotate(in_stock=Count("items", filter=Q(items__status=StockItem.IN_STOCK)))
             .select_related("variant__color", "variant__size").order_by("created_at")
         )
+        see_cost = can_view_cost(request.user)
         return Response([{
             "id": str(b.id), "color": b.variant.color_id, "size": b.variant.size_id,
             "color_name": b.variant.color.name if b.variant.color else None,
             "size_name": b.variant.size.name if b.variant.size else None,
-            "quantity": b.in_stock, "cost_price": None if b.cost_price is None else str(b.cost_price),
-            "price": str(b.price),
+            "quantity": b.in_stock, "price": str(b.price),
+            **({"cost_price": None if b.cost_price is None else str(b.cost_price)} if see_cost else {}),
         } for b in rows])
 
     @action(detail=True, methods=["post"], url_path="update-batches")
     def update_batches(self, request, pk=None):
         """Apply edits to current stock rows: colour/size, cost, price and quantity (add or remove units)."""
         product = self.get_object()
-        ser = UpdateBatchesSerializer(data=request.data)
+        ser = UpdateBatchesSerializer(data=request.data, context=self.get_serializer_context())
         ser.is_valid(raise_exception=True)
+        see_cost = can_view_cost(request.user)
         touched, added = set(), []
         with transaction.atomic():
             for row in ser.validated_data["batches"]:
                 batch = StockBatch.objects.select_for_update().filter(pk=row["id"], variant__product=product).first()
                 if batch is None:
                     raise serializers.ValidationError({"detail": "A stock row no longer exists. Reload and try again."})
+                if not see_cost:
+                    row["cost_price"] = batch.cost_price  # never changed by someone who can't see it
+                else:
+                    row.setdefault("cost_price", batch.cost_price)
                 live = list(batch.items.filter(status=StockItem.IN_STOCK).order_by("created_at", "id"))
                 variant, _ = ProductVariant.objects.get_or_create(product=product, color=row["color"], size=row["size"])
                 changed = (variant.id != batch.variant_id or row["cost_price"] != batch.cost_price
@@ -265,7 +280,7 @@ class ProductViewSet(viewsets.ModelViewSet):
                     StockItem.objects.filter(id__in=[u.id for u in live[diff:]]).update(status=StockItem.REMOVED)
             recount(variant_ids=touched)
         items = StockItem.objects.select_related(*STOCK_ITEM_RELATED).filter(id__in=[u.id for u in added]).order_by("id")
-        return Response({"added": StockItemSerializer(items, many=True).data})
+        return Response({"added": StockItemSerializer(items, many=True, context=self.get_serializer_context()).data})
 
 
 def _gap(product, key):
@@ -294,7 +309,7 @@ def create_units(variant, batch, quantity):
     raise IntegrityError("Could not generate unique stock codes.")
 
 
-class ProductVariantViewSet(viewsets.ModelViewSet):
+class ProductVariantViewSet(CostContextMixin, viewsets.ModelViewSet):
     """Edit a variant's color/size/threshold, or delete one with no sales history."""
 
     permission_classes = [ShopPermission]
@@ -321,7 +336,7 @@ class ProductVariantViewSet(viewsets.ModelViewSet):
         return response
 
 
-class StockItemViewSet(viewsets.ReadOnlyModelViewSet):
+class StockItemViewSet(CostContextMixin, viewsets.ReadOnlyModelViewSet):
     """The Stock section: every physical unit, one row each."""
 
     permission_classes = [ShopPermission]
@@ -381,7 +396,7 @@ class StockItemViewSet(viewsets.ReadOnlyModelViewSet):
         )
         if not item:
             return Response({"detail": "No in-stock unit with that code."}, status=status.HTTP_404_NOT_FOUND)
-        return Response(StockItemSerializer(item).data)
+        return Response(StockItemSerializer(item, context=self.get_serializer_context()).data)
 
     @action(detail=True, methods=["post"], url_path="remove")
     def remove(self, request, pk=None):
@@ -390,7 +405,7 @@ class StockItemViewSet(viewsets.ReadOnlyModelViewSet):
             item.status = StockItem.REMOVED
             item.save(update_fields=["status"])
             recount(variant_ids=[item.variant_id])
-        return Response(StockItemSerializer(item).data)
+        return Response(StockItemSerializer(item, context=self.get_serializer_context()).data)
 
     @action(detail=True, methods=["post"], url_path="edit")
     def edit(self, request, pk=None):
@@ -420,4 +435,4 @@ class StockItemViewSet(viewsets.ReadOnlyModelViewSet):
                     item.save(update_fields=["variant", "batch"])
                 recount(variant_ids=[old_variant_id, target.id])
         item = StockItem.objects.select_related(*STOCK_ITEM_RELATED).get(pk=item.pk)
-        return Response(StockItemSerializer(item).data)
+        return Response(StockItemSerializer(item, context=self.get_serializer_context()).data)

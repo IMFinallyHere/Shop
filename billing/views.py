@@ -22,9 +22,10 @@ from .models import (
     refund_shares,
 )
 from .serializers import (
-    BillSerializer, CheckoutSerializer, CreateReturnSerializer, DuePaymentSerializer, QuoteSerializer,
+    AddCreditSerializer, BillSerializer, CheckoutSerializer, CreateReturnSerializer, DuePaymentSerializer, QuoteSerializer,
     ReceiveDueSerializer, ReturnSerializer,
 )
+from .scope import visible_bills
 from .tax import compute_bill
 
 
@@ -104,9 +105,12 @@ class BillViewSet(viewsets.ModelViewSet):
     filter_backends = [CustomerOrNumberSearch]
 
     def get_queryset(self):
-        return Bill.objects.prefetch_related(
+        bills = Bill.objects.prefetch_related(
             "items__stock_item", "items__return_item", "returns"
         ).order_by("-created_at")
+        # Scan-to-return must find a sale whoever made it; everything else is limited to
+        # what this user may see (see billing.scope).
+        return bills if self.action == "by_code" else visible_bills(bills, self.request.user)
 
     @action(detail=False, methods=["get"], url_path="by-code")
     def by_code(self, request):
@@ -319,15 +323,38 @@ class ReturnViewSet(viewsets.ModelViewSet):
 
 
 class StoreCreditView(APIView):
-    """``GET /store-credit/?phone=`` → this shop's credit balance for that customer."""
+    """``GET /store-credit/?phone=`` → this shop's credit balance for that customer.
+
+    ``POST /store-credit/`` adds credit on purpose (``phone``, ``amount``, ``note``; ``name``
+    for a customer the shop hasn't met yet). Needs ``billing.add_creditentry``.
+    """
 
     permission_classes = [ShopPermission]
     perm_model = "billing.creditentry"
+    perms = {"GET": "billing.add_bill"}  # the counter shows and redeems it while billing
 
     def get(self, request):
         phone = request.query_params.get("phone", "").strip()
         customer_id = find_customer_id(phone) if phone else None
         return Response({"customer_id": customer_id, "balance": str(credit_balance(customer_id))})
+
+    def post(self, request):
+        ser = AddCreditSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        data = ser.validated_data
+        name = data["name"].strip()
+        with transaction.atomic():
+            customer_id = find_customer_id(data["phone"])
+            if customer_id is None:
+                if not name:
+                    return Response({"name": "Name is required for a new customer."}, status=status.HTTP_400_BAD_REQUEST)
+                customer_id, _, _ = resolve_customer(name, data["phone"])
+            lock_credit(customer_id)
+            entry = CreditEntry.objects.create(
+                customer_id=customer_id, amount=money(data["amount"]), note=data["note"].strip(), created_by=request.user)
+            balance = credit_balance(customer_id)
+        return Response({"customer_id": customer_id, "amount": str(entry.amount), "balance": str(balance)},
+                        status=status.HTTP_201_CREATED)
 
 
 class DuesView(APIView):
@@ -433,7 +460,7 @@ class DashboardView(APIView):
     """``GET /dashboard/`` → today's figures, a 7-day sales series, low stock and recent bills."""
 
     permission_classes = [ShopPermission]
-    perms = {"GET": "billing.view_bill"}  # sales figures
+    perms = {"GET": "billing.view_dashboard"}  # sales figures
 
     def get(self, request):
         today = timezone.localdate()

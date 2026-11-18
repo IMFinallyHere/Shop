@@ -8,10 +8,11 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.permissions import ShopPermission
+from accounts.permissions import ShopPermission, can_view_cost
 from customers.models import Customer
 from inventory.models import Product, Seller, StockItem
 from .models import Bill, BillItem, CreditEntry, Return
+from .scope import visible_bills
 
 def _s(value):
     """Money as a string, or None when unknown (e.g. a batch with no cost price)."""
@@ -37,7 +38,8 @@ def _return_row(r):
 
 def shop_customers():
     """Global customers who have bought from the current shop (resolved in SQL)."""
-    return Customer.objects.filter(Exists(Bill.objects.filter(customer_id=OuterRef("pk"))))
+    return Customer.objects.filter(Exists(Bill.objects.filter(customer_id=OuterRef("pk")))
+                                  | Exists(CreditEntry.objects.filter(customer_id=OuterRef("pk"))))
 
 
 class SearchView(APIView):
@@ -58,7 +60,7 @@ class SearchView(APIView):
         if len(q) < 2 and not (bill_no or return_no):
             return Response(out)
 
-        bills = Bill.objects.annotate(n_items=Count("items")).order_by("-created_at")
+        bills = visible_bills(Bill.objects.annotate(n_items=Count("items")).order_by("-created_at"), request.user)
         returns = Return.objects.select_related("bill").order_by("-created_at")
         if bill_no:
             out["bills"] = [_bill_row(b) for b in bills.filter(pk=int(bill_no.group(1)))]
@@ -128,8 +130,9 @@ class UnitHistoryView(APIView):
         v, b = item.variant, item.batch
         p, seller = v.product, v.product.seller
 
-        timeline = [{"type": "added", "at": b.created_at, "batch_quantity": b.quantity,
-                     "cost_price": _s(b.cost_price), "price": str(b.price)}]
+        see_cost = can_view_cost(request.user)
+        timeline = [{"type": "added", "at": b.created_at, "batch_quantity": b.quantity, "price": str(b.price),
+                     **({"cost_price": _s(b.cost_price)} if see_cost else {})}]
         sales = (
             BillItem.objects.filter(stock_item=item)
             .select_related("bill__created_by", "return_item__ret__created_by")
@@ -185,8 +188,9 @@ class UnitHistoryView(APIView):
                         "color_hex": (v.color.hex or None) if v.color else None,
                         "low_stock_threshold": v.low_stock_threshold,
                         "in_stock": v.stock_quantity},
-            "batch": {"id": str(b.id), "cost_price": _s(b.cost_price), "price": str(b.price),
-                      "margin": None if b.cost_price is None else str(b.price - b.cost_price), "quantity": b.quantity, "created_at": b.created_at},
+            "batch": {"id": str(b.id), "price": str(b.price), "quantity": b.quantity, "created_at": b.created_at,
+                      **({"cost_price": _s(b.cost_price),
+                          "margin": None if b.cost_price is None else str(b.price - b.cost_price)} if see_cost else {})},
             "seller": seller and {"id": seller.id, "name": seller.name, "phone": seller.phone,
                                   "phones": seller.phones or ([seller.phone] if seller.phone else []),
                                   "email": seller.email, "address": seller.address},

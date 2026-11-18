@@ -1,7 +1,11 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Users } from 'lucide-react'
+import { Users, Wallet } from 'lucide-react'
 import { getCustomers } from '../api/customers'
+import { useAuth } from '../contexts/AuthContext'
+import { can } from '../utils/permissions'
+import AddCreditModal from '../components/billing/AddCreditModal'
+import Button from '../components/ui/Button'
 import useQuery, { asList } from '../hooks/useQuery'
 import SearchInput from '../components/common/SearchInput'
 import ErrorAlert from '../components/common/ErrorAlert'
@@ -17,12 +21,15 @@ export default function CustomersPage() {
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const navigate = useNavigate()
-  const { data, loading, error } = useQuery(() => getCustomers({ page, search }), `${page}|${search}`)
+  const { user } = useAuth()
+  const [addingCredit, setAddingCredit] = useState(false)
+  const { data, loading, error, reload } = useQuery(() => getCustomers({ page, search }), `${page}|${search}`)
   const { rows: customers, count } = asList(data)
 
   return (
     <div>
-      <PageHeader title="Customers" subtitle="People who have purchased from this shop." />
+      <PageHeader title="Customers" subtitle="People who have purchased from this shop."
+        actions={can(user, 'billing.add_creditentry') && <Button icon={Wallet} onClick={() => setAddingCredit(true)}>Add store credit</Button>} />
       <Toolbar><SearchInput value={search} onChange={v => { setSearch(v); setPage(1) }} placeholder="Search by name or phone…" /></Toolbar>
       <ErrorAlert message={error && 'Failed to load customers.'} />
 
@@ -52,6 +59,7 @@ export default function CustomersPage() {
         ))}
       </Table>
       <Pagination page={page} pageSize={PAGE_SIZE} count={count} onChange={setPage} />
+      <AddCreditModal isOpen={addingCredit} onClose={() => setAddingCredit(false)} onDone={() => { setAddingCredit(false); reload() }} />
     </div>
   )
 }

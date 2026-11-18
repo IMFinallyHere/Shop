@@ -4,6 +4,8 @@ import { getCategories, createCategory, updateCategory, deleteCategory } from '.
 import useQuery, { asList } from '../hooks/useQuery'
 import ActionMenu from '../components/common/ActionMenu'
 import Modal from '../components/common/Modal'
+import { useAuth } from '../contexts/AuthContext'
+import { can } from '../utils/permissions'
 import ConfirmDialog from '../components/common/ConfirmDialog'
 import ErrorAlert from '../components/common/ErrorAlert'
 import PageHeader from '../components/ui/PageHeader'
@@ -28,6 +30,10 @@ export default function CategoriesPage() {
   const [selected, setSelected] = useState(null)
   const [form, setForm] = useState(EMPTY_CATEGORY)
   const toast = useToast()
+  const { user } = useAuth()
+  const canAdd = can(user, 'inventory.add_category')
+  const canChange = can(user, 'inventory.change_category')
+  const canDelete = can(user, 'inventory.delete_category')
 
   const openCreate = () => { setForm({ ...EMPTY_CATEGORY }); setFieldErrors({}); setModal('create') }
   const openEdit = (c) => { setSelected(c); setForm({ name: c.name, description: c.description }); setFieldErrors({}); setModal('edit') }
@@ -51,14 +57,14 @@ export default function CategoriesPage() {
   return (
     <div>
       <PageHeader title="Categories" subtitle="Group products so they're easier to find."
-        actions={<Button variant="primary" icon={Plus} onClick={openCreate}>New category</Button>} />
+        actions={canAdd && <Button variant="primary" icon={Plus} onClick={openCreate}>New category</Button>} />
       <ErrorAlert message={error || (loadError && 'Failed to load categories.')} onDismiss={() => setError('')} />
 
       <Table
         columns={[{ label: 'Name' }, { label: 'Description' }, { label: 'Products' }, { label: '', className: 'w-12' }]}
         loading={loading} isEmpty={items.length === 0}
         empty={{ icon: FolderTree, title: 'No categories yet', description: 'Create categories like "Kurtis" or "Sarees" to organise products.',
-          action: <Button variant="primary" icon={Plus} onClick={openCreate}>New category</Button> }}
+          action: canAdd && <Button variant="primary" icon={Plus} onClick={openCreate}>New category</Button> }}
       >
         {items.map(c => (
           <Tr key={c.id}>
@@ -67,8 +73,8 @@ export default function CategoriesPage() {
             <Td><Badge>{c.product_count}</Badge></Td>
             <Td className="text-right">
               <ActionMenu actions={[
-                { label: 'Edit', icon: Pencil, onClick: () => openEdit(c) },
-                { label: 'Delete', icon: Trash2, onClick: () => openDelete(c), variant: 'danger' },
+                canChange && { label: 'Edit', icon: Pencil, onClick: () => openEdit(c) },
+                canDelete && { label: 'Delete', icon: Trash2, onClick: () => openDelete(c), variant: 'danger' },
               ]} />
             </Td>
           </Tr>

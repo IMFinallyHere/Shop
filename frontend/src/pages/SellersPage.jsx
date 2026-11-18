@@ -4,6 +4,8 @@ import { getSellers, createSeller, updateSeller, deleteSeller } from '../api/inv
 import useQuery, { asList } from '../hooks/useQuery'
 import ActionMenu from '../components/common/ActionMenu'
 import Modal from '../components/common/Modal'
+import { useAuth } from '../contexts/AuthContext'
+import { can } from '../utils/permissions'
 import ConfirmDialog from '../components/common/ConfirmDialog'
 import ErrorAlert from '../components/common/ErrorAlert'
 import PageHeader from '../components/ui/PageHeader'
@@ -29,6 +31,10 @@ export default function SellersPage() {
   const [selected, setSelected] = useState(null)
   const [form, setForm] = useState(EMPTY)
   const toast = useToast()
+  const { user } = useAuth()
+  const canAdd = can(user, 'inventory.add_seller')
+  const canChange = can(user, 'inventory.change_seller')
+  const canDelete = can(user, 'inventory.delete_seller')
 
   const openCreate = () => { setForm({ ...EMPTY }); setFieldErrors({}); setModal('create') }
   const openEdit = (s) => { setSelected(s); setForm({ name: s.name, phones: s.phones?.length ? s.phones : [''], email: s.email, address: s.address, notes: s.notes }); setFieldErrors({}); setModal('edit') }
@@ -55,14 +61,14 @@ export default function SellersPage() {
   return (
     <div>
       <PageHeader title="Sellers" subtitle="Suppliers you buy stock from."
-        actions={<Button variant="primary" icon={Plus} onClick={openCreate}>New seller</Button>} />
+        actions={canAdd && <Button variant="primary" icon={Plus} onClick={openCreate}>New seller</Button>} />
       <ErrorAlert message={error || (loadError && 'Failed to load sellers.')} onDismiss={() => setError('')} />
 
       <Table
         columns={[{ label: 'Name' }, { label: 'Phone numbers' }, { label: 'Email' }, { label: 'Products' }, { label: '', className: 'w-12' }]}
         loading={loading} isEmpty={items.length === 0}
         empty={{ icon: Truck, title: 'No sellers yet', description: 'Add the suppliers you buy from to track where stock comes from.',
-          action: <Button variant="primary" icon={Plus} onClick={openCreate}>New seller</Button> }}
+          action: canAdd && <Button variant="primary" icon={Plus} onClick={openCreate}>New seller</Button> }}
       >
         {items.map(s => (
           <Tr key={s.id}>
@@ -75,8 +81,8 @@ export default function SellersPage() {
             <Td><Badge>{s.product_count}</Badge></Td>
             <Td className="text-right">
               <ActionMenu actions={[
-                { label: 'Edit', icon: Pencil, onClick: () => openEdit(s) },
-                { label: 'Delete', icon: Trash2, onClick: () => openDelete(s), variant: 'danger' },
+                canChange && { label: 'Edit', icon: Pencil, onClick: () => openEdit(s) },
+                canDelete && { label: 'Delete', icon: Trash2, onClick: () => openDelete(s), variant: 'danger' },
               ]} />
             </Td>
           </Tr>

@@ -4,6 +4,7 @@ import { ArrowLeft, HandCoins, IndianRupee, Mail, Phone, Receipt, Undo2, Users, 
 import { useAuth } from '../contexts/AuthContext'
 import { can } from '../utils/permissions'
 import ReceiveDueModal from '../components/billing/ReceiveDueModal'
+import AddCreditModal from '../components/billing/AddCreditModal'
 import { getCustomer } from '../api/customers'
 import useQuery from '../hooks/useQuery'
 import useReceipts from '../hooks/useReceipts'
@@ -22,6 +23,7 @@ export default function CustomerDetailPage() {
   const { data: c, loading, error, reload } = useQuery(() => getCustomer(id), id)
   const { user } = useAuth()
   const [receiving, setReceiving] = useState(false)
+  const [addingCredit, setAddingCredit] = useState(false)
   const { openBill, openReturn, receipts } = useReceipts()
 
   if (loading) return <Spinner />
@@ -46,9 +48,12 @@ export default function CustomerDetailPage() {
           <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-zinc-500">
             <span className="flex items-center gap-1.5"><Phone size={14} />{c.phone}</span>
             {c.email && <span className="flex items-center gap-1.5"><Mail size={14} />{c.email}</span>}
-            <span>Customer since {formatDate(s.first_visit)} · last visit {formatDate(s.last_visit)}</span>
+            {s.first_visit ? <span>Customer since {formatDate(s.first_visit)} · last visit {formatDate(s.last_visit)}</span> : <span>No purchases yet</span>}
           </div>
         </div>
+        {can(user, 'billing.add_creditentry') && (
+          <Button className="ml-auto" icon={Wallet} onClick={() => setAddingCredit(true)}>Add store credit</Button>
+        )}
       </div>
 
       {Number(s.balance_due) > 0 && (
@@ -125,7 +130,8 @@ export default function CustomerDetailPage() {
           <ul className="divide-y divide-zinc-100">
             {c.credit.map(e => (
               <li key={e.id} className="flex items-center justify-between px-5 py-2.5 text-sm">
-                <span className="text-zinc-600">{Number(e.amount) > 0 ? 'Credited' : 'Used'} · {e.ref} <span className="text-xs text-zinc-400">{formatDate(e.created_at)}</span></span>
+                <span className="text-zinc-600">{Number(e.amount) > 0 ? 'Credited' : 'Used'} · {e.ref ?? 'Added by the shop'} <span className="text-xs text-zinc-400">{formatDate(e.created_at)}</span>
+                  {e.note && <span className="block text-xs text-zinc-500">“{e.note}”</span>}</span>
                 <span className={`font-medium tabular-nums ${Number(e.amount) > 0 ? 'text-emerald-700' : 'text-zinc-700'}`}>
                   {Number(e.amount) > 0 ? '+' : '−'}{money(Math.abs(Number(e.amount)))}
                 </span>
@@ -135,6 +141,8 @@ export default function CustomerDetailPage() {
         </Card>
       )}
       {receipts}
+      <AddCreditModal isOpen={addingCredit} customer={{ name: c.name, phone: c.phone }}
+        onClose={() => setAddingCredit(false)} onDone={() => { setAddingCredit(false); reload() }} />
       <ReceiveDueModal isOpen={receiving} customer={{ customer_id: c.id, name: c.name, owed: s.balance_due }}
         onClose={() => setReceiving(false)} onDone={() => { setReceiving(false); reload() }} />
     </div>

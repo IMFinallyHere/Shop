@@ -12,6 +12,7 @@ import CurrentStockRows from './CurrentStockRows'
 import QuickAddDialog from './QuickAddDialog'
 import Button from '../ui/Button'
 import { useToast } from '../ui/Toast'
+import useCanViewCost from '../../hooks/useCanViewCost'
 import { EMPTY_LINE, toStockPayload } from '../../utils/variant'
 
 const KNOWN = ['name', 'sku', 'category', 'seller', 'fabric_type']
@@ -30,6 +31,7 @@ export default function EditProductModal({ product, onClose, onSaved }) {
 function EditProductForm({ product, onClose, onSaved }) {
   const toast = useToast()
   const shopSettings = usePrintSettings()
+  const showCost = useCanViewCost()
   const hideName = !!shopSettings.hide_product_name
   const [formData, setFormData] = useState({
     name: product.name, sku: product.sku, category: product.category ?? '', seller: product.seller ?? '',
@@ -87,7 +89,7 @@ function EditProductForm({ product, onClose, onSaved }) {
   }
 
   const usedLines = lines.filter(isUsed)
-  const lineOk = (l) => Number(l.quantity) >= 1 && l.price !== '' && (!shopSettings.require_cost_price || l.cost_price !== '')
+  const lineOk = (l) => Number(l.quantity) >= 1 && l.price !== '' && (!showCost || !shopSettings.require_cost_price || l.cost_price !== '')
   const stockValid = usedLines.every(lineOk)
   const newUnits = usedLines.reduce((s, l) => s + (Number(l.quantity) || 0), 0)
   const missingRequired = (shopSettings.require_category && !formData.category) || (shopSettings.require_seller && !formData.seller)

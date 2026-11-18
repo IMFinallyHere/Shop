@@ -63,7 +63,22 @@ class SellerSerializer(serializers.ModelSerializer):
         return data
 
 
-class ProductVariantSerializer(serializers.ModelSerializer):
+class CostHiddenMixin:
+    """Drops cost fields unless the view says this user may see them (context ``can_view_cost``).
+    With no context the cost stays hidden, so a forgotten call site fails safe."""
+
+    COST_FIELDS = ()
+
+    def to_representation(self, obj):
+        data = super().to_representation(obj)
+        if not self.context.get("can_view_cost"):
+            for key in self.COST_FIELDS:
+                data.pop(key, None)
+        return data
+
+
+class ProductVariantSerializer(CostHiddenMixin, serializers.ModelSerializer):
+    COST_FIELDS = ("last_cost_price",)
     # color/size are ids of the shop's Settings lists; names/swatch for display.
     color_name = serializers.CharField(source="color.name", read_only=True, default=None)
     color_hex = serializers.CharField(source="color.hex", read_only=True, default=None)
@@ -143,7 +158,8 @@ class ProductSerializer(serializers.ModelSerializer):
         return product
 
 
-class StockItemSerializer(serializers.ModelSerializer):
+class StockItemSerializer(CostHiddenMixin, serializers.ModelSerializer):
+    COST_FIELDS = ("cost_price",)
     product = serializers.IntegerField(source="variant.product_id", read_only=True)
     product_name = serializers.CharField(source="variant.product.name", read_only=True)
     category_name = serializers.CharField(source="variant.product.category.name", read_only=True)
@@ -187,7 +203,8 @@ class StockBatchEditSerializer(serializers.Serializer):
     color = serializers.PrimaryKeyRelatedField(queryset=Color.objects.all(), allow_null=True)
     size = serializers.PrimaryKeyRelatedField(queryset=Size.objects.all(), allow_null=True)
     quantity = serializers.IntegerField(min_value=0, max_value=1000)
-    cost_price = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0, allow_null=True)
+    # Absent for users who can't see costs: the batch keeps the cost it has.
+    cost_price = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0, allow_null=True, required=False)
     price = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0)
 
 
@@ -195,7 +212,7 @@ class UpdateBatchesSerializer(serializers.Serializer):
     batches = StockBatchEditSerializer(many=True, allow_empty=False, max_length=200)
 
     def validate_batches(self, rows):
-        if ShopSettings.load().require_cost_price:
+        if ShopSettings.load().require_cost_price and self.context.get("can_view_cost"):
             # Rows being emptied (quantity 0) need no cost.
             errors = [{} if r.get("cost_price") is not None or r["quantity"] == 0 else {"cost_price": ["Cost price is required."]} for r in rows]
             if any(errors):
@@ -207,7 +224,7 @@ class AddStockSerializer(serializers.Serializer):
     lines = AddStockLineSerializer(many=True, allow_empty=False, max_length=50)
 
     def validate_lines(self, lines):
-        if ShopSettings.load().require_cost_price:
+        if ShopSettings.load().require_cost_price and self.context.get("can_view_cost"):
             errors = [{} if line.get("cost_price") is not None else {"cost_price": ["Cost price is required."]}
                       for line in lines]
             if any(errors):

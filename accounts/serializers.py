@@ -76,7 +76,8 @@ class TenantUserCreateSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True, validators=[validate_password])
     first_name = serializers.CharField(required=False, allow_blank=True, default='')
     last_name = serializers.CharField(required=False, allow_blank=True, default='')
-    is_staff = serializers.BooleanField(default=False)
+    # Everyone added to a shop is staff (the UI has no switch for it); access comes from their groups.
+    is_staff = serializers.BooleanField(default=True)
 
     def validate(self, attrs):
         tenant = self.context['tenant']
@@ -103,7 +104,7 @@ class TenantUserCreateSerializer(serializers.Serializer):
                     first_name=validated_data.get('first_name', ''),
                     last_name=validated_data.get('last_name', ''),
                 )
-        tenant.add_user(profile, is_staff=validated_data.get('is_staff', False))
+        tenant.add_user(profile, is_staff=validated_data.get('is_staff', True))
         return UserTenantPermissions.objects.get(profile=profile)
 
 

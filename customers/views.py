@@ -27,7 +27,7 @@ class CustomerViewSet(viewsets.ViewSet):
         credit = CreditEntry.objects.filter(customer_id=OuterRef("pk")).order_by().values("customer_id")
         # The public customer table is on the tenant's search_path, so this is one query;
         # the per-row subqueries only run for the page being returned.
-        customers = Customer.objects.filter(Exists(bills)).annotate(
+        customers = Customer.objects.filter(Exists(bills) | Exists(credit)).annotate(
             n_bills=Subquery(bills.annotate(n=Count("id")).values("n")),
             credit=Subquery(credit.annotate(s=Sum("amount")).values("s")),
             owed=Subquery(bills.filter(balance_due__gt=0).annotate(s=Sum("balance_due")).values("s")),
@@ -49,6 +49,7 @@ class CustomerViewSet(viewsets.ViewSet):
     def retrieve(self, request, pk=None):
         """One customer as THIS shop knows them: profile, totals, bills, returns, credit."""
         from billing.models import Bill, CreditEntry, DuePayment, Return, credit_balance, dues_balance
+        from billing.scope import visible_bills
 
         try:
             cid = int(pk)
@@ -56,7 +57,7 @@ class CustomerViewSet(viewsets.ViewSet):
             cid = None
         bills = Bill.objects.filter(customer_id=cid)
         customer = Customer.objects.filter(pk=cid).first() if cid else None
-        if not customer or not bills.exists():
+        if not customer or not (bills.exists() or CreditEntry.objects.filter(customer_id=cid).exists()):
             return Response({"detail": "Customer not found in this shop."}, status=status.HTTP_404_NOT_FOUND)
 
         agg = bills.aggregate(n=Count("id"), spent=Sum("total"), first=Min("created_at"), last=Max("created_at"))
@@ -75,7 +76,8 @@ class CustomerViewSet(viewsets.ViewSet):
                 {"id": b.id, "number": b.number, "items": b.n_items, "total": str(b.total),
                  "payment_mode": b.payment_mode, "balance_due": str(b.balance_due),
                  "returned": b.n_returns > 0, "created_at": b.created_at}
-                for b in bills.annotate(n_items=Count("items", distinct=True), n_returns=Count("returns", distinct=True))
+                for b in visible_bills(bills, request.user)
+                .annotate(n_items=Count("items", distinct=True), n_returns=Count("returns", distinct=True))
                 .order_by("-created_at")[:50]
             ],
             "returns": [
@@ -90,7 +92,7 @@ class CustomerViewSet(viewsets.ViewSet):
                 for p in DuePayment.objects.filter(customer_id=cid)[:50]
             ],
             "credit": [
-                {"id": e.id, "amount": str(e.amount), "created_at": e.created_at,
+                {"id": e.id, "amount": str(e.amount), "created_at": e.created_at, "note": e.note,
                  "ref": e.ret.number if e.ret else e.bill.number if e.bill else None}
                 for e in ledger
             ],

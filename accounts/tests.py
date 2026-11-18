@@ -261,7 +261,7 @@ class MultiTenancyTestCase(TestCase):
 
         cashier = self._staff("till@test.com", group="Cashier")
         self.assertEqual(cashier.get("/api/products/", **h).status_code, 200)
-        self.assertEqual(cashier.get("/api/dashboard/", **h).status_code, 200)
+        self.assertEqual(cashier.get("/api/dashboard/", **h).status_code, 403)  # its own permission
         self.assertEqual(cashier.post("/api/products/", {"name": "X"}, format="json", **h).status_code, 403)
         # Category and seller names label products, so cashiers can read them but not change them.
         self.assertEqual(cashier.get("/api/categories/?all=1", **h).status_code, 200)
@@ -273,6 +273,137 @@ class MultiTenancyTestCase(TestCase):
         me = cashier.get("/api/auth/me/", **h).data
         self.assertIn("billing.add_bill", me["permissions"])
         self.assertNotIn("inventory.add_product", me["permissions"])
+
+    def _staff_with(self, email, *perms):
+        """A staff user whose only access is the named 'app.codename' permissions."""
+        from django.contrib.auth.models import Permission
+        with schema_context(get_public_schema_name()):
+            user = User.objects.create_user(email=email, password=PW)
+        self.acme.add_user(user, is_staff=True)
+        with tenant_context(self.acme):
+            group = Group.objects.create(name=f"g-{email}")
+            for perm in perms:
+                app, code = perm.split(".")
+                group.permissions.add(Permission.objects.get(content_type__app_label=app, codename=code))
+            UserTenantPermissions.objects.get(profile=user).groups.add(group)
+        return self._auth("acme.localhost", email)[1]
+
+    def test_dashboard_has_its_own_permission(self):
+        h = {"HTTP_HOST": "acme.localhost"}
+        bills_only = self._staff_with("bills@test.com", "billing.view_bill", "billing.add_bill")
+        self.assertEqual(bills_only.get("/api/dashboard/", **h).status_code, 403)
+        viewer = self._staff_with("dash@test.com", "billing.view_dashboard")
+        self.assertEqual(viewer.get("/api/dashboard/", **h).status_code, 200)
+        self.assertIn("billing.view_dashboard", viewer.get("/api/auth/me/", **h).data["permissions"])
+
+    def test_cost_price_is_hidden_without_its_permission(self):
+        from inventory.models import Product, ProductVariant, StockBatch, StockItem
+        h = {"HTTP_HOST": "acme.localhost"}
+        with tenant_context(self.acme):
+            product = Product.objects.create(name="Cost Tee")
+            variant = ProductVariant.objects.create(product=product)
+            batch = StockBatch.objects.create(variant=variant, cost_price="40.00", price="100.00", quantity=1)
+            StockItem.objects.create(variant=variant, batch=batch, code="COSTTEE00001")
+        base = ["inventory.view_product", "inventory.view_stockitem", "inventory.change_stockitem", "inventory.add_stockitem"]
+        blind = self._staff_with("blind@test.com", *base)
+        seer = self._staff_with("seer@test.com", *base, "inventory.view_cost_price")
+        _, owner = self._auth("acme.localhost", "acme@test.com")
+
+        def costs(client):
+            out = {}
+            row = client.get(f"/api/products/?id={product.id}", **h).data["results"][0]
+            out["last_cost_price"] = "last_cost_price" in row["variants"][0]
+            units = client.get("/api/stock-items/?status=all&search=COSTTEE", **h).data["results"]
+            out["stock"] = "cost_price" in units[0]
+            out["lookup"] = "cost_price" in client.get("/api/stock-items/lookup/?code=COSTTEE00001", **h).data
+            out["batches"] = "cost_price" in client.get(f"/api/products/{product.id}/batches/", **h).data[0]
+            history = client.get("/api/units/COSTTEE00001/history/", **h).data
+            out["history"] = "cost_price" in history["batch"] or "margin" in history["batch"] \
+                or "cost_price" in history["timeline"][0]
+            return out
+
+        self.assertEqual(costs(blind), dict.fromkeys(["last_cost_price", "stock", "lookup", "batches", "history"], False))
+        self.assertEqual(costs(seer), dict.fromkeys(["last_cost_price", "stock", "lookup", "batches", "history"], True))
+        self.assertEqual(costs(owner), costs(seer))
+
+        # Someone who can't see costs can't change them either: editing keeps the stored cost.
+        row = {"id": str(batch.id), "color": None, "size": None, "quantity": 1, "price": "120.00", "cost_price": "1.00"}
+        resp = blind.post(f"/api/products/{product.id}/update-batches/", {"batches": [row]}, format="json", **h)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        with tenant_context(self.acme):
+            batch.refresh_from_db()
+            self.assertEqual((str(batch.cost_price), str(batch.price)), ("40.00", "120.00"))
+        # ...and stock they add has no cost recorded.
+        resp = blind.post(f"/api/products/{product.id}/add-stock/",
+                          {"lines": [{"quantity": 1, "price": "90.00", "cost_price": "5.00"}]}, format="json", **h)
+        self.assertEqual(resp.status_code, 201, resp.data)
+        with tenant_context(self.acme):
+            self.assertTrue(StockBatch.objects.filter(variant__product=product, cost_price__isnull=True).exists())
+
+    def test_sales_are_limited_to_own_bills_from_today_without_view_all_sales(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from billing.models import Bill
+        h = {"HTTP_HOST": "acme.localhost"}
+        mine = self._staff_with("mine@test.com", "billing.view_bill")
+        boss = self._staff_with("boss@test.com", "billing.view_bill", "billing.view_all_sales")
+        with schema_context(get_public_schema_name()):
+            me, other = User.objects.get(email="mine@test.com"), User.objects.get(email="boss@test.com")
+        with tenant_context(self.acme):
+            own_today = Bill.objects.create(customer_name="A", created_by=me)
+            own_old = Bill.objects.create(customer_name="B", created_by=me)
+            Bill.objects.filter(pk=own_old.pk).update(created_at=timezone.now() - timedelta(days=2))
+            others_today = Bill.objects.create(customer_name="C", created_by=other)
+            Bill.objects.create(customer_name="D")  # no recorded author
+
+        def ids(client):
+            return {b["id"] for b in client.get("/api/bills/", **h).data["results"]}
+
+        self.assertEqual(ids(mine), {own_today.id})
+        self.assertEqual(mine.get(f"/api/bills/{own_today.id}/", **h).status_code, 200)
+        self.assertEqual(mine.get(f"/api/bills/{own_old.id}/", **h).status_code, 404)
+        self.assertEqual(mine.get(f"/api/bills/{others_today.id}/", **h).status_code, 404)
+        self.assertGreaterEqual(len(ids(boss)), 4)
+        self.assertIn(own_old.id, ids(boss))
+
+    def test_shop_can_add_store_credit_and_the_counter_redeems_it(self):
+        from inventory.models import Product, ProductVariant, StockBatch, StockItem
+        h = {"HTTP_HOST": "acme.localhost"}
+        _, owner = self._auth("acme.localhost", "acme@test.com")
+        till = self._staff_with("till2@test.com", "billing.add_bill", "inventory.view_stockitem")
+        phone = "9000000011"
+
+        # Only people with add_creditentry can give credit; a new customer needs a name.
+        self.assertEqual(till.post("/api/store-credit/", {"phone": phone, "amount": "50", "name": "Isha"},
+                                   format="json", **h).status_code, 403)
+        self.assertEqual(owner.post("/api/store-credit/", {"phone": phone, "amount": "50"}, format="json", **h).status_code, 400)
+        self.assertEqual(owner.post("/api/store-credit/", {"phone": phone, "amount": "0", "name": "Isha"},
+                                    format="json", **h).status_code, 400)
+        resp = owner.post("/api/store-credit/", {"phone": phone, "amount": "100", "name": "Isha", "note": "Advance"},
+                          format="json", **h)
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data["balance"], "100.00")
+        cid = resp.data["customer_id"]
+
+        # The counter (add_bill only) sees the balance and spends part of it.
+        self.assertEqual(till.get(f"/api/store-credit/?phone={phone}", **h).data["balance"], "100.00")
+        with tenant_context(self.acme):
+            variant = ProductVariant.objects.create(product=Product.objects.create(name="Credit Tee"))
+            batch = StockBatch.objects.create(variant=variant, price="100.00", quantity=1)
+            StockItem.objects.create(variant=variant, batch=batch, code="CREDTEE00001")
+        bill = till.post("/api/bills/", {"codes": ["CREDTEE00001"], "customer": {"name": "Isha", "phone": phone},
+                                         "credit_used": "30.00", "payment_mode": "Cash"}, format="json", **h)
+        self.assertEqual(bill.status_code, 201, bill.data)
+        self.assertEqual(owner.get(f"/api/store-credit/?phone={phone}", **h).data["balance"], "70.00")
+
+        # The customer page lists the manual credit, and the customer shows up without ever buying.
+        detail = owner.get(f"/api/customers/{cid}/", **h).data
+        manual = [e for e in detail["credit"] if e["ref"] is None]
+        self.assertEqual((manual[0]["amount"], manual[0]["note"]), ("100.00", "Advance"))
+        other = owner.post("/api/store-credit/", {"phone": "9000000012", "amount": "10", "name": "Only Credit"},
+                           format="json", **h).data["customer_id"]
+        self.assertEqual(owner.get(f"/api/customers/{other}/", **h).status_code, 200)
+        self.assertIn(other, {c["id"] for c in owner.get("/api/customers/", **h).data["results"]})
 
     def test_customer_lookup_needs_the_exact_phone(self):
         with schema_context(get_public_schema_name()):

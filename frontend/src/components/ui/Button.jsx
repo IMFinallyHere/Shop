@@ -15,6 +15,7 @@ const sizes = {
   md: 'h-9 px-3.5 text-sm gap-2',
   lg: 'h-11 px-5 text-base gap-2',
   icon: 'h-8 w-8 justify-center',
+  'icon-lg': 'h-9 w-9 justify-center',  // icon-only buttons in table rows
 }
 
 // `as` lets a Link (or anything) wear button styles: <Button as={Link} to="/pos">.
@@ -22,7 +23,7 @@ export default function Button({
   as: Comp = 'button', variant = 'secondary', size = 'md', icon: Icon, loading = false,
   className, children, disabled, type, ...props
 }) {
-  const iconSize = size === 'lg' ? 18 : size === 'xs' ? 14 : 16
+  const iconSize = size === 'icon-lg' ? 20 : size === 'lg' ? 18 : size === 'xs' ? 14 : 16
   return (
     <Comp
       type={Comp === 'button' ? (type ?? 'button') : undefined}

@@ -77,6 +77,16 @@ Product and stock rules (all switched in Settings → Products / Printing, store
   the bill's `balance_due` (`Return.due_cleared`); only the rest is refunded or credited. Perms:
   `billing.view/add_duepayment` (in the Cashier preset). Raw inserts (`seed_large`) must write
   `amount_paid`, `balance_due` and `due_cleared`.
+- **Extra permissions** (custom, in `Meta.permissions`; they show on the Groups page and are included in the Manager preset,
+  not in Cashier): `inventory.view_cost_price` (without it the API leaves every cost field out via `CostHiddenMixin` /
+  `can_view_cost`, the UI hides Cost/Margin, and add-stock / update-batches never write or change a cost),
+  `billing.view_dashboard` (the dashboard; no longer implied by `view_bill`) and `billing.view_all_sales` (without it
+  `billing.scope.visible_bills` limits bills to the user's own from today: Sales list/detail, global search, the customer
+  page's bill list. Scan-to-return `by_code` and the returns flow stay unrestricted). Existing prod groups do not get new
+  permissions automatically: add them on the Groups page.
+- **Store credit** is a ledger (`CreditEntry`). Besides return credits, `POST /store-credit/` (`billing.add_creditentry`)
+  adds credit on purpose (`note`, `created_by`; no return or bill behind it). The balance GET and checkout `credit_used`
+  need only `add_bill`, so the POS shows and redeems it. Customers with credit but no bills still appear on the Customers page.
 - Bill receipts print a CODE128 `INV-xxxxx` barcode (`receipt_show_invoice_barcode`). Scanning it in
   the global search opens the bill (`billing/search.py` `BILL_NO`).
 

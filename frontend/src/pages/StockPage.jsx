@@ -6,6 +6,8 @@ import useQuery, { asList } from '../hooks/useQuery'
 import BarcodeLabel from '../components/inventory/BarcodeLabel'
 import PrintBarcodes from '../components/inventory/PrintBarcodes'
 import EditUnitModal from '../components/inventory/EditUnitModal'
+import { useAuth } from '../contexts/AuthContext'
+import { can } from '../utils/permissions'
 import ActionMenu from '../components/common/ActionMenu'
 import ConfirmDialog from '../components/common/ConfirmDialog'
 import SearchInput from '../components/common/SearchInput'
@@ -47,6 +49,8 @@ export default function StockPage() {
   const [printItems, setPrintItems] = useState(null)
   const [editing, setEditing] = useState(null)
   const toast = useToast()
+  const { user } = useAuth()
+  const canChange = can(user, 'inventory.change_stockitem')
   const navigate = useNavigate()
   const { data, loading, error: loadError, reload } = useQuery(() => getStockItems({ page, search, status }), `${page}|${search}|${status}`)
   const { rows: items, count } = asList(data)
@@ -87,15 +91,17 @@ export default function StockPage() {
             <Td><BarcodeLabel code={it.code} /></Td>
             <Td><Badge tone={STATUS_BADGE[it.status]?.tone} dot>{STATUS_BADGE[it.status]?.label ?? it.status}</Badge></Td>
             <Td className="text-right">
+              <div className="flex items-center justify-end gap-1">
+              <Button variant="ghost" size="icon-lg" icon={Printer} onClick={() => setPrintItems([it])} title="Print label" aria-label="Print label" />
+              {canChange && <Button variant="ghost" size="icon-lg" icon={Pencil} onClick={() => setEditing(it)} title="Edit color / size" aria-label="Edit color / size" />}
               <ActionMenu actions={[
                 { label: 'View history', icon: History, onClick: () => navigate(`/stock/${it.code}`) },
-                { label: 'Edit color / size', icon: Pencil, onClick: () => setEditing(it) },
-                { label: 'Print label', icon: Printer, onClick: () => setPrintItems([it]) },
                 { label: 'Download barcode', icon: Download, onClick: () => downloadCode128(it) },
-                ...(it.status === 'in_stock'
+                ...(canChange && it.status === 'in_stock'
                   ? [{ label: 'Remove from stock', icon: Trash2, onClick: () => setToRemove(it), variant: 'danger' }]
                   : []),
               ]} />
+              </div>
             </Td>
           </Tr>
         ))}

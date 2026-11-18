@@ -7,8 +7,8 @@ export const NAV = [
   {
     section: 'Sell',
     items: [
-      { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, perm: 'billing.view_bill' },
-      { to: '/pos', label: 'New bill', icon: ScanBarcode, perm: 'billing.add_bill' },
+      { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, perm: 'billing.view_dashboard' },
+      { to: '/pos', label: 'New bill', icon: ScanBarcode, perm: 'billing.add_bill', shortcut: 'N' },
       { to: '/sales', label: 'Sales', icon: Receipt, perm: 'billing.view_bill' },
       { to: '/returns', label: 'Returns', icon: Undo2, perm: 'billing.view_return' },
       { to: '/customers', label: 'Customers', icon: Users, perm: 'customers.view_customer' },
@@ -19,7 +19,7 @@ export const NAV = [
     section: 'Inventory',
     items: [
       { to: '/products', label: 'Products', icon: Shirt, perm: 'inventory.view_product', end: true },
-      { to: '/products/missing', label: 'Missing details', icon: ClipboardList, perm: 'inventory.view_product', badge: 'missing' },
+      { to: '/products/missing', label: 'Missing details', icon: ClipboardList, perm: 'inventory.change_product', badge: 'missing' },
       { to: '/stock', label: 'Stock', icon: Boxes, perm: 'inventory.view_stockitem' },
       { to: '/categories', label: 'Categories', icon: FolderTree, perm: 'inventory.view_category' },
       { to: '/sellers', label: 'Sellers', icon: Truck, perm: 'inventory.view_seller' },

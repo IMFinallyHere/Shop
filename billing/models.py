@@ -52,6 +52,11 @@ class Bill(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        permissions = [
+            ("view_dashboard", "Can view the dashboard"),
+            # Without it a user only sees the bills they made today.
+            ("view_all_sales", "Can view all sales"),
+        ]
         indexes = [
             models.Index(fields=["-created_at"]),
             # Open (unpaid) bills only: the dues list and per-customer balance read these.
@@ -166,12 +171,15 @@ class ReturnItem(models.Model):
 
 
 class CreditEntry(models.Model):
-    """Store-credit ledger for this shop: + when a return is credited, − when spent."""
+    """Store-credit ledger for this shop: + when a return is credited or the shop adds credit, − when spent."""
 
     customer_id = models.IntegerField(db_index=True)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     ret = models.ForeignKey(Return, null=True, blank=True, on_delete=models.PROTECT, related_name="credit_entries")
     bill = models.ForeignKey(Bill, null=True, blank=True, on_delete=models.PROTECT, related_name="credit_entries")
+    # Credit the shop gives on purpose (no return or bill behind it): why, and who added it.
+    note = models.CharField(max_length=200, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

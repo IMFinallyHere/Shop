@@ -91,6 +91,16 @@ class CheckoutCustomerSerializer(serializers.Serializer):
     )
 
 
+class AddCreditSerializer(serializers.Serializer):
+    """The shop gives a customer store credit on purpose (an advance, goodwill, a gift voucher)."""
+
+    phone = serializers.RegexField(r"^\d{10}$", error_messages={"invalid": "Phone number must be exactly 10 digits.",
+                                                                "blank": "Customer phone is required."})
+    name = serializers.CharField(max_length=120, required=False, allow_blank=True, default="")  # new customers only
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal("0.01"))
+    note = serializers.CharField(max_length=200, required=False, allow_blank=True, default="")
+
+
 class QuoteSerializer(serializers.Serializer):
     codes = serializers.ListField(child=serializers.CharField(), allow_empty=True)
     discount_type = serializers.ChoiceField(choices=[c[0] for c in Bill.DISCOUNT_CHOICES], default=Bill.NONE)

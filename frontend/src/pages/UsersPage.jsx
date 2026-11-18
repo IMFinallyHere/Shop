@@ -21,7 +21,7 @@ import { Table, Td, Tr } from '../components/ui/Table'
 import { useToast } from '../components/ui/Toast'
 import { displayName, initials } from '../utils/format'
 
-const EMPTY_USER = { email: '', first_name: '', last_name: '', password: '', is_staff: false }
+const EMPTY_USER = { email: '', first_name: '', last_name: '', password: '', is_staff: true }
 const PAGE_SIZE = 20
 
 export default function UsersPage() {

@@ -1,6 +1,7 @@
 import clsx from 'clsx'
 import { Trash2, Undo2 } from 'lucide-react'
 import { Select } from '../ui/Field'
+import useCanViewCost from '../../hooks/useCanViewCost'
 
 // The stock a product has right now, one editable row per batch that still has units in stock.
 // rows: [{ id, color, size, color_name, size_name, quantity, cost_price, price }] with colour/size as ids.
@@ -8,6 +9,7 @@ import { Select } from '../ui/Field'
 // The dustbin marks the whole row for removal (all its in-stock units, e.g. stock added by mistake)
 // until Save; Undo brings it back. `removed` is UI-only and sent as quantity 0.
 export default function CurrentStockRows({ rows, original, onChange, colors = [], sizes = [], errors = {}, requireCost = false }) {
+  const showCost = useCanViewCost()
   const withCurrent = (options, idKey, nameKey) => [
     ...options,
     ...rows
@@ -29,7 +31,7 @@ export default function CurrentStockRows({ rows, original, onChange, colors = []
           <tr className="text-xs font-medium text-zinc-500">
             <th className="pb-1.5 pr-2 font-medium">Color</th><th className="pb-1.5 pr-2 font-medium">Size</th>
             <th className="w-20 pb-1.5 pr-2 font-medium">Qty</th>
-            <th className="w-28 pb-1.5 pr-2 font-medium">Cost ₹{requireCost ? '' : ' (optional)'}</th>
+            {showCost && <th className="w-28 pb-1.5 pr-2 font-medium">Cost ₹{requireCost ? '' : ' (optional)'}</th>}
             <th className="w-28 pb-1.5 pr-2 font-medium">Price ₹</th><th className="w-10 pb-1.5"><span className="sr-only">Remove</span></th>
           </tr>
         </thead>
@@ -51,10 +53,10 @@ export default function CurrentStockRows({ rows, original, onChange, colors = []
               <td className="py-1 pr-2">
                 <input type="number" min="0" step="1" value={r.quantity} onChange={e => set(i, 'quantity', e.target.value)} className={cls(i, 'quantity')} aria-label="Quantity" disabled={r.removed} />
               </td>
-              <td className="py-1 pr-2">
+              {showCost && <td className="py-1 pr-2">
                 <input type="number" min="0" step="0.01" value={r.cost_price ?? ''} placeholder="optional" onChange={e => set(i, 'cost_price', e.target.value)} className={cls(i, 'cost_price')} aria-label="Cost price" disabled={r.removed} />
                 {errors[i]?.cost_price && <p className="mt-0.5 text-xs text-red-600">{errors[i].cost_price}</p>}
-              </td>
+              </td>}
               <td className="py-1 pr-2">
                 <input type="number" min="0" step="0.01" value={r.price} onChange={e => set(i, 'price', e.target.value)} className={cls(i, 'price')} aria-label="Selling price" disabled={r.removed} />
               </td>

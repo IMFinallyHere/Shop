@@ -28,6 +28,9 @@ import { useToast } from '../components/ui/Toast'
 import { EMPTY_LINE, toStockPayload, variantLabel } from '../utils/variant'
 import { moneyShort } from '../utils/format'
 import { newBaseName, productName } from '../utils/productNames'
+import { useAuth } from '../contexts/AuthContext'
+import useCanViewCost from '../hooks/useCanViewCost'
+import { can } from '../utils/permissions'
 import { refreshMissingCount } from '../hooks/useMissingCount'
 import usePrintSettings from '../hooks/usePrintSettings'
 import { productLabel } from '../utils/names'
@@ -74,6 +77,13 @@ export default function ProductsPage() {
   const [printItems, setPrintItems] = useState(null)
   const [printingId, setPrintingId] = useState(null)
   const toast = useToast()
+  const { user } = useAuth()
+  const showCost = useCanViewCost()
+  const canAdd = can(user, 'inventory.add_product')
+  const canChange = can(user, 'inventory.change_product')
+  const canDelete = can(user, 'inventory.delete_product')
+  const canAddStock = can(user, 'inventory.add_stockitem')
+  const canVariants = can(user, 'inventory.change_productvariant')
 
   const { data, loading, error: loadError, reload } = useQuery(
     () => getProducts({
@@ -184,7 +194,7 @@ export default function ProductsPage() {
   // A stock line counts once anything but the helper margin is filled in; blank rows are ignored
   // when adding stock from the New product modal.
   const isUsed = (l) => Object.entries(l).some(([k, v]) => k !== 'margin' && v !== '')
-  const lineOk = (l) => Number(l.quantity) >= 1 && l.price !== '' && (!shopSettings.require_cost_price || l.cost_price !== '')
+  const lineOk = (l) => Number(l.quantity) >= 1 && l.price !== '' && (!showCost || !shopSettings.require_cost_price || l.cost_price !== '')
 
   // New product, plus its first stock when any lines are filled in.
   const handleCreate = async () => {
@@ -275,7 +285,7 @@ export default function ProductsPage() {
   return (
     <div>
       <PageHeader title="Products" subtitle="Your catalogue, with stock across all colors and sizes."
-        actions={<Button variant="primary" icon={Plus} onClick={openCreate}>New product</Button>} />
+        actions={canAdd && <Button variant="primary" icon={Plus} onClick={openCreate}>New product</Button>} />
 
       <Toolbar>
         <SearchInput value={search} onChange={v => { setSearch(v); setPage(1) }} placeholder="Search products…" />
@@ -306,7 +316,7 @@ export default function ProductsPage() {
           : lowOnly
           ? { icon: Shirt, title: 'Nothing is low on stock', description: 'Every variant is above its low-stock threshold.' }
           : { icon: Shirt, title: search ? 'No matching products' : 'No products yet', description: search ? 'Try a different search.' : 'Create a product, then add stock to print barcodes.',
-              action: !search && <Button variant="primary" icon={Plus} onClick={openCreate}>New product</Button> }}
+              action: !search && canAdd && <Button variant="primary" icon={Plus} onClick={openCreate}>New product</Button> }}
       >
         {products.map(p => (
           <Tr key={p.id}>
@@ -346,15 +356,13 @@ export default function ProductsPage() {
             </Td>
             <Td className="text-right">
               <div className="flex items-center justify-end gap-1">
-                <Button variant="ghost" size="xs" icon={PackagePlus} onClick={() => openAddStock(p)} className="hidden md:inline-flex">Add stock</Button>
-                <Button variant="ghost" size="xs" icon={Printer} onClick={() => openPrint(p)} loading={printingId === p.id}
-                  disabled={p.stock_quantity === 0} title="Preview & print barcodes" aria-label="Print barcodes" className="hidden md:inline-flex" />
+                {canAddStock && <Button variant="ghost" size="icon-lg" icon={PackagePlus} onClick={() => openAddStock(p)} title="Add stock" aria-label="Add stock" />}
+                <Button variant="ghost" size="icon-lg" icon={Printer} onClick={() => openPrint(p)} loading={printingId === p.id}
+                  disabled={p.stock_quantity === 0} title="Preview & print barcodes" aria-label="Print barcodes" />
+                {canChange && <Button variant="ghost" size="icon-lg" icon={Pencil} onClick={() => openEdit(p)} title="Edit product" aria-label="Edit product" />}
                 <ActionMenu actions={[
-                  { label: 'Add stock', icon: PackagePlus, onClick: () => openAddStock(p) },
-                  { label: 'Print barcodes', icon: Printer, onClick: () => openPrint(p) },
-                  { label: 'Variants', icon: Layers, onClick: () => openVariants(p) },
-                  { label: 'Edit', icon: Pencil, onClick: () => openEdit(p) },
-                  { label: 'Delete', icon: Trash2, onClick: () => openDelete(p), variant: 'danger' },
+                  canVariants && { label: 'Variants', icon: Layers, onClick: () => openVariants(p) },
+                  canDelete && { label: 'Delete', icon: Trash2, onClick: () => openDelete(p), variant: 'danger' },
                 ]} />
               </div>
             </Td>

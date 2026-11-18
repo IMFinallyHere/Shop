@@ -7,6 +7,7 @@ import { can } from '../utils/permissions'
 import { Card, CardHeader } from '../components/ui/Card'
 import StatCard from '../components/ui/StatCard'
 import Button from '../components/ui/Button'
+import Kbd from '../components/ui/Kbd'
 import Badge, { Swatch } from '../components/ui/Badge'
 import EmptyState from '../components/ui/EmptyState'
 import ErrorAlert from '../components/common/ErrorAlert'
@@ -54,7 +55,7 @@ export default function DashboardPage() {
         <div className="flex flex-wrap gap-2">
           <Button as={Link} to="/returns" icon={Undo2}>Return</Button>
           <Button as={Link} to="/products" icon={PackagePlus}>Add stock</Button>
-          <Button as={Link} to="/pos" variant="primary" icon={ScanBarcode} data-tour="new-bill">New bill</Button>
+          <Button as={Link} to="/pos" variant="primary" icon={ScanBarcode} data-tour="new-bill" title="New bill (N)">New bill <Kbd onDark>N</Kbd></Button>
         </div>
       </div>
 

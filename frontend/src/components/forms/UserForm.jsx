@@ -1,4 +1,4 @@
-import { Checkbox, Field, Input } from '../ui/Field'
+import { Field, Input } from '../ui/Field'
 
 export default function UserForm({ data, onChange, isCreate, errors = {} }) {
   const field = (name, label, { type = 'text', required = false, disabled = false, hint } = {}) => (
@@ -22,12 +22,6 @@ export default function UserForm({ data, onChange, isCreate, errors = {} }) {
         {field('last_name', 'Last name')}
       </div>
       {isCreate && field('password', 'Password', { type: 'password', required: true, hint: 'At least 8 characters, not a common or all-number password.' })}
-      <Checkbox
-        checked={!!data.is_staff}
-        onChange={e => onChange({ ...data, is_staff: e.target.checked })}
-        label="Staff"
-        description="Can sign in to this shop. What they can do comes from their groups (e.g. Cashier, Manager)."
-      />
     </div>
   )
 }

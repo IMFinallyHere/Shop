@@ -51,6 +51,16 @@ class ShopPermission(BasePermission):
         return f"{app}.{verb}_{name}"
 
 
+def can_view_cost(user):
+    """Whether this user may see what the shop paid for stock (the owner always may)."""
+    return bool(user and user.is_authenticated and (user.is_superuser or user.has_perm("inventory.view_cost_price")))
+
+
+def can_view_all_sales(user):
+    """Everyone's bills from any day (the owner always may); others see only their own from today."""
+    return bool(user and user.is_authenticated and (user.is_superuser or user.has_perm("billing.view_all_sales")))
+
+
 class IsShopOwner(BasePermission):
     """Owner-only areas (users, groups, permissions): superuser in the current shop."""
 

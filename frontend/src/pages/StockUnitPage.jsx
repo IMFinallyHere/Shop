@@ -5,6 +5,9 @@ import {
   ArrowLeft, Boxes, Download, Mail, MapPin, PackagePlus, Pencil, Phone, Printer, Receipt, Shirt, Trash2, Truck, Undo2, UserRound, Wallet,
 } from 'lucide-react'
 import { getUnitHistory } from '../api/search'
+import { useAuth } from '../contexts/AuthContext'
+import { can } from '../utils/permissions'
+import useCanViewCost from '../hooks/useCanViewCost'
 import useQuery from '../hooks/useQuery'
 import useReceipts from '../hooks/useReceipts'
 import usePrintSettings from '../hooks/usePrintSettings'
@@ -40,6 +43,8 @@ const EVENT = {
 
 export default function StockUnitPage() {
   const { code } = useParams()
+  const { user } = useAuth()
+  const showCost = useCanViewCost()
   const { data, loading, error, reload } = useQuery(() => getUnitHistory(code), code)
   const { openBill, openReturn, receipts } = useReceipts()
   const [printing, setPrinting] = useState(false)
@@ -76,7 +81,7 @@ export default function StockUnitPage() {
             <span>Selling at <span className="font-medium text-zinc-800">{money(batch.price)}</span></span>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
-            <Button size="sm" icon={Pencil} onClick={() => setEditing(true)}>Edit</Button>
+            {can(user, 'inventory.change_stockitem') && <Button size="sm" icon={Pencil} onClick={() => setEditing(true)}>Edit</Button>}
             <Button size="sm" icon={Printer} onClick={() => setPrinting(true)}>Print label</Button>
             <Button size="sm" icon={Download} onClick={() => downloadCode128(label)}>Download barcode</Button>
           </div>
@@ -106,7 +111,7 @@ export default function StockUnitPage() {
                       <span className="text-xs text-zinc-500">{e.at ? formatDateTime(e.at) : 'Date not recorded'}</span>
                     </div>
                     <div className="mt-0.5 text-sm text-zinc-500">
-                      {e.type === 'added' && <>Cost {money(e.cost_price)} · Price {money(e.price)}</>}
+                      {e.type === 'added' && <>{showCost && <>Cost {money(e.cost_price)} · </>}Price {money(e.price)}</>}
                       {e.type === 'sold' && <>
                         {money(e.price)} via {e.payment_mode} to{' '}
                         {e.customer_id
@@ -144,9 +149,9 @@ export default function StockUnitPage() {
           <Card>
             <CardHeader title="Batch" subtitle={`Added ${formatDate(batch.created_at)}`} />
             <dl className="px-5 py-3">
-              <Detail label="Cost price">{money(batch.cost_price)}</Detail>
+              {showCost && <Detail label="Cost price">{money(batch.cost_price)}</Detail>}
               <Detail label="Selling price">{money(batch.price)}</Detail>
-              <Detail label="Margin">{money(batch.margin)}</Detail>
+              {showCost && <Detail label="Margin">{money(batch.margin)}</Detail>}
               <Detail label="Units in batch">{batch.quantity}</Detail>
             </dl>
           </Card>

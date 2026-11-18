@@ -3,6 +3,7 @@ import clsx from 'clsx'
 import { PanelLeftClose, PanelLeftOpen, X } from 'lucide-react'
 import { NAV } from './nav'
 import Logo from '../ui/Logo'
+import Kbd from '../ui/Kbd'
 import { useAuth } from '../../contexts/AuthContext'
 import { can } from '../../utils/permissions'
 import useMissingCount from '../../hooks/useMissingCount'
@@ -12,7 +13,7 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
   const { user } = useAuth()
   const shopName = user?.shop_name || 'Shop'
   // Only what this user may open; sections with nothing left disappear.
-  const missing = useMissingCount(can(user, 'inventory.view_product'))
+  const missing = useMissingCount(can(user, 'inventory.change_product'))
   // The Missing details link only shows while some product has gaps.
   const nav = NAV.map(s => ({ ...s, items: s.items.filter(i => can(user, i.perm) && !(i.badge === 'missing' && missing === 0)) })).filter(s => s.items.length)
 
@@ -44,13 +45,13 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
                 {section}
               </div>
               <div className="space-y-0.5">
-                {items.map(({ to, label, icon: Icon, badge, end }) => (
+                {items.map(({ to, label, icon: Icon, badge, end, shortcut }) => (
                   <NavLink
                     key={to}
                     to={to}
                     end={end}
                     onClick={onCloseMobile}
-                    title={collapsed ? label : undefined}
+                    title={collapsed ? (shortcut ? `${label} (${shortcut})` : label) : undefined}
                     className={({ isActive }) => clsx(
                       'group flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors',
                       collapsed && 'lg:justify-center lg:px-0',
@@ -60,6 +61,7 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
                     {({ isActive }) => (<>
                       <Icon size={18} strokeWidth={isActive ? 2.2 : 1.8} className={clsx('shrink-0', isActive ? 'text-brand-600' : 'text-zinc-400 group-hover:text-zinc-600')} />
                       <span className={clsx('truncate', collapsed && 'lg:hidden')}>{label}</span>
+                      {shortcut && <Kbd className={clsx('ml-auto', collapsed && 'lg:hidden')}>{shortcut}</Kbd>}
                       {badge === 'missing' && <span className={clsx('ml-auto rounded-full bg-amber-100 px-1.5 text-[11px] font-semibold text-amber-800', collapsed && 'lg:hidden')}>{missing}</span>}
                     </>)}
                   </NavLink>

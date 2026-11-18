@@ -12,6 +12,8 @@ export const getReturns = (params) => api.get('/returns/', { params })
 export const getReturn = (id) => api.get(`/returns/${id}/`)
 
 export const getStoreCredit = (phone) => api.get('/store-credit/', { params: { phone } })
+// Credit the shop gives on purpose: { phone, name?, amount, note? }.
+export const addStoreCredit = (data) => api.post('/store-credit/', data)
 
 // Customers who owe the shop money (bills left partly or wholly unpaid), and settling them.
 export const getDues = (params) => api.get('/dues/', { params })

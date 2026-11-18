@@ -2,12 +2,15 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Eye, Receipt, ScanBarcode, Undo2 } from 'lucide-react'
 import { getBills, getBill } from '../api/billing'
+import { useAuth } from '../contexts/AuthContext'
+import { can } from '../utils/permissions'
 import useQuery, { asList } from '../hooks/useQuery'
 import BillReceipt from '../components/billing/BillReceipt'
 import SearchInput from '../components/common/SearchInput'
 import ErrorAlert from '../components/common/ErrorAlert'
 import PageHeader, { Toolbar } from '../components/ui/PageHeader'
 import Button from '../components/ui/Button'
+import Kbd from '../components/ui/Kbd'
 import Badge from '../components/ui/Badge'
 import Pagination from '../components/ui/Pagination'
 import { Table, Td, Tr } from '../components/ui/Table'
@@ -21,6 +24,8 @@ export default function SalesPage() {
   const [error, setError] = useState('')
   const [receipt, setReceipt] = useState(null)
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const seesAll = can(user, 'billing.view_all_sales')
   const { data, loading, error: loadError } = useQuery(() => getBills({ page, search }), `${page}|${search}`)
   const { rows: bills, count } = asList(data)
 
@@ -28,15 +33,15 @@ export default function SalesPage() {
 
   return (
     <div>
-      <PageHeader title="Sales" subtitle="Every bill created at the counter."
-        actions={<Button as={Link} to="/pos" variant="primary" icon={ScanBarcode}>New bill</Button>} />
+      <PageHeader title="Sales" subtitle={seesAll ? 'Every bill created at the counter.' : 'The bills you made today.'}
+        actions={<Button as={Link} to="/pos" variant="primary" icon={ScanBarcode} title="New bill (N)">New bill <Kbd onDark>N</Kbd></Button>} />
       <Toolbar><SearchInput value={search} onChange={v => { setSearch(v); setPage(1) }} placeholder="Search by customer…" /></Toolbar>
       <ErrorAlert message={error || (loadError && 'Failed to load sales.')} onDismiss={() => setError('')} />
 
       <Table
         columns={[{ label: 'Bill' }, { label: 'Date' }, { label: 'Customer' }, { label: 'Items' }, { label: 'Payment' }, { label: 'Total', className: 'text-right' }, { label: '', className: 'w-px' }]}
         loading={loading} isEmpty={bills.length === 0}
-        empty={{ icon: Receipt, title: search ? 'No matching bills' : 'No sales yet', description: search ? 'Try a different customer name.' : 'Bills appear here once you check out at the counter.' }}
+        empty={{ icon: Receipt, title: search ? 'No matching bills' : 'No sales yet', description: search ? 'Try a different customer name.' : seesAll ? 'Bills appear here once you check out at the counter.' : 'Bills you make today appear here.' }}
       >
         {bills.map(b => (
           <Tr key={b.id} className="cursor-pointer" onClick={() => openReceipt(b.id)}>

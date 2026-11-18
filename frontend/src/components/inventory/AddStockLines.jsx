@@ -4,10 +4,13 @@ import { Select } from '../ui/Field'
 import { Copy, Plus, X } from 'lucide-react'
 import { EMPTY_LINE, MAX_LINES, marginFromPrice, priceFromMargin, variantLabel } from '../../utils/variant'
 import { Swatch } from '../ui/Badge'
+import useCanViewCost from '../../hooks/useCanViewCost'
 
 // Editable rows of color/size (from Settings) + qty/cost/price; chips of existing
 // variants prefill a row with that variant's last cost/price.
 export default function AddStockLines({ lines, onChange, variants = [], colors = [], sizes = [], errors = [], requireCost = false }) {
+  // Without the cost permission the Cost and Margin columns are gone (margin would reveal cost).
+  const showCost = useCanViewCost()
   // Active options, plus any (possibly deactivated) ones existing variants still use,
   // so a restock chip always has a matching option.
   const withVariants = (options, idKey, nameKey) => [
@@ -40,7 +43,7 @@ export default function AddStockLines({ lines, onChange, variants = [], colors =
   const pickVariant = (v) => {
     const line = {
       ...EMPTY_LINE, color: v.color ?? '', size: v.size ?? '',
-      cost_price: v.last_cost_price ?? '', price: v.last_price ?? '',
+      cost_price: showCost ? v.last_cost_price ?? '' : '', price: v.last_price ?? '',
     }
     line.margin = marginFromPrice(line.cost_price, line.price)
     // Fill the first untouched row, else append.
@@ -99,7 +102,8 @@ export default function AddStockLines({ lines, onChange, variants = [], colors =
       <div className="overflow-x-auto">
         <table className="w-full min-w-[680px] text-sm">
           <thead>
-            <tr>{[['Color', 'w-[20%]'], ['Size', 'w-[14%]'], ['Qty', 'w-[10%]'], [requireCost ? 'Cost ₹' : 'Cost ₹ (optional)', ''], ['Margin %', 'w-[11%]'], ['Price ₹', '']].map(([h, w]) =>
+            <tr>{[['Color', 'w-[20%]'], ['Size', 'w-[14%]'], ['Qty', 'w-[10%]'],
+              ...(showCost ? [[requireCost ? 'Cost ₹' : 'Cost ₹ (optional)', ''], ['Margin %', 'w-[11%]']] : []), ['Price ₹', '']].map(([h, w]) =>
               <th key={h} className={`pb-1.5 pr-2 text-left text-xs font-medium text-zinc-500 ${w}`}>{h}</th>)}<th className="w-16" /></tr>
           </thead>
           <tbody>
@@ -108,8 +112,8 @@ export default function AddStockLines({ lines, onChange, variants = [], colors =
                 {select(i, 'color', colorOptions, 'Color')}
                 {select(i, 'size', sizeOptions, 'Size')}
                 {number(i, 'quantity', '1', 'Quantity', '0')}
-                {number(i, 'cost_price', '0.01', requireCost ? 'Cost price' : 'Cost price (optional)', requireCost ? '0.00' : 'optional')}
-                {number(i, 'margin', '0.01', 'Margin percent on cost', '%', true)}
+                {showCost && number(i, 'cost_price', '0.01', requireCost ? 'Cost price' : 'Cost price (optional)', requireCost ? '0.00' : 'optional')}
+                {showCost && number(i, 'margin', '0.01', 'Margin percent on cost', '%', true)}
                 {number(i, 'price', '0.01', 'Selling price', '0.00')}
                 <td className="whitespace-nowrap pb-2">
                   <button type="button" onClick={() => duplicate(i)} disabled={lines.length >= MAX_LINES} aria-label="Duplicate line" title="Duplicate this line"

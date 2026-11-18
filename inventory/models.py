@@ -146,6 +146,8 @@ class StockBatch(models.Model):
         ordering = ["-created_at"]
         # Serves the "newest batch of a variant" subquery (restock prefill).
         indexes = [models.Index(fields=["variant", "-created_at"])]
+        # Not tied to an action: it gates every place the portal shows what the shop paid.
+        permissions = [("view_cost_price", "Can view cost price")]
 
     def __str__(self):
         return f"{self.variant} × {self.quantity} @ {self.price}"
